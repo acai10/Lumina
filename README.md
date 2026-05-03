@@ -30,9 +30,8 @@ Lumina/
 │       └── shared/         # API client, types, components
 └── backend/                # Python FastAPI
     ├── Dockerfile
-    ├── requirements.txt
-    ├── requirements-dev.txt
-    ├── pyproject.toml
+    ├── pyproject.toml      # Abhängigkeiten + Tool-Konfiguration
+    ├── uv.lock             # Eingefrorener Dependency-Graph (committen!)
     ├── main.py
     └── src/
         ├── routers/        # oct, filters, segmentation
@@ -76,8 +75,6 @@ docker compose down
 make format
 ```
 
-Setzt voraus, dass die Images einmal gebaut wurden (`docker compose build`).
-
 ---
 
 ## Option B — Lokal ohne Docker
@@ -93,42 +90,45 @@ Setzt voraus, dass die Images einmal gebaut wurden (`docker compose build`).
 # Node.js + npm installieren
 brew install node
 
-# Python 3.11+ prüfen (3.13 funktioniert ebenfalls)
-python3 --version
+# uv installieren (Python-Paketmanager)
+brew install uv
 ```
 
 #### Windows / Linux
 
-- [Node.js 20+](https://nodejs.org/) herunterladen und installieren
-- [Python 3.11+](https://www.python.org/downloads/) herunterladen und installieren
+```bash
+# Node.js 20+ von https://nodejs.org/ installieren
+
+# uv installieren
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
 ---
 
 ### Backend einrichten
 
+Das Backend verwendet [uv](https://docs.astral.sh/uv/) als Paketmanager.  
+`uv.lock` ist im Repository eingecheckt und stellt sicher, dass alle Entwickler exakt dieselben Paketversionen verwenden.
+
 ```bash
 cd backend
 
-# Virtuelle Umgebung erstellen
-python3 -m venv .venv
-
-# Aktivieren
-source .venv/bin/activate          # macOS / Linux
-# .venv\Scripts\activate           # Windows
-
-# Abhängigkeiten installieren (Runtime + Dev-Tools)
-pip install -r requirements.txt -r requirements-dev.txt
+# Virtuelle Umgebung erstellen und alle Abhängigkeiten aus uv.lock installieren
+uv sync
 ```
+
+`uv sync` erledigt automatisch:
+1. `.venv/` erstellen (falls nicht vorhanden)
+2. Alle Pakete aus `uv.lock` installieren — keine Versionsunterschiede zwischen Entwicklern
 
 #### Backend starten
 
 ```bash
-# Venv muss aktiv sein
 cd backend
-source .venv/bin/activate
-
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+`uv run` führt den Befehl automatisch in der projekteigenen venv aus — kein manuelles `source .venv/bin/activate` nötig.
 
 Backend läuft unter http://localhost:8000  
 API-Dokumentation: http://localhost:8000/docs
@@ -137,9 +137,29 @@ API-Dokumentation: http://localhost:8000/docs
 
 ```bash
 cd backend
-source .venv/bin/activate
+uv run black . && uv run isort .
+```
 
-black . && isort .
+#### Abhängigkeit hinzufügen
+
+```bash
+# Runtime-Abhängigkeit
+cd backend
+uv add <paket>
+
+# Nur für Entwicklung (dev-Gruppe)
+uv add --dev <paket>
+```
+
+`uv add` aktualisiert `pyproject.toml` und `uv.lock` automatisch.  
+Die aktualisierte `uv.lock` danach committen, damit alle Entwickler dieselbe Version erhalten.
+
+#### Lockfile aktualisieren (ohne neue Pakete hinzuzufügen)
+
+```bash
+cd backend
+uv lock --upgrade
+uv sync
 ```
 
 ---
@@ -178,9 +198,19 @@ npm run build
 
 ---
 
+### Beides gleichzeitig formatieren
+
+```bash
+make format
+```
+
+Ruft `uv run black . && uv run isort .` im Backend und `npm run format` im Frontend auf.
+
+---
+
 ### IDE-Einrichtung (VS Code)
 
-Die Datei `.vscode/settings.json` ist bereits im Repository enthalten und zeigt automatisch auf die Backend-venv.  
+Die Datei `.vscode/settings.json` ist bereits im Repository enthalten und zeigt automatisch auf die Backend-venv unter `backend/.venv`.  
 Pylance löst alle Python-Imports korrekt auf, sobald der Workspace-Root `Lumina/` geöffnet ist.
 
 Empfohlene Extensions:
@@ -192,7 +222,7 @@ Empfohlene Extensions:
 
 ## Abhängigkeiten im Überblick
 
-### Backend (`requirements.txt`)
+### Backend (`pyproject.toml` — verwaltet mit uv)
 
 | Paket | Zweck |
 |-------|-------|
@@ -206,13 +236,8 @@ Empfohlene Extensions:
 | `scikit-image` | Segmentierung (random_walker) |
 | `Pillow` | PNG-Encoding für Base64-Antworten |
 | `scipy` | Lee-Speckle-Filter |
-
-### Backend Dev (`requirements-dev.txt`)
-
-| Paket | Zweck |
-|-------|-------|
-| `black` | Python-Formatter |
-| `isort` | Import-Sortierung |
+| `black` *(dev)* | Python-Formatter |
+| `isort` *(dev)* | Import-Sortierung |
 
 ### Frontend (`package.json`)
 
