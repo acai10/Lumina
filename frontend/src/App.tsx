@@ -2,25 +2,42 @@ import { AppBar, Box, Button, CircularProgress, Toolbar, Typography } from '@mui
 import React from 'react';
 
 import { useOctStore } from './app/store/octSlice';
+import { useSTLStore } from './app/store/stlSlice';
 import WorkspaceLayout from './features/workspace/WorkspaceLayout';
 import * as octAPI from './shared/api/octAPI';
+import * as stlAPI from './shared/api/stlAPI';
 import StatusBar from './shared/components/StatusBar';
 
 export default function App() {
-    const { isLoading, setIsLoading, setCurrentBScan, setScanType, setCScanMetadata } =
+    const { isLoading: octLoading, setIsLoading: setOctLoading, setCurrentBScan, setScanType, setCScanMetadata } =
         useOctStore();
+    const { isLoading: stlLoading, setLoading: setSTLLoading, setSTLData } = useSTLStore();
+
+    const isLoading = octLoading || stlLoading;
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        setIsLoading(true);
+        setOctLoading(true);
         try {
             const res = await octAPI.uploadScan(file);
             setScanType(res.scan_type);
             setCurrentBScan(res.preview);
             setCScanMetadata({ nSlices: res.n_slices, width: res.width, height: res.height });
         } finally {
-            setIsLoading(false);
+            setOctLoading(false);
+        }
+    };
+
+    const handleSTLChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setSTLLoading(true);
+        try {
+            const data = await stlAPI.uploadSTL(file);
+            setSTLData(data);
+        } finally {
+            setSTLLoading(false);
         }
     };
 
@@ -37,6 +54,7 @@ export default function App() {
                         color="inherit"
                         component="label"
                         disabled={isLoading}
+                        sx={{ mr: 1 }}
                     >
                         Load Scan
                         <input
@@ -44,6 +62,20 @@ export default function App() {
                             hidden
                             accept=".dcm,.mha,.nrrd,.raw,*"
                             onChange={handleFileChange}
+                        />
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        color="inherit"
+                        component="label"
+                        disabled={isLoading}
+                    >
+                        Load STL
+                        <input
+                            type="file"
+                            hidden
+                            accept=".stl"
+                            onChange={handleSTLChange}
                         />
                     </Button>
                 </Toolbar>
