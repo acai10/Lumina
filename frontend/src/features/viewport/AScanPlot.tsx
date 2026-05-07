@@ -1,10 +1,16 @@
 import { Box, Typography } from '@mui/material';
+import { memo, useMemo } from 'react';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import { useOctStore } from '../../app/store/octSlice';
 
-export default function AScanPlot() {
+const AScanPlot = memo(function AScanPlot() {
     const { aScanSignal, depthAxis } = useOctStore();
+
+    const data = useMemo(
+        () => aScanSignal.map((v, i) => ({ depth: depthAxis[i] ?? i, amplitude: v })),
+        [aScanSignal, depthAxis],
+    );
 
     if (aScanSignal.length === 0) {
         return (
@@ -22,8 +28,6 @@ export default function AScanPlot() {
             </Box>
         );
     }
-
-    const data = aScanSignal.map((v, i) => ({ depth: depthAxis[i] ?? i, amplitude: v }));
 
     return (
         <ResponsiveContainer width="100%" height="100%">
@@ -46,4 +50,6 @@ export default function AScanPlot() {
             </LineChart>
         </ResponsiveContainer>
     );
-}
+});
+
+export default AScanPlot;

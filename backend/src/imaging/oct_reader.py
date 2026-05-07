@@ -1,11 +1,14 @@
 import base64
 import io
+import logging
 import os
 import tempfile
 from typing import Optional
 
 import numpy as np
 from PIL import Image
+
+log = logging.getLogger(__name__)
 
 _scan_cache: dict[str, np.ndarray] = {}
 
@@ -23,8 +26,8 @@ def load_scan(data: bytes) -> np.ndarray:
             return ds.pixel_array.astype(np.float32)
         finally:
             os.unlink(tmp)
-    except Exception:
-        pass
+    except (Exception,) as exc:
+        log.debug("DICOM parse failed: %s", exc)
 
     # Try SimpleITK (handles MHA, NRRD, MHD, …)
     try:
@@ -38,8 +41,8 @@ def load_scan(data: bytes) -> np.ndarray:
             return sitk.GetArrayFromImage(img).astype(np.float32)
         finally:
             os.unlink(tmp)
-    except Exception:
-        pass
+    except (Exception,) as exc:
+        log.debug("SimpleITK parse failed: %s", exc)
 
     # Fallback: interpret as raw float32 byte stream
     arr = np.frombuffer(data, dtype=np.float32).copy()
@@ -81,9 +84,8 @@ def ascan_to_base64_png(array: np.ndarray) -> str:
     canvas = np.zeros((h, w), dtype=np.uint8)
     mn, mx = float(array.min()), float(array.max())
     norm = (array - mn) / (mx - mn) if mx > mn else np.zeros_like(array, dtype=np.float32)
-    for i, v in enumerate(norm):
-        row = int((1.0 - float(v)) * (h - 1))
-        canvas[row, i] = 255
+    rows = ((1.0 - norm) * (h - 1)).astype(int).clip(0, h - 1)
+    canvas[rows, np.arange(len(rows))] = 255
     img = Image.fromarray(canvas, mode="L")
     buf = io.BytesIO()
     img.save(buf, format="PNG")

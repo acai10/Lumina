@@ -1,15 +1,17 @@
 import { Box, Slider, Typography } from '@mui/material';
+import { memo } from 'react';
 
 import { useOctStore } from '../../app/store/octSlice';
 import * as octAPI from '../../shared/api/octAPI';
 
-export default function CScanNavigator() {
+const CScanNavigator = memo(function CScanNavigator() {
     const {
         cScanMetadata,
         selectedSliceIndex,
         setSelectedSliceIndex,
         setCurrentBScan,
         setIsLoading,
+        setError,
     } = useOctStore();
 
     const nSlices = cScanMetadata?.nSlices ?? 1;
@@ -18,9 +20,12 @@ export default function CScanNavigator() {
         const idx = value as number;
         setSelectedSliceIndex(idx);
         setIsLoading(true);
+        setError(null);
         try {
             const res = await octAPI.fetchSlice(idx);
             setCurrentBScan(res.image);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to load slice');
         } finally {
             setIsLoading(false);
         }
@@ -52,4 +57,6 @@ export default function CScanNavigator() {
             />
         </Box>
     );
-}
+});
+
+export default CScanNavigator;

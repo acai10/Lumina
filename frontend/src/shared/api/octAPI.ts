@@ -2,30 +2,23 @@ import type {
     AScanResponse,
     FilterResponse,
     SegmentationResponse,
-    UploadResponse,
     SliceResponse,
+    UploadResponse,
 } from '../types/oct.types';
-
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+import { request } from './client';
 
 export async function uploadScan(file: File): Promise<UploadResponse> {
     const form = new FormData();
     form.append('file', file);
-    const res = await fetch(`${BASE_URL}/oct/upload`, { method: 'POST', body: form });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json() as Promise<UploadResponse>;
+    return request<UploadResponse>('/oct/upload', { method: 'POST', body: form });
 }
 
 export async function fetchSlice(index: number): Promise<SliceResponse> {
-    const res = await fetch(`${BASE_URL}/oct/slice/${index}`);
-    if (!res.ok) throw new Error(await res.text());
-    return res.json() as Promise<SliceResponse>;
+    return request<SliceResponse>(`/oct/slice/${index}`);
 }
 
 export async function fetchAScan(x: number, sliceIndex: number): Promise<AScanResponse> {
-    const res = await fetch(`${BASE_URL}/oct/ascan?x=${x}&slice=${sliceIndex}`);
-    if (!res.ok) throw new Error(await res.text());
-    return res.json() as Promise<AScanResponse>;
+    return request<AScanResponse>(`/oct/ascan?x=${x}&slice=${sliceIndex}`);
 }
 
 export async function applyFilterToStored(
@@ -35,15 +28,11 @@ export async function applyFilterToStored(
     const form = new FormData();
     form.append('filter_type', filterType);
     if (params) form.append('params', JSON.stringify(params));
-    const res = await fetch(`${BASE_URL}/filters/apply`, { method: 'POST', body: form });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json() as Promise<FilterResponse>;
+    return request<FilterResponse>('/filters/apply', { method: 'POST', body: form });
 }
 
 export async function runSegmentationOnStored(method: string): Promise<SegmentationResponse> {
     const form = new FormData();
     form.append('method', method);
-    const res = await fetch(`${BASE_URL}/segmentation/run`, { method: 'POST', body: form });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json() as Promise<SegmentationResponse>;
+    return request<SegmentationResponse>('/segmentation/run', { method: 'POST', body: form });
 }
