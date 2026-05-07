@@ -1,141 +1,199 @@
-import { Alert, AppBar, Box, Button, CircularProgress, Snackbar, Toolbar, Typography } from '@mui/material';
-import React from 'react';
-
-import { useOctStore } from './app/store/octSlice';
-import { useSTLStore } from './app/store/stlSlice';
-import WorkspaceLayout from './features/workspace/WorkspaceLayout';
-import * as octAPI from './shared/api/octAPI';
-import * as stlAPI from './shared/api/stlAPI';
-import StatusBar from './shared/components/StatusBar';
-
-const MAX_FILE_BYTES = 500 * 1024 * 1024; // 500 MB
+// CHANGED: glowSx moved to App.styles.ts
+import React, { useCallback, useRef, useState } from 'react'
+import { Box, Button, CircularProgress, Typography } from '@mui/material'
+import { useViewerStore } from './app/store/viewerSlice'
+import STLViewer from './features/stl/STLViewer'
+import H5Viewer from './features/h5/H5Viewer'
+import { uploadH5 } from './shared/api/octAPI'
+import { palette } from './shared/theme/palette'
+import { glowSx } from './app/App.styles'
+import type { H5UploadResponse } from './shared/types/viewer.types'
 
 export default function App() {
-    const {
-        isLoading: octLoading,
-        setIsLoading: setOctLoading,
-        setCurrentBScan,
-        setScanType,
-        setCScanMetadata,
-        error: octError,
-        setError: setOctError,
-    } = useOctStore();
-    const {
-        isLoading: stlLoading,
-        setLoading: setSTLLoading,
-        setSTLData,
-        error: stlError,
-        setError: setSTLError,
-    } = useSTLStore();
+    const stlInputRef = useRef<HTMLInputElement>(null)
+    const h5InputRef = useRef<HTMLInputElement>(null)
 
-    const isLoading = octLoading || stlLoading;
-    const activeError = octError ?? stlError;
+    const { mode, h5Meta, isLoading, setMode, setH5Meta, setIsLoading, reset } = useViewerStore()
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        if (file.size > MAX_FILE_BYTES) {
-            setOctError(`File too large (max 500 MB): ${(file.size / 1024 / 1024).toFixed(0)} MB`);
-            e.target.value = '';
-            return;
-        }
-        setOctLoading(true);
-        setOctError(null);
+    const [stlFile, setStlFile] = useState<File | null>(null)
+    const [h5Data, setH5Data] = useState<H5UploadResponse | null>(null)
+    const [activeFileName, setActiveFileName] = useState<string>('')
+    const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+    const handleSTLChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        e.target.value = ''
+        setErrorMsg(null)
+        setStlFile(file)
+        setActiveFileName(file.name)
+        setMode('stl')
+    }
+
+    const handleH5Change = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        e.target.value = ''
+        setErrorMsg(null)
+        setIsLoading(true)
         try {
-            const res = await octAPI.uploadScan(file);
-            setScanType(res.scan_type);
-            setCurrentBScan(res.preview);
-            setCScanMetadata({ nSlices: res.n_slices, width: res.width, height: res.height });
+            const data = await uploadH5(file)
+            setH5Data(data)
+            setH5Meta({ nSlices: data.nSlices, height: data.height, width: data.width })
+            setActiveFileName(file.name)
+            setMode('h5')
         } catch (err) {
-            setOctError(err instanceof Error ? err.message : 'Upload failed');
+            console.error('H5 upload failed:', err)
+            setErrorMsg(err instanceof Error ? err.message : 'Upload failed.')
         } finally {
-            setOctLoading(false);
-            e.target.value = '';
+            setIsLoading(false)
         }
-    };
+    }
 
-    const handleSTLChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        if (file.size > MAX_FILE_BYTES) {
-            setSTLError(`File too large (max 500 MB): ${(file.size / 1024 / 1024).toFixed(0)} MB`);
-            e.target.value = '';
-            return;
-        }
-        setSTLLoading(true);
-        setSTLError(null);
-        try {
-            const data = await stlAPI.uploadSTL(file);
-            setSTLData(data);
-        } catch (err) {
-            setSTLError(err instanceof Error ? err.message : 'STL upload failed');
-        } finally {
-            setSTLLoading(false);
-            e.target.value = '';
-        }
-    };
+    const handleClear = () => {
+        reset()
+        setStlFile(null)
+        setH5Data(null)
+        setActiveFileName('')
+        setErrorMsg(null)
+    }
 
-    const handleCloseError = () => {
-        setOctError(null);
-        setSTLError(null);
-    };
+    const handleViewerError = useCallback((msg: string) => {
+        setErrorMsg(msg)
+    }, [])
 
     return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-            <AppBar position="static" elevation={0}>
-                <Toolbar>
-                    <Typography variant="h6" sx={{ flexGrow: 1 }}>
-                        OCT Medical Imaging
-                    </Typography>
-                    {isLoading && <CircularProgress size={22} sx={{ mr: 2, color: 'white' }} />}
-                    <Button
-                        variant="outlined"
-                        color="inherit"
-                        component="label"
-                        disabled={isLoading}
-                        sx={{ mr: 1 }}
-                    >
-                        Load Scan
-                        <input
-                            type="file"
-                            hidden
-                            accept=".dcm,.mha,.nrrd,.raw,*"
-                            onChange={handleFileChange}
-                        />
-                    </Button>
-                    <Button
-                        variant="outlined"
-                        color="inherit"
-                        component="label"
-                        disabled={isLoading}
-                    >
-                        Load STL
-                        <input
-                            type="file"
-                            hidden
-                            accept=".stl"
-                            onChange={handleSTLChange}
-                        />
-                    </Button>
-                </Toolbar>
-            </AppBar>
+        <Box
+            sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100vh',
+                background: palette.bgDeep,
+            }}
+        >
+            {/* Toolbar */}
+            <Box
+                sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    px: 3,
+                    py: 1,
+                    flexShrink: 0,
+                    background: palette.toolbarBg,
+                    backdropFilter: 'blur(10px)',
+                    borderBottom: `1px solid ${palette.toolbarBorder}`,
+                }}
+            >
+                {isLoading ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <CircularProgress size={18} sx={{ color: palette.cyan }} />
+                        <Typography sx={{ color: palette.textSecondary, fontSize: '0.85rem' }}>
+                            Loading volume…
+                        </Typography>
+                    </Box>
+                ) : (
+                    <>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            sx={{
+                                ...glowSx,
+                                borderColor: palette.cyanBorder,
+                                color: palette.cyanLabel,
+                            }}
+                            onClick={() => stlInputRef.current?.click()}
+                        >
+                            Load STL
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            sx={{
+                                ...glowSx,
+                                borderColor: palette.tealBorder,
+                                color: palette.tealLabel,
+                            }}
+                            onClick={() => h5InputRef.current?.click()}
+                        >
+                            Load H5 Volume
+                        </Button>
+                        {mode !== 'none' && (
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                sx={{
+                                    ...glowSx,
+                                    borderColor: palette.clearBorder,
+                                    color: palette.clearLabel,
+                                    '&:hover': { boxShadow: `0 0 18px 3px ${palette.clearGlow}` },
+                                }}
+                                onClick={handleClear}
+                            >
+                                Clear
+                            </Button>
+                        )}
+                    </>
+                )}
 
-            <Box sx={{ flex: 1, overflow: 'hidden' }}>
-                <WorkspaceLayout />
+                {errorMsg && (
+                    <Typography
+                        sx={{
+                            ml: 1,
+                            color: palette.errorText,
+                            fontSize: '0.8rem',
+                            maxWidth: 400,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                        }}
+                    >
+                        {errorMsg}
+                    </Typography>
+                )}
+
+                {!errorMsg && activeFileName && (
+                    <Typography
+                        sx={{
+                            ml: 'auto',
+                            color: palette.textMuted,
+                            fontSize: '0.8rem',
+                            letterSpacing: '0.04em',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: 320,
+                        }}
+                    >
+                        {activeFileName}
+                    </Typography>
+                )}
+
+                <input
+                    ref={stlInputRef}
+                    type="file"
+                    accept=".stl"
+                    style={{ display: 'none' }}
+                    onChange={handleSTLChange}
+                />
+                <input
+                    ref={h5InputRef}
+                    type="file"
+                    accept=".h5"
+                    style={{ display: 'none' }}
+                    onChange={handleH5Change}
+                />
             </Box>
 
-            <StatusBar />
-
-            <Snackbar
-                open={activeError !== null}
-                autoHideDuration={6000}
-                onClose={handleCloseError}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-            >
-                <Alert severity="error" onClose={handleCloseError} sx={{ width: '100%' }}>
-                    {activeError}
-                </Alert>
-            </Snackbar>
+            {/* Workspace */}
+            <Box sx={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+                {mode === 'stl' && stlFile && (
+                    <STLViewer file={stlFile} onError={handleViewerError} />
+                )}
+                {mode === 'h5' && h5Data && h5Meta && (
+                    <H5Viewer slices={h5Data.slices} meta={h5Meta} />
+                )}
+            </Box>
         </Box>
-    );
+    )
 }
