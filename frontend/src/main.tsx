@@ -1,19 +1,10 @@
+// CHANGED: extract theme config to shared/theme/theme.ts
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { CssBaseline, ThemeProvider, createTheme } from '@mui/material'
+import { CssBaseline, ThemeProvider } from '@mui/material'
 
 import App from './App'
-import { palette } from './shared/theme/palette'
-
-const darkTheme = createTheme({
-    palette: {
-        mode: 'dark',
-        background: {
-            default: palette.bgDeep,
-            paper: palette.bgPaper,
-        },
-    },
-})
+import { darkTheme } from './shared/theme/theme'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Root element #root not found in index.html')

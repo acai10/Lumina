@@ -1,7 +1,9 @@
+// CHANGED: complex Slider and IconButton styles extracted to SliceSlider.styles.ts
 import { Box, IconButton, Slider, Typography } from '@mui/material'
 import ClearIcon from '@mui/icons-material/Clear'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import { palette } from '../../shared/theme/palette'
+import { sliderSx, getResetButtonSx } from './SliceSlider.styles'
 
 interface SliceSliderProps {
     nSlices: number
@@ -54,17 +56,7 @@ export default function SliceSlider({ nSlices }: SliceSliderProps) {
                 max={nSlices - 1}
                 value={displayValue}
                 onChange={handleChange}
-                sx={{
-                    flex: 1,
-                    color: palette.tealBorder,
-                    '& .MuiSlider-thumb': {
-                        width: 14,
-                        height: 14,
-                        '&:hover': { boxShadow: `0 0 0 8px ${palette.cyanHoverRing}` },
-                    },
-                    '& .MuiSlider-track': { width: 3, opacity: 0.8 },
-                    '& .MuiSlider-rail': { width: 3, opacity: 0.3 },
-                }}
+                sx={sliderSx}
             />
 
             <IconButton
@@ -72,18 +64,7 @@ export default function SliceSlider({ nSlices }: SliceSliderProps) {
                 onClick={handleReset}
                 disabled={currentSliceIndex === null}
                 title="Show full volume"
-                sx={{
-                    width: 28,
-                    height: 28,
-                    border: `1px solid ${currentSliceIndex !== null ? palette.cyanBorder : 'rgba(100,200,255,0.12)'}`,
-                    borderRadius: '6px',
-                    color: currentSliceIndex !== null ? palette.cyan : palette.textFaint,
-                    transition: 'color 0.2s, border-color 0.2s, box-shadow 0.2s',
-                    '&:hover:not(.Mui-disabled)': {
-                        boxShadow: `0 0 10px 2px ${palette.cyanGlow}`,
-                        borderColor: palette.cyan,
-                    },
-                }}
+                sx={getResetButtonSx(currentSliceIndex !== null)}
             >
                 <ClearIcon sx={{ fontSize: '0.9rem' }} />
             </IconButton>

@@ -2,12 +2,14 @@ export const palette = {
     // Base backgrounds
     bgDeep: '#0a0f1e', // main canvas / toolbar base
     bgPaper: '#0d1320', // MUI paper surfaces
+    bgDeepHex: 0x0a0f1e as const, // Three.js integer form — used by renderer.setClearColor
 
     // Primary cyan — buttons, slider, accents
     cyan: '#64c8ff', // full opacity
     cyanBorder: 'rgba(100,200,255,0.4)',
     cyanGlow: 'rgba(100,200,255,0.3)',
     cyanHoverRing: 'rgba(100,200,255,0.16)',
+    cyanSubtle: 'rgba(100,200,255,0.12)', // disabled / inactive cyan border
     cyanLabel: '#a0d8ff', // STL button label (lighter cyan)
 
     // Secondary teal — H5 button

@@ -1,3 +1,4 @@
+// CHANGED: glowSx moved to App.styles.ts
 import React, { useCallback, useRef, useState } from 'react'
 import { Box, Button, CircularProgress, Typography } from '@mui/material'
 import { useViewerStore } from './app/store/viewerSlice'
@@ -5,18 +6,8 @@ import STLViewer from './features/stl/STLViewer'
 import H5Viewer from './features/h5/H5Viewer'
 import { uploadH5 } from './shared/api/octAPI'
 import { palette } from './shared/theme/palette'
+import { glowSx } from './app/App.styles'
 import type { H5UploadResponse } from './shared/types/viewer.types'
-
-const glowSx = {
-    px: 3,
-    py: 0.75,
-    fontSize: '0.9rem',
-    letterSpacing: '0.06em',
-    borderRadius: '6px',
-    textTransform: 'none' as const,
-    transition: 'box-shadow 0.2s',
-    '&:hover': { boxShadow: `0 0 18px 3px ${palette.cyanGlow}` },
-}
 
 export default function App() {
     const stlInputRef = useRef<HTMLInputElement>(null)

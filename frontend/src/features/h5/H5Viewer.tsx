@@ -1,9 +1,11 @@
+// CHANGED: renderer.setClearColor uses palette.bgDeepHex — same color as STLViewer
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Box } from '@mui/material'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import SliceSlider from './SliceSlider'
+import { palette } from '../../shared/theme/palette'
 import type { H5Meta } from '../../shared/types/viewer.types'
 
 interface H5ViewerProps {
@@ -40,7 +42,7 @@ export default function H5Viewer({ slices, meta }: H5ViewerProps) {
         const renderer = new THREE.WebGLRenderer({ antialias: true })
         renderer.setPixelRatio(window.devicePixelRatio)
         renderer.setSize(width, height)
-        renderer.setClearColor(0x0a0f1e)
+        renderer.setClearColor(palette.bgDeepHex)
         container.appendChild(renderer.domElement)
 
         const controls = new OrbitControls(camera, renderer.domElement)

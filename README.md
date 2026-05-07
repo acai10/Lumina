@@ -18,17 +18,23 @@ Lumina/
 ├── docker-compose.yml
 ├── Makefile
 ├── .gitignore
+├── CLAUDE.md               # Claude Code project guide
 ├── README.md
 ├── frontend/               # React + TypeScript + Vite + MUI + Three.js
 │   ├── Dockerfile
 │   ├── package.json
 │   ├── vite.config.ts
 │   └── src/
-│       ├── app/store/      # Zustand state (viewerSlice)
+│       ├── app/
+│       │   ├── store/      # Zustand state (viewerSlice)
+│       │   └── App.styles.ts  # Shared button glow styles
 │       ├── features/
 │       │   ├── stl/        # STLViewer
-│       │   └── h5/         # H5Viewer, SliceSlider
-│       └── shared/         # API client, types
+│       │   └── h5/         # H5Viewer, SliceSlider, SliceSlider.styles.ts
+│       └── shared/
+│           ├── api/        # octAPI (HTTP client)
+│           ├── theme/      # palette.ts, theme.ts
+│           └── types/      # viewer.types.ts
 └── backend/                # Python FastAPI
     ├── Dockerfile
     ├── pyproject.toml      # Abhängigkeiten + Tool-Konfiguration

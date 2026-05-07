@@ -1,8 +1,10 @@
+// CHANGED: renderer.setClearColor uses palette.bgDeepHex — same color as H5Viewer
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Box } from '@mui/material'
+import { palette } from '../../shared/theme/palette'
 
 interface STLViewerProps {
     file: File
@@ -24,7 +26,7 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
         const renderer = new THREE.WebGLRenderer({ antialias: true })
         renderer.setPixelRatio(window.devicePixelRatio)
         renderer.setSize(width, height)
-        renderer.setClearColor(0x0a0f1e)
+        renderer.setClearColor(palette.bgDeepHex)
         renderer.toneMapping = THREE.ACESFilmicToneMapping
         renderer.toneMappingExposure = 1.1
         renderer.outputColorSpace = THREE.SRGBColorSpace
