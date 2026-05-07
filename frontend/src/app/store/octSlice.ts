@@ -17,6 +17,7 @@ interface OCTState {
     depthAxis: number[];
     overlayMask: string | null;
     isLoading: boolean;
+    error: string | null;
 
     setScanType: (t: OCTScanType) => void;
     setCurrentBScan: (b: string) => void;
@@ -25,6 +26,7 @@ interface OCTState {
     setAScanSignal: (signal: number[], depth: number[]) => void;
     setOverlayMask: (m: string | null) => void;
     setIsLoading: (v: boolean) => void;
+    setError: (e: string | null) => void;
 }
 
 export const useOctStore = create<OCTState>((set) => ({
@@ -36,6 +38,7 @@ export const useOctStore = create<OCTState>((set) => ({
     depthAxis: [],
     overlayMask: null,
     isLoading: false,
+    error: null,
 
     setScanType: (t) => set({ scanType: t }),
     setCurrentBScan: (b) => set({ currentBScan: b }),
@@ -44,4 +47,5 @@ export const useOctStore = create<OCTState>((set) => ({
     setAScanSignal: (signal, depth) => set({ aScanSignal: signal, depthAxis: depth }),
     setOverlayMask: (m) => set({ overlayMask: m }),
     setIsLoading: (v) => set({ isLoading: v }),
+    setError: (e) => set({ error: e }),
 }));

@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -5,10 +7,13 @@ from src.routers import filters, oct, segmentation, stl
 
 app = FastAPI(title="OCT Medical Imaging API", version="0.1.0")
 
+_origins_env = os.environ.get("CORS_ORIGINS", "http://localhost:5173")
+origins = [o.strip() for o in _origins_env.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=origins,
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 

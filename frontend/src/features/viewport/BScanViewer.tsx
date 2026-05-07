@@ -1,11 +1,12 @@
 import { Box, Typography } from '@mui/material';
+import { memo } from 'react';
 import type { MouseEvent } from 'react';
 
 import { useOctStore } from '../../app/store/octSlice';
 import * as octAPI from '../../shared/api/octAPI';
 import OverlayCanvas from './OverlayCanvas';
 
-export default function BScanViewer() {
+const BScanViewer = memo(function BScanViewer() {
     const { currentBScan, selectedSliceIndex, setAScanSignal } = useOctStore();
 
     const handleClick = async (e: MouseEvent<HTMLImageElement>) => {
@@ -16,7 +17,7 @@ export default function BScanViewer() {
             const res = await octAPI.fetchAScan(pixelX, selectedSliceIndex);
             setAScanSignal(res.signal, res.depth_axis);
         } catch {
-            // silently ignore click errors
+            // click errors are non-critical; silently ignore
         }
     };
 
@@ -53,4 +54,6 @@ export default function BScanViewer() {
             <OverlayCanvas />
         </Box>
     );
-}
+});
+
+export default BScanViewer;

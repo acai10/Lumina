@@ -47,7 +47,7 @@ def get_slice(index: int) -> SliceResponse:
 
 
 @router.get("/ascan", response_model=AScanResponse)
-def get_ascan(x: int = Query(...), slice: int = Query(0)) -> AScanResponse:
+def get_ascan(x: int = Query(...), slice_index: int = Query(0, alias="slice")) -> AScanResponse:
     array = oct_reader.get_stored_scan()
     if array is None:
         raise HTTPException(status_code=404, detail="No scan loaded")
@@ -58,7 +58,7 @@ def get_ascan(x: int = Query(...), slice: int = Query(0)) -> AScanResponse:
         col = min(max(x, 0), array.shape[1] - 1)
         signal = array[:, col].tolist()
     else:
-        s = min(max(slice, 0), array.shape[0] - 1)
+        s = min(max(slice_index, 0), array.shape[0] - 1)
         col = min(max(x, 0), array.shape[2] - 1)
         signal = array[s, :, col].tolist()
 
