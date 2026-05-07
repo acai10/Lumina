@@ -230,18 +230,28 @@ def _find_volume_dataset(f: h5py.File) -> np.ndarray:
 
 
 def slice_to_base64(slice_array: np.ndarray) -> str:
-    arr = slice_array.astype(np.float32)
-    lo, hi = arr.min(), arr.max()
-    if hi > lo:
-        arr = (arr - lo) / (hi - lo) * 255.0
-    else:
-        arr = np.zeros_like(arr)
-    img = Image.fromarray(arr.astype(np.uint8), mode="L")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    encoded = base64.b64encode(buf.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
+    s = slice_array.astype(np.float32)
+    s_min, s_max = s.min(), s.max()
+
+    if s_max > s_min:
+        s = (s - s_min) / (s_max - s_min)
+
+    img = Image.fromarray((s * 255).astype(np.uint8))
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
 
 
 def volume_to_slices(volume: np.ndarray) -> List[str]:
-    return [slice_to_base64(volume[i]) for i in range(volume.shape[0])]
+    v = volume.astype(np.float32)
+    result = []
+    for i in range(v.shape[0]):
+        s = v[i]
+        s_min, s_max = s.min(), s.max()
+        if s_max > s_min:
+            s = (s - s_min) / (s_max - s_min)
+        img = Image.fromarray((s * 255).astype(np.uint8))
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        result.append("data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode())
+    return result

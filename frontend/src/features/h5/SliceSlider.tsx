@@ -11,88 +11,82 @@ export default function SliceSlider({ nSlices }: SliceSliderProps) {
     const { currentSliceIndex, setCurrentSliceIndex } = useViewerStore()
 
     const handleChange = (_: Event, value: number | number[]) => {
-        setCurrentSliceIndex(typeof value === 'number' ? value : value[0])
+        const v = typeof value === 'number' ? value : value[0]
+        setCurrentSliceIndex(nSlices - 1 - v)
     }
 
     const handleReset = () => {
         setCurrentSliceIndex(null)
     }
 
-    const displayValue = currentSliceIndex ?? Math.floor(nSlices / 2)
+    const displayValue = currentSliceIndex === null ? nSlices - 1 : nSlices - 1 - currentSliceIndex
 
     return (
         <Box
             sx={{
                 position: 'fixed',
-                bottom: 28,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                width: '80%',
-                maxWidth: 800,
-                background: palette.panelBg,
-                backdropFilter: 'blur(10px)',
-                borderRadius: '12px',
-                px: 4,
-                py: 2,
+                right: 28,
+                top: 70,
+                bottom: 70,
+                background: 'transparent',
                 zIndex: 20,
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 1,
+                alignItems: 'center',
+                gap: 1.5,
+                py: 1,
             }}
         >
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography
-                    sx={{ color: palette.textDim, fontSize: '0.75rem', letterSpacing: '0.08em' }}
-                >
-                    SLICE
-                </Typography>
-                <Typography sx={{ color: palette.textPrimary, fontSize: '0.8rem' }}>
-                    {currentSliceIndex === null
-                        ? 'All slices'
-                        : `${currentSliceIndex} / ${nSlices - 1}`}
-                </Typography>
-            </Box>
+            <Typography
+                sx={{
+                    color: palette.textDim,
+                    fontSize: '0.7rem',
+                    letterSpacing: '0.08em',
+                    textShadow: '0 1px 4px rgba(0,0,0,0.8)',
+                }}
+            >
+                {currentSliceIndex === null ? '—' : `${currentSliceIndex}`}
+            </Typography>
 
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Slider
-                    min={0}
-                    max={nSlices - 1}
-                    value={displayValue}
-                    onChange={handleChange}
-                    sx={{
-                        flex: 1,
-                        color: palette.cyan,
-                        '& .MuiSlider-thumb': {
-                            width: 16,
-                            height: 16,
-                            '&:hover': { boxShadow: `0 0 0 8px ${palette.cyanHoverRing}` },
-                        },
-                        '& .MuiSlider-track': { height: 3 },
-                        '& .MuiSlider-rail': { height: 3, opacity: 0.3 },
-                    }}
-                />
-                <IconButton
-                    size="small"
-                    onClick={handleReset}
-                    disabled={currentSliceIndex === null}
-                    title="Show full volume"
-                    sx={{
-                        flexShrink: 0,
-                        width: 32,
-                        height: 32,
-                        border: `1px solid ${currentSliceIndex !== null ? palette.cyanBorder : 'rgba(100,200,255,0.12)'}`,
-                        borderRadius: '6px',
-                        color: currentSliceIndex !== null ? palette.cyan : palette.textFaint,
-                        transition: 'color 0.2s, border-color 0.2s, box-shadow 0.2s',
-                        '&:hover:not(.Mui-disabled)': {
-                            boxShadow: `0 0 10px 2px ${palette.cyanGlow}`,
-                            borderColor: palette.cyan,
-                        },
-                    }}
-                >
-                    <ClearIcon sx={{ fontSize: '1rem' }} />
-                </IconButton>
-            </Box>
+            <Slider
+                orientation="vertical"
+                min={0}
+                max={nSlices - 1}
+                value={displayValue}
+                onChange={handleChange}
+                sx={{
+                    flex: 1,
+                    color: palette.tealBorder,
+                    '& .MuiSlider-thumb': {
+                        width: 14,
+                        height: 14,
+                        '&:hover': { boxShadow: `0 0 0 8px ${palette.cyanHoverRing}` },
+                    },
+                    '& .MuiSlider-track': { width: 3, opacity: 0.8 },
+                    '& .MuiSlider-rail': { width: 3, opacity: 0.3 },
+                }}
+            />
+
+            <IconButton
+                size="small"
+                onClick={handleReset}
+                disabled={currentSliceIndex === null}
+                title="Show full volume"
+                sx={{
+                    width: 28,
+                    height: 28,
+                    border: `1px solid ${currentSliceIndex !== null ? palette.cyanBorder : 'rgba(100,200,255,0.12)'}`,
+                    borderRadius: '6px',
+                    color: currentSliceIndex !== null ? palette.cyan : palette.textFaint,
+                    transition: 'color 0.2s, border-color 0.2s, box-shadow 0.2s',
+                    '&:hover:not(.Mui-disabled)': {
+                        boxShadow: `0 0 10px 2px ${palette.cyanGlow}`,
+                        borderColor: palette.cyan,
+                    },
+                }}
+            >
+                <ClearIcon sx={{ fontSize: '0.9rem' }} />
+            </IconButton>
         </Box>
     )
 }

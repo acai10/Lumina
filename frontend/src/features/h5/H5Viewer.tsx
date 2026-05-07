@@ -11,9 +11,8 @@ interface H5ViewerProps {
     meta: H5Meta
 }
 
-const PLANE_OPACITY_ALL = 0.09
+const PLANE_OPACITY_ALL = 0.1
 const PLANE_OPACITY_SELECTED = 0.9
-const PLANE_OPACITY_FADED = 0.03
 
 function loadImage(src: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
@@ -80,7 +79,8 @@ export default function H5Viewer({ slices, meta }: H5ViewerProps) {
 
                 const geometry = new THREE.PlaneGeometry(volW, volH)
                 const mesh = new THREE.Mesh(geometry, material)
-                mesh.position.z = ((n_slices > 1 ? i / (n_slices - 1) : 0) - 0.5) * totalDepth
+                mesh.rotation.x = Math.PI / 2
+                mesh.position.y = (0.5 - (n_slices > 1 ? i / (n_slices - 1) : 0)) * totalDepth
                 scene.add(mesh)
                 planes.push(mesh)
             }
@@ -88,7 +88,8 @@ export default function H5Viewer({ slices, meta }: H5ViewerProps) {
             planesRef.current = planes
 
             const maxDim = Math.max(volW, volH, totalDepth)
-            camera.position.set(0, 0, maxDim * 1.8)
+            camera.position.set(0, maxDim * 1.8, maxDim * 0.4)
+            camera.lookAt(0, 0, 0)
             camera.near = maxDim * 0.001
             camera.far = maxDim * 100
             camera.updateProjectionMatrix()
@@ -138,11 +139,16 @@ export default function H5Viewer({ slices, meta }: H5ViewerProps) {
         planes.forEach((p, i) => {
             const mat = p.material as THREE.MeshBasicMaterial
             if (currentSliceIndex === null) {
+                p.visible = true
                 mat.opacity = PLANE_OPACITY_ALL
             } else if (i === currentSliceIndex) {
+                p.visible = true
                 mat.opacity = PLANE_OPACITY_SELECTED
+            } else if (i > currentSliceIndex) {
+                p.visible = true
+                mat.opacity = PLANE_OPACITY_ALL
             } else {
-                mat.opacity = PLANE_OPACITY_FADED
+                p.visible = false
             }
         })
     }, [currentSliceIndex])
