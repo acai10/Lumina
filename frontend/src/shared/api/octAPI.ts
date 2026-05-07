@@ -1,38 +1,27 @@
-import type {
-    AScanResponse,
-    FilterResponse,
-    SegmentationResponse,
-    SliceResponse,
-    UploadResponse,
-} from '../types/oct.types';
-import { request } from './client';
+import type { H5UploadResponse } from '../types/viewer.types'
 
-export async function uploadScan(file: File): Promise<UploadResponse> {
-    const form = new FormData();
-    form.append('file', file);
-    return request<UploadResponse>('/oct/upload', { method: 'POST', body: form });
+const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8000'
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+    const res = await fetch(`${BASE_URL}${path}`, init)
+    if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText)
+        throw new Error(`${res.status}: ${text}`)
+    }
+    return res.json() as Promise<T>
 }
 
-export async function fetchSlice(index: number): Promise<SliceResponse> {
-    return request<SliceResponse>(`/oct/slice/${index}`);
+// Backend returns snake_case; map to camelCase at the boundary.
+interface RawUploadResponse {
+    n_slices: number
+    height: number
+    width: number
+    slices: string[]
 }
 
-export async function fetchAScan(x: number, sliceIndex: number): Promise<AScanResponse> {
-    return request<AScanResponse>(`/oct/ascan?x=${x}&slice=${sliceIndex}`);
-}
-
-export async function applyFilterToStored(
-    filterType: string,
-    params?: Record<string, number>,
-): Promise<FilterResponse> {
-    const form = new FormData();
-    form.append('filter_type', filterType);
-    if (params) form.append('params', JSON.stringify(params));
-    return request<FilterResponse>('/filters/apply', { method: 'POST', body: form });
-}
-
-export async function runSegmentationOnStored(method: string): Promise<SegmentationResponse> {
-    const form = new FormData();
-    form.append('method', method);
-    return request<SegmentationResponse>('/segmentation/run', { method: 'POST', body: form });
+export async function uploadH5(file: File): Promise<H5UploadResponse> {
+    const form = new FormData()
+    form.append('file', file)
+    const raw = await request<RawUploadResponse>('/h5/upload', { method: 'POST', body: form })
+    return { nSlices: raw.n_slices, height: raw.height, width: raw.width, slices: raw.slices }
 }

@@ -1,14 +1,13 @@
-# OCT Medical Imaging
+# Lumina — OCT & STL Viewer
 
-Browser-based OCT scan viewer and processing tool for medical professionals (ophthalmologists, researchers).
+Browser-based medical imaging viewer. Supports loading OCT volumetric data (`.h5`) and 3D surface meshes (`.stl`) directly in the browser — no installation required.
 
-## Supported Scan Types
+## Supported File Formats
 
-| Type | Description | Display |
-|------|-------------|---------|
-| A-Scan | Single 1D depth signal (amplitude vs depth) | Waveform / line plot |
-| B-Scan | 2D cross-sectional slice (stack of A-scans) | Grayscale image |
-| C-Scan | 3D volumetric scan (stack of B-scans) | Scrollable B-scan slices |
+| Format | Description               | Display                                                               |
+|--------|---------------------------|-----------------------------------------------------------------------|
+| `.h5`  | OCT C-scan volume (HDF5)  | Holographic stack of semi-transparent B-scan planes with slice slider |
+| `.stl` | 3D surface mesh           | Lit 3D model with edge overlay, OrbitControls                         |
 
 ---
 
@@ -20,23 +19,24 @@ Lumina/
 ├── Makefile
 ├── .gitignore
 ├── README.md
-├── frontend/               # React + TypeScript + Vite + MUI
+├── frontend/               # React + TypeScript + Vite + MUI + Three.js
 │   ├── Dockerfile
 │   ├── package.json
 │   ├── vite.config.ts
 │   └── src/
-│       ├── app/store/      # Zustand state (octSlice, uiSlice)
-│       ├── features/       # viewport, toolpanel, workspace
-│       └── shared/         # API client, types, components
+│       ├── app/store/      # Zustand state (viewerSlice)
+│       ├── features/
+│       │   ├── stl/        # STLViewer
+│       │   └── h5/         # H5Viewer, SliceSlider
+│       └── shared/         # API client, types
 └── backend/                # Python FastAPI
     ├── Dockerfile
     ├── pyproject.toml      # Abhängigkeiten + Tool-Konfiguration
     ├── uv.lock             # Eingefrorener Dependency-Graph (committen!)
     ├── main.py
     └── src/
-        ├── routers/        # oct, filters, segmentation
-        ├── imaging/        # oct_reader, filters, segmentation
-        └── schemas/        # Pydantic response models
+        ├── routers/        # h5 (upload + slice)
+        └── imaging/        # h5_reader (HDF5 → numpy → PNG/base64)
 ```
 
 Frontend and backend share no code. All communication is via HTTP REST.
@@ -224,30 +224,26 @@ Empfohlene Extensions:
 
 ### Backend (`pyproject.toml` — verwaltet mit uv)
 
-| Paket | Zweck |
-|-------|-------|
-| `fastapi` | REST-API-Framework |
-| `uvicorn[standard]` | ASGI-Server |
-| `python-multipart` | Datei-Upload |
-| `pydicom` | DICOM-Dateien lesen |
-| `SimpleITK` | MHA / NRRD / weitere Bildformate |
-| `numpy` | Array-Verarbeitung |
-| `opencv-python-headless` | Bildverarbeitung (Filter, Threshold) |
-| `scikit-image` | Segmentierung (random_walker) |
-| `Pillow` | PNG-Encoding für Base64-Antworten |
-| `scipy` | Lee-Speckle-Filter |
-| `black` *(dev)* | Python-Formatter |
-| `isort` *(dev)* | Import-Sortierung |
+| Paket                | Zweck                                    |
+|----------------------|------------------------------------------|
+| `fastapi`            | REST-API-Framework                       |
+| `uvicorn[standard]`  | ASGI-Server                              |
+| `python-multipart`   | Datei-Upload                             |
+| `h5py`               | HDF5-Dateien lesen                       |
+| `numpy`              | Array-Verarbeitung                       |
+| `Pillow`             | PNG-Encoding für Base64-Antworten        |
+| `black` *(dev)*      | Python-Formatter                         |
+| `isort` *(dev)*      | Import-Sortierung                        |
 
 ### Frontend (`package.json`)
 
-| Paket | Zweck |
-|-------|-------|
-| `react` + `react-dom` | UI-Framework |
-| `@mui/material` | Komponenten-Bibliothek (dark theme) |
-| `@emotion/react` + `@emotion/styled` | MUI-Styling-Engine |
-| `zustand` | State Management |
-| `recharts` | A-Scan Liniendiagramm |
-| `vite` | Build-Tool + Dev-Server |
-| `typescript` | Typsicherheit |
-| `prettier` | Formatierung |
+| Paket                                | Zweck                          |
+|--------------------------------------|--------------------------------|
+| `react` + `react-dom`                | UI-Framework                   |
+| `three`                              | 3D-Rendering (STL + H5 Viewer) |
+| `@mui/material`                      | Komponenten-Bibliothek         |
+| `@emotion/react` + `@emotion/styled` | MUI-Styling-Engine             |
+| `zustand`                            | State Management               |
+| `vite`                               | Build-Tool + Dev-Server        |
+| `typescript`                         | Typsicherheit                  |
+| `prettier`                           | Formatierung                   |
