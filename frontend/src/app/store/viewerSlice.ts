@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { H5Meta, H5FileEntry, H5PerFileState } from '../../shared/types/viewer.types'
+import type { H5FileEntry, H5PerFileState } from '../../shared/types/viewer.types'
 
 export interface AppNotification {
     message: string
@@ -11,8 +11,7 @@ interface ViewerState {
     stlFile: File | null
     h5Files: H5FileEntry[]
     activeH5Index: number
-    h5Meta: H5Meta | null
-    h5PerFileStates: Record<number, H5PerFileState>
+    h5PerFileStates: Record<string, H5PerFileState>
     currentSliceIndex: number | null
     isLoading: boolean
     notification: AppNotification | null
@@ -20,8 +19,8 @@ interface ViewerState {
     setStlFile: (file: File | null) => void
     loadH5: (files: H5FileEntry[]) => void
     selectH5: (index: number) => void
-    setH5Meta: (meta: H5Meta) => void
-    saveH5CameraState: (index: number, cam: Omit<H5PerFileState, 'sliceIndex'>) => void
+    closeH5: (index: number) => void
+    saveH5CameraState: (fileKey: string, cam: Omit<H5PerFileState, 'sliceIndex'>) => void
     setCurrentSliceIndex: (index: number | null) => void
     setIsLoading: (loading: boolean) => void
     setNotification: (n: AppNotification) => void
@@ -34,8 +33,7 @@ const initialState = {
     stlFile: null,
     h5Files: [] as H5FileEntry[],
     activeH5Index: 0,
-    h5Meta: null,
-    h5PerFileStates: {} as Record<number, H5PerFileState>,
+    h5PerFileStates: {} as Record<string, H5PerFileState>,
     currentSliceIndex: null,
     isLoading: false,
     notification: null,
@@ -45,27 +43,76 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
     ...initialState,
     setMode: (mode) => set({ mode }),
     setStlFile: (stlFile) => set({ stlFile }),
-    loadH5: (files) => set({ h5Files: files, activeH5Index: 0, h5Meta: files[0].data, h5PerFileStates: {} }),
+    loadH5: (files) => {
+        const { h5Files, h5PerFileStates, currentSliceIndex, activeH5Index } = get()
+        const newFiles = files.filter((f) => !h5Files.some((e) => e.name === f.name))
+        if (newFiles.length === 0) return
+        const savedStates =
+            h5Files.length > 0
+                ? {
+                      ...h5PerFileStates,
+                      [h5Files[activeH5Index].name]: {
+                          ...h5PerFileStates[h5Files[activeH5Index].name],
+                          sliceIndex: currentSliceIndex,
+                      },
+                  }
+                : h5PerFileStates
+        const updatedFiles = [...h5Files, ...newFiles]
+        const newActiveIndex = h5Files.length
+        set({
+            h5Files: updatedFiles,
+            activeH5Index: newActiveIndex,
+            currentSliceIndex: null,
+            h5PerFileStates: savedStates,
+            mode: 'h5',
+        })
+    },
     selectH5: (index) => {
         const { h5Files, h5PerFileStates, currentSliceIndex, activeH5Index } = get()
         const entry = h5Files[index]
         if (!entry) return
         set({
             activeH5Index: index,
-            h5Meta: entry.data,
-            currentSliceIndex: h5PerFileStates[index]?.sliceIndex ?? null,
+            currentSliceIndex: h5PerFileStates[entry.name]?.sliceIndex ?? null,
             h5PerFileStates: {
                 ...h5PerFileStates,
-                [activeH5Index]: { ...h5PerFileStates[activeH5Index], sliceIndex: currentSliceIndex },
+                [h5Files[activeH5Index].name]: {
+                    ...h5PerFileStates[h5Files[activeH5Index].name],
+                    sliceIndex: currentSliceIndex,
+                },
             },
         })
     },
-    setH5Meta: (h5Meta) => set({ h5Meta }),
-    saveH5CameraState: (index, cam) =>
+    closeH5: (index) => {
+        const { h5Files, h5PerFileStates, activeH5Index } = get()
+        const fileKey = h5Files[index].name
+        const newFiles = h5Files.filter((_, i) => i !== index)
+        const { [fileKey]: _removed, ...newStates } = h5PerFileStates
+        if (newFiles.length === 0) {
+            set({
+                h5Files: [],
+                h5PerFileStates: {},
+                mode: 'none',
+                currentSliceIndex: null,
+                activeH5Index: 0,
+            })
+            return
+        }
+        let newActive = activeH5Index
+        if (index === activeH5Index) newActive = Math.min(index, newFiles.length - 1)
+        else if (index < activeH5Index) newActive = activeH5Index - 1
+        set({
+            h5Files: newFiles,
+            h5PerFileStates: newStates,
+            activeH5Index: newActive,
+            currentSliceIndex: newStates[newFiles[newActive].name]?.sliceIndex ?? null,
+        })
+    },
+    saveH5CameraState: (fileKey, cam) =>
         set((s) => ({
             h5PerFileStates: {
                 ...s.h5PerFileStates,
-                [index]: { ...s.h5PerFileStates[index], ...cam },
+                [fileKey]: { ...s.h5PerFileStates[fileKey], ...cam },
             },
         })),
     setCurrentSliceIndex: (currentSliceIndex) => set({ currentSliceIndex }),

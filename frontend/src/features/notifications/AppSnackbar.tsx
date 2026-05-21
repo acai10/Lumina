@@ -11,7 +11,11 @@ export default function AppSnackbar() {
             onClose={clearNotification}
             anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         >
-            <Alert severity={notification?.severity ?? 'info'} onClose={clearNotification} variant="filled">
+            <Alert
+                severity={notification?.severity ?? 'info'}
+                onClose={clearNotification}
+                variant="filled"
+            >
                 {notification?.message}
             </Alert>
         </Snackbar>

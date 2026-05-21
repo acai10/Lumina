@@ -8,19 +8,28 @@ import { useFileUpload } from './useFileUpload'
 export default function Toolbar() {
     const { mode, isLoading, stlFile, h5Files, activeH5Index, reset } = useViewerStore()
     const {
-        stlInputRef, h5InputRef, h5FolderInputRef,
-        handleSTLUpload, handleH5Upload, handleH5FolderUpload,
+        stlInputRef,
+        h5InputRef,
+        h5FolderInputRef,
+        handleSTLUpload,
+        handleH5Upload,
+        handleH5FolderUpload,
     } = useFileUpload()
 
     const [h5MenuAnchor, setH5MenuAnchor] = useState<HTMLElement | null>(null)
 
-    const activeFileName = mode === 'stl'
-        ? (stlFile?.name ?? '')
-        : (h5Files[activeH5Index]?.name ?? '')
+    const activeFileName =
+        mode === 'stl' ? (stlFile?.name ?? '') : (h5Files[activeH5Index]?.name ?? '')
 
     const menuItemSx = { fontSize: '0.85rem', color: palette.tealLabel }
-    const handleFileLoad = () => { setH5MenuAnchor(null); h5InputRef.current?.click() }
-    const handleFolderLoad = () => { setH5MenuAnchor(null); h5FolderInputRef.current?.click() }
+    const handleFileLoad = () => {
+        setH5MenuAnchor(null)
+        h5InputRef.current?.click()
+    }
+    const handleFolderLoad = () => {
+        setH5MenuAnchor(null)
+        h5FolderInputRef.current?.click()
+    }
 
     return (
         <Box
@@ -36,9 +45,28 @@ export default function Toolbar() {
                 borderBottom: `1px solid ${palette.toolbarBorder}`,
             }}
         >
-            <input ref={stlInputRef} type="file" accept=".stl" style={{ display: 'none' }} onChange={handleSTLUpload} />
-            <input ref={h5InputRef} type="file" accept=".h5" style={{ display: 'none' }} onChange={handleH5Upload} />
-            <input ref={h5FolderInputRef} type="file" {...{ webkitdirectory: '' }} style={{ display: 'none' }} onChange={handleH5FolderUpload} />
+            <input
+                ref={stlInputRef}
+                type="file"
+                accept=".stl"
+                style={{ display: 'none' }}
+                onChange={handleSTLUpload}
+            />
+            <input
+                ref={h5InputRef}
+                type="file"
+                accept=".h5"
+                multiple
+                style={{ display: 'none' }}
+                onChange={handleH5Upload}
+            />
+            <input
+                ref={h5FolderInputRef}
+                type="file"
+                {...{ webkitdirectory: '' }}
+                style={{ display: 'none' }}
+                onChange={handleH5FolderUpload}
+            />
 
             {isLoading ? (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -52,7 +80,11 @@ export default function Toolbar() {
                     <Button
                         variant="outlined"
                         size="small"
-                        sx={{ ...glowSx, borderColor: palette.cyanBorder, color: palette.cyanLabel }}
+                        sx={{
+                            ...glowSx,
+                            borderColor: palette.cyanBorder,
+                            color: palette.cyanLabel,
+                        }}
                         onClick={() => stlInputRef.current?.click()}
                     >
                         Load STL
@@ -60,7 +92,11 @@ export default function Toolbar() {
                     <Button
                         variant="outlined"
                         size="small"
-                        sx={{ ...glowSx, borderColor: palette.tealBorder, color: palette.tealLabel }}
+                        sx={{
+                            ...glowSx,
+                            borderColor: palette.tealBorder,
+                            color: palette.tealLabel,
+                        }}
                         onClick={(e) => setH5MenuAnchor(e.currentTarget)}
                     >
                         Load H5

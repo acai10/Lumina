@@ -9,7 +9,7 @@ import AppSnackbar from './features/notifications/AppSnackbar'
 import { palette } from './shared/theme/palette'
 
 export default function App() {
-    const { mode, stlFile, h5Files, activeH5Index, h5Meta, setNotification } = useViewerStore()
+    const { mode, stlFile, h5Files, activeH5Index, setNotification } = useViewerStore()
     const activeH5 = h5Files[activeH5Index]
 
     const handleViewerError = useCallback(
@@ -18,13 +18,27 @@ export default function App() {
     )
 
     return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', background: palette.bgDeep }}>
+        <Box
+            sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100vh',
+                background: palette.bgDeep,
+            }}
+        >
             <Toolbar />
-            {mode === 'h5' && h5Files.length > 1 && <H5FileTabs />}
+            {mode === 'h5' && <H5FileTabs />}
             <Box sx={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-                {mode === 'stl' && stlFile && <STLViewer file={stlFile} onError={handleViewerError} />}
-                {mode === 'h5' && activeH5 && h5Meta && (
-                    <H5Viewer slices={activeH5.data.slices} meta={h5Meta} fileIndex={activeH5Index} onError={handleViewerError} />
+                {mode === 'stl' && stlFile && (
+                    <STLViewer file={stlFile} onError={handleViewerError} />
+                )}
+                {mode === 'h5' && activeH5 && (
+                    <H5Viewer
+                        slices={activeH5.data.slices}
+                        meta={activeH5.data}
+                        fileKey={activeH5.name}
+                        onError={handleViewerError}
+                    />
                 )}
             </Box>
             <AppSnackbar />

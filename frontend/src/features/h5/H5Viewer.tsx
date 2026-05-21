@@ -10,7 +10,7 @@ import type { H5Meta } from '../../shared/types/viewer.types'
 interface H5ViewerProps {
     slices: string[]
     meta: H5Meta
-    fileIndex: number
+    fileKey: string
     onError?: (msg: string) => void
 }
 
@@ -78,7 +78,7 @@ function buildSlicePlanes(
     return { planes, textures }
 }
 
-export default function H5Viewer({ slices, meta, fileIndex, onError }: H5ViewerProps) {
+export default function H5Viewer({ slices, meta, fileKey, onError }: H5ViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const planesRef = useRef<THREE.Mesh[]>([])
     const { currentSliceIndex } = useViewerStore()
@@ -111,7 +111,7 @@ export default function H5Viewer({ slices, meta, fileIndex, onError }: H5ViewerP
             planesRef.current = planes
 
             const maxDim = Math.max(volW, volH, totalDepth)
-            const saved = useViewerStore.getState().h5PerFileStates[fileIndex]
+            const saved = useViewerStore.getState().h5PerFileStates[fileKey]
             if (saved) {
                 camera.position.fromArray(saved.cameraPosition)
                 camera.quaternion.fromArray(saved.cameraQuaternion)
@@ -151,9 +151,14 @@ export default function H5Viewer({ slices, meta, fileIndex, onError }: H5ViewerP
             cancelAnimationFrame(animId)
             window.removeEventListener('resize', handleResize)
             if (sceneReady) {
-                useViewerStore.getState().saveH5CameraState(fileIndex, {
+                useViewerStore.getState().saveH5CameraState(fileKey, {
                     cameraPosition: camera.position.toArray() as [number, number, number],
-                    cameraQuaternion: camera.quaternion.toArray() as [number, number, number, number],
+                    cameraQuaternion: camera.quaternion.toArray() as [
+                        number,
+                        number,
+                        number,
+                        number,
+                    ],
                     controlsTarget: controls.target.toArray() as [number, number, number],
                 })
             }
@@ -167,7 +172,7 @@ export default function H5Viewer({ slices, meta, fileIndex, onError }: H5ViewerP
             renderer.dispose()
             container.removeChild(renderer.domElement)
         }
-    }, [slices, meta, onError, fileIndex])
+    }, [slices, meta, onError, fileKey])
 
     // Update plane opacities when slice selection changes
     useEffect(() => {
