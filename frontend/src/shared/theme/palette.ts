@@ -35,4 +35,8 @@ export const palette = {
     toolbarBg: 'rgba(10,15,30,0.92)',
     toolbarBorder: 'rgba(100,200,255,0.1)',
     panelBg: 'rgba(10,15,30,0.75)',
+
+    // Three.js mesh colors
+    meshColorHex: 0x4477bb as const,
+    edgeColorHex: 0x88ccff as const,
 } as const
