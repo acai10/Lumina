@@ -11,6 +11,24 @@ interface STLViewerProps {
     onError?: (msg: string) => void
 }
 
+function addLights(scene: THREE.Scene): void {
+    // Soft ambient fill — cool sky, dark ground
+    const hemi = new THREE.HemisphereLight(0x4466cc, 0x001122, 0.7)
+    scene.add(hemi)
+    // Key light — strong, front-right-top
+    const key = new THREE.DirectionalLight(0xffffff, 2.2)
+    key.position.set(3, 4, 5)
+    scene.add(key)
+    // Fill light — left side, softer
+    const fill = new THREE.DirectionalLight(0xaaccff, 0.7)
+    fill.position.set(-4, 1, 2)
+    scene.add(fill)
+    // Rim light — warm, from behind for edge pop
+    const rim = new THREE.DirectionalLight(0xffc080, 1.0)
+    rim.position.set(0, -2, -4)
+    scene.add(rim)
+}
+
 export default function STLViewer({ file, onError }: STLViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
 
@@ -32,21 +50,7 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
         renderer.outputColorSpace = THREE.SRGBColorSpace
         container.appendChild(renderer.domElement)
 
-        // Soft ambient fill — cool sky, dark ground
-        const hemi = new THREE.HemisphereLight(0x4466cc, 0x001122, 0.7)
-        scene.add(hemi)
-        // Key light — strong, front-right-top
-        const key = new THREE.DirectionalLight(0xffffff, 2.2)
-        key.position.set(3, 4, 5)
-        scene.add(key)
-        // Fill light — left side, softer
-        const fill = new THREE.DirectionalLight(0xaaccff, 0.7)
-        fill.position.set(-4, 1, 2)
-        scene.add(fill)
-        // Rim light — warm, from behind for edge pop
-        const rim = new THREE.DirectionalLight(0xffc080, 1.0)
-        rim.position.set(0, -2, -4)
-        scene.add(rim)
+        addLights(scene)
 
         const controls = new OrbitControls(camera, renderer.domElement)
         controls.enableDamping = true
@@ -86,7 +90,7 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
             const maxDim = Math.max(size.x, size.y, size.z)
 
             const material = new THREE.MeshStandardMaterial({
-                color: 0x4477bb,
+                color: palette.meshColorHex,
                 metalness: 0.1,
                 roughness: 0.55,
                 side: THREE.DoubleSide,
@@ -99,7 +103,7 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
             // so smooth curved surfaces stay clean but raised feature boundaries are visible.
             const edges = new THREE.EdgesGeometry(geometry, 20)
             const edgeMat = new THREE.LineBasicMaterial({
-                color: 0x88ccff,
+                color: palette.edgeColorHex,
                 transparent: true,
                 opacity: 0.55,
             })

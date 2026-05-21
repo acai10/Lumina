@@ -21,8 +21,8 @@ _SLICE_KEYS = (
 _HEIGHT_KEYS = ("SizeZ", "SizeY", "height", "Depth", "depth", "ALines", "alines", "axial_size")
 _WIDTH_KEYS = ("SizeX", "width", "Width", "x_size", "NumAScans", "lateral_size", "alines_per_bscan")
 
-# Common OCT depth resolutions — used as last-resort factorization hints
-_OCT_DEPTHS = (512, 1024, 496, 768, 256, 1536)
+# Common OCT depth resolution — used as last-resort factorization hint
+_OCT_DEPTH = 512
 
 
 def load_volume(file_bytes: bytes) -> np.ndarray:
@@ -143,21 +143,25 @@ def _reshape_from_attrs(dataset: h5py.Dataset, root: h5py.File) -> Optional[np.n
 
 
 def _guess_shape(total: int) -> Optional[Tuple[int, int, int]]:
-    """Heuristic: assume one axis is a common OCT depth and find a square-ish lateral split."""
-    for depth in _OCT_DEPTHS:
-        if total % depth != 0:
-            continue
-        lateral = total // depth
-        # Prefer square or near-square (within 4x ratio) lateral dimensions
-        sq = int(lateral**0.5)
-        for w in range(sq, max(sq - 200, 0), -1):
-            if w == 0:
-                break
-            if lateral % w == 0:
-                h = lateral // w
-                if 0.25 <= w / h <= 4.0 and 10 <= w and 10 <= h:
-                    return (depth, h, w)
+    """Heuristic: assume depth is 512 and lateral plane is square."""
+    if total % _OCT_DEPTH != 0:
+        return None
+    lateral = total // _OCT_DEPTH
+    w = round(lateral**0.5)
+    if w >= 10 and w * w == lateral:
+        return (_OCT_DEPTH, w, w)
     return None
+
+
+def _encode_slice(arr: np.ndarray) -> str:
+    s = arr.astype(np.float32)
+    s_min, s_max = s.min(), s.max()
+    if s_max > s_min:
+        s = (s - s_min) / (s_max - s_min)
+    img = Image.fromarray((s * 255).astype(np.uint8))
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
 
 
 def _collect_all_info(f: h5py.File) -> str:
@@ -226,32 +230,13 @@ def _find_volume_dataset(f: h5py.File) -> np.ndarray:
     if result is not None:
         return result
 
-    raise ValueError(f"No suitable 3D dataset found. File contents: {_collect_all_info(f)}")
+    detail = _collect_all_info(f) if __debug__ else ""
+    raise ValueError(f"No suitable 3D dataset found. File contents: {detail}")
 
 
 def slice_to_base64(slice_array: np.ndarray) -> str:
-    s = slice_array.astype(np.float32)
-    s_min, s_max = s.min(), s.max()
-
-    if s_max > s_min:
-        s = (s - s_min) / (s_max - s_min)
-
-    img = Image.fromarray((s * 255).astype(np.uint8))
-    buffer = io.BytesIO()
-    img.save(buffer, format="PNG")
-    return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+    return _encode_slice(slice_array)
 
 
 def volume_to_slices(volume: np.ndarray) -> List[str]:
-    v = volume.astype(np.float32)
-    result = []
-    for i in range(v.shape[0]):
-        s = v[i]
-        s_min, s_max = s.min(), s.max()
-        if s_max > s_min:
-            s = (s - s_min) / (s_max - s_min)
-        img = Image.fromarray((s * 255).astype(np.uint8))
-        buffer = io.BytesIO()
-        img.save(buffer, format="PNG")
-        result.append("data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode())
-    return result
+    return [_encode_slice(volume[i]) for i in range(volume.shape[0])]

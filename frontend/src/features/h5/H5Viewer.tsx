@@ -25,6 +25,58 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     })
 }
 
+function buildScene(container: HTMLDivElement): {
+    renderer: THREE.WebGLRenderer
+    camera: THREE.PerspectiveCamera
+    scene: THREE.Scene
+    controls: OrbitControls
+} {
+    const width = container.clientWidth
+    const height = container.clientHeight
+    const scene = new THREE.Scene()
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1e6)
+    const renderer = new THREE.WebGLRenderer({ antialias: true })
+    renderer.setPixelRatio(window.devicePixelRatio)
+    renderer.setSize(width, height)
+    renderer.setClearColor(palette.bgDeepHex)
+    container.appendChild(renderer.domElement)
+    const controls = new OrbitControls(camera, renderer.domElement)
+    controls.enableDamping = true
+    controls.dampingFactor = 0.05
+    return { renderer, camera, scene, controls }
+}
+
+function buildSlicePlanes(
+    images: HTMLImageElement[],
+    volW: number,
+    volH: number,
+    totalDepth: number,
+    scene: THREE.Scene,
+): { planes: THREE.Mesh[]; textures: THREE.Texture[] } {
+    const planes: THREE.Mesh[] = []
+    const textures: THREE.Texture[] = []
+    const n = images.length
+    for (let i = 0; i < n; i++) {
+        const texture = new THREE.Texture(images[i])
+        texture.needsUpdate = true
+        textures.push(texture)
+        const material = new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            opacity: PLANE_OPACITY_ALL,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+        })
+        const geometry = new THREE.PlaneGeometry(volW, volH)
+        const mesh = new THREE.Mesh(geometry, material)
+        mesh.rotation.x = Math.PI / 2
+        mesh.position.y = (0.5 - (n > 1 ? i / (n - 1) : 0)) * totalDepth
+        scene.add(mesh)
+        planes.push(mesh)
+    }
+    return { planes, textures }
+}
+
 export default function H5Viewer({ slices, meta }: H5ViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const planesRef = useRef<THREE.Mesh[]>([])
@@ -34,26 +86,13 @@ export default function H5Viewer({ slices, meta }: H5ViewerProps) {
         const container = containerRef.current
         if (!container) return
 
-        const width = container.clientWidth
-        const height = container.clientHeight
+        const { renderer, camera, scene, controls } = buildScene(container)
 
-        const scene = new THREE.Scene()
-        const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1e6)
-        const renderer = new THREE.WebGLRenderer({ antialias: true })
-        renderer.setPixelRatio(window.devicePixelRatio)
-        renderer.setSize(width, height)
-        renderer.setClearColor(palette.bgDeepHex)
-        container.appendChild(renderer.domElement)
-
-        const controls = new OrbitControls(camera, renderer.domElement)
-        controls.enableDamping = true
-        controls.dampingFactor = 0.05
-
-        const { nSlices: n_slices, width: volW, height: volH } = meta
+        const { width: volW, height: volH } = meta
         const totalDepth = volH * 0.8
 
-        const planes: THREE.Mesh[] = []
-        const textures: THREE.Texture[] = []
+        let planes: THREE.Mesh[] = []
+        let textures: THREE.Texture[] = []
         let cancelled = false
 
         const buildPlanes = async () => {
@@ -65,28 +104,7 @@ export default function H5Viewer({ slices, meta }: H5ViewerProps) {
                 return
             }
             if (cancelled) return
-
-            for (let i = 0; i < n_slices; i++) {
-                const texture = new THREE.Texture(images[i])
-                texture.needsUpdate = true
-                textures.push(texture)
-
-                const material = new THREE.MeshBasicMaterial({
-                    map: texture,
-                    transparent: true,
-                    opacity: PLANE_OPACITY_ALL,
-                    depthWrite: false,
-                    side: THREE.DoubleSide,
-                })
-
-                const geometry = new THREE.PlaneGeometry(volW, volH)
-                const mesh = new THREE.Mesh(geometry, material)
-                mesh.rotation.x = Math.PI / 2
-                mesh.position.y = (0.5 - (n_slices > 1 ? i / (n_slices - 1) : 0)) * totalDepth
-                scene.add(mesh)
-                planes.push(mesh)
-            }
-
+            ;({ planes, textures } = buildSlicePlanes(images, volW, volH, totalDepth, scene))
             planesRef.current = planes
 
             const maxDim = Math.max(volW, volH, totalDepth)

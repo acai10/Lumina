@@ -1,174 +1,61 @@
-# Lumina — Claude Code Project Guide
+# CLAUDE.md
 
-## Project Overview
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Browser-based medical imaging viewer. React + TypeScript frontend, Python FastAPI backend. No shared code between them — all communication via HTTP REST.
+## Commands
 
-Supported formats: `.h5` (OCT volumetric C-scan, HDF5) and `.stl` (3D surface mesh).
+### Backend
 
----
-
-## Stack
-
-### Frontend (`frontend/`)
-- **React 18** + **TypeScript** + **Vite**
-- **MUI v6** — component library and sole styling system (no CSS files)
-- **Three.js** — 3D rendering for STL and H5 viewers
-- **Zustand** — global state (`mode`, `h5Meta`, `currentSliceIndex`, `isLoading`)
-- **Emotion** — MUI's CSS-in-JS engine (installed as peer dep, not used directly)
-
-### Backend (`backend/`)
-- **FastAPI** + **Uvicorn**
-- **h5py** + **numpy** — HDF5 reading and array processing
-- **Pillow** — PNG encoding for base64 slice responses
-- **uv** — package manager (`uv sync` installs from `uv.lock`)
-
----
-
-## Dev Commands
-
-### Docker (recommended)
-```bash
-docker compose up --build   # first run
-docker compose up           # subsequent runs
-docker compose down
-```
-
-| Service  | URL                        |
-|----------|----------------------------|
-| Frontend | http://localhost:5173      |
-| Backend  | http://localhost:8000      |
-| API Docs | http://localhost:8000/docs |
-
-### Local — Backend
 ```bash
 cd backend
-uv sync                                                        # install deps
-uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000   # start
+uv sync                                                        # install / sync deps from uv.lock
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000   # start (port 8000)
 uv run black . && uv run isort .                               # format
+uv add <package>                                               # add dep (updates uv.lock — commit it)
 ```
 
-### Local — Frontend
+### Frontend
+
 ```bash
 cd frontend
-npm install         # install deps
-npm run dev         # start (http://localhost:5173)
-npm run build       # production build + TypeScript check
-npm run format      # prettier
+npm install
+npm run dev      # start dev server (port 5173)
+npm run build    # tsc + vite build (TypeScript errors fail the build)
+npm run lint     # eslint src/
+npm run format   # prettier --write
 ```
 
-### Format both at once
+### Both at once
+
 ```bash
-make format
+make format   # runs black+isort (backend) and prettier (frontend)
+docker compose up --build   # full stack via Docker
 ```
+
+No test suite exists yet.
 
 ---
 
 ## Architecture
 
-```
-Lumina/
-├── frontend/src/
-│   ├── App.tsx                         # root — toolbar, file upload, viewer switching
-│   ├── app/
-│   │   ├── store/viewerSlice.ts        # Zustand store
-│   │   └── App.styles.ts               # shared glowSx for toolbar buttons
-│   ├── features/
-│   │   ├── stl/STLViewer.tsx           # Three.js STL renderer
-│   │   └── h5/
-│   │       ├── H5Viewer.tsx            # Three.js H5 volume renderer (stacked planes)
-│   │       ├── SliceSlider.tsx         # vertical MUI Slider for slice selection
-│   │       └── SliceSlider.styles.ts   # Slider + IconButton sx objects
-│   └── shared/
-│       ├── api/octAPI.ts               # uploadH5() — POST /h5/upload
-│       ├── theme/
-│       │   ├── palette.ts              # all color tokens (strings + bgDeepHex for Three.js)
-│       │   └── theme.ts                # MUI createTheme() using palette
-│       └── types/viewer.types.ts       # H5Meta, H5UploadResponse
-└── backend/src/
-    ├── routers/h5.py                   # POST /h5/upload → returns slices + meta
-    └── imaging/h5_reader.py            # load_volume(), volume_to_slices(), slice_to_base64()
-```
+Two independent services, no shared code. All communication is HTTP REST.
+
+**Frontend** (`frontend/src/`): React + TypeScript SPA. View switching is **state-based** (`mode: 'none' | 'stl' | 'h5'` in Zustand) — there is no URL routing. MUI is the sole styling system; no CSS files. All color tokens are in `shared/theme/palette.ts`; the MUI theme is in `shared/theme/theme.ts` (consumed by `main.tsx`). Complex component styles with pseudo-selectors are extracted to co-located `.styles.ts` files; simple 1–3 property overrides stay inline as `sx` props.
+
+**Backend** (`backend/`): FastAPI. Single router at `/h5`. The uploaded volume is held in a **module-level in-memory dict** (`_volume_cache` in `src/routers/h5.py`) — only one volume is cached at a time (cache is cleared on each new upload). No database, no filesystem persistence.
 
 ---
 
-## Styling Conventions
+## Key Architectural Details
 
-All styling uses **MUI `sx` prop** only. No CSS files (except a minimal `index.css` if needed for html/body resets).
+**H5 upload flow**: `POST /h5/upload` reads the entire `.h5` file, calls `load_volume()` (HDF5 → numpy 3-D array), then `volume_to_slices()` (per-slice normalization → PNG → base64). All slices are returned in a single JSON response. The frontend stores them in React state as `string[]`.
 
-**Decision rule for `.styles.ts` extraction:**
-- Extract when a component has **more than 3–4 non-trivial style rules** OR pseudo-selectors (`:hover`, MUI slot overrides).
-- Keep inline with `sx` when 1–3 simple properties.
+**HDF5 parsing** (`src/imaging/h5_reader.py`): `load_volume()` tries multiple strategies to find a 3-D dataset — named keys (`volume`, `data`, `oct`), attribute-based reshape, sibling scalar datasets, and a heuristic OCT depth guesser. This is intentionally broad to support diverse vendor file layouts.
 
-**Color tokens** live in `shared/theme/palette.ts`. Use them everywhere — no hardcoded hex strings in components. Three.js integer colors use `palette.bgDeepHex` (`0x0a0f1e`). Single-use rendering-specific lighting values (hemisphere, rim lights in STLViewer) stay hardcoded — they are rendering constants, not UI colors.
+**H5Viewer rendering**: Stacked `THREE.PlaneGeometry` meshes, one per B-scan, with `transparent: true` / `depthWrite: false`. Camera is positioned mostly overhead `(0, maxDim×1.8, maxDim×0.4)` to minimise perspective shadow accumulation from transparent plane blending. Slice selection hides earlier planes and raises selected plane opacity to 0.9.
 
-**No `routes.ts`** — this is a SPA with state-based view switching (`mode: 'none' | 'stl' | 'h5'`), no URL routing.
+**Normalization**: `volume_to_slices()` normalises **per slice** (local min/max). `slice_to_base64()` (used by `GET /h5/slice/:index`) also normalises per slice. Do not switch either to global normalisation — boundary slices have lower OCT signal and would appear artificially dark.
 
----
+**CORS**: configured via `CORS_ORIGINS` env var (default `http://localhost:5173`). Set it when deploying to a different origin.
 
-## Key Files
-
-| File | Role |
-|---|---|
-| `shared/theme/palette.ts` | Single source of truth for all UI colors |
-| `shared/theme/theme.ts` | MUI ThemeProvider config — imported by `main.tsx` |
-| `app/store/viewerSlice.ts` | All viewer state — mode, slice index, loading |
-| `shared/api/octAPI.ts` | Only API call: `uploadH5(file)` → `H5UploadResponse` |
-| `imaging/h5_reader.py` | HDF5 → numpy → base64 PNG; `volume_to_slices()` normalizes per-slice |
-
----
-
-## Backend API
-
-`POST /h5/upload` — multipart form, field `file`, accepts `.h5`.
-
-Response:
-```json
-{
-  "n_slices": 128,
-  "width": 512,
-  "height": 496,
-  "slices": ["data:image/png;base64,...", "..."]
-}
-```
-
-The frontend maps `snake_case` → `camelCase` in `octAPI.ts`.
-
----
-
-## Known Rendering Details (H5Viewer)
-
-- Planes are `PlaneGeometry(volW, volH)`, rotated flat (`rotation.x = π/2`), stacked in Y.
-- `totalDepth = volH * 0.8` — stack spacing.
-- Camera at `(0, maxDim * 1.8, maxDim * 0.4)` — mostly overhead to minimize perspective shadow accumulation from `depthWrite: false` transparent blending.
-- `PLANE_OPACITY_ALL = 0.1`, `PLANE_OPACITY_SELECTED = 0.9`.
-- Slices before the selected index are hidden (`visible = false`); slices after are shown at 0.1 opacity.
-
----
-
-## Dependencies
-
-### Backend (`pyproject.toml`)
-
-| Package | Purpose |
-|---|---|
-| `fastapi` | REST framework |
-| `uvicorn[standard]` | ASGI server |
-| `python-multipart` | file upload |
-| `h5py` | HDF5 reading |
-| `numpy` | array processing |
-| `Pillow` | PNG encoding |
-| `black`, `isort` *(dev)* | formatting |
-
-### Frontend (`package.json`)
-
-| Package | Purpose |
-|---|---|
-| `react` + `react-dom` | UI |
-| `three` | 3D rendering |
-| `@mui/material` | components + styling |
-| `@emotion/react` + `@emotion/styled` | MUI CSS-in-JS engine |
-| `zustand` | state management |
-| `vite` | build tool |
-| `typescript` | type safety |
-| `prettier` | formatting |
+**`palette.bgDeepHex`** (`0x0a0f1e`) is the Three.js integer form of `palette.bgDeep` (`#0a0f1e`). Both viewers use it for `renderer.setClearColor()`. Add new Three.js background colors here if needed — don't hardcode hex integers in viewer files.
