@@ -12,3 +12,10 @@ export interface H5FileEntry {
     name: string
     data: H5UploadResponse
 }
+
+export interface H5PerFileState {
+    sliceIndex: number | null
+    cameraPosition: [number, number, number]
+    cameraQuaternion: [number, number, number, number]
+    controlsTarget: [number, number, number]
+}

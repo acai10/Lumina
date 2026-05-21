@@ -24,7 +24,7 @@ export default function App() {
             <Box sx={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
                 {mode === 'stl' && stlFile && <STLViewer file={stlFile} onError={handleViewerError} />}
                 {mode === 'h5' && activeH5 && h5Meta && (
-                    <H5Viewer slices={activeH5.data.slices} meta={h5Meta} onError={handleViewerError} />
+                    <H5Viewer slices={activeH5.data.slices} meta={h5Meta} fileIndex={activeH5Index} onError={handleViewerError} />
                 )}
             </Box>
             <AppSnackbar />
