@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { Box } from '@mui/material'
+import { Box, Stack } from '@mui/material'
 import { useViewerStore } from './app/store/viewerSlice'
 import STLViewer from './features/stl/STLViewer'
 import H5Viewer from './features/h5/H5Viewer'
@@ -18,14 +18,7 @@ export default function App() {
     )
 
     return (
-        <Box
-            sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                height: '100vh',
-                background: palette.bgDeep,
-            }}
-        >
+        <Stack sx={{ height: '100vh', background: palette.bgDeep }}>
             <Toolbar />
             {mode === 'h5' && <H5FileTabs />}
             <Box sx={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
@@ -42,6 +35,6 @@ export default function App() {
                 )}
             </Box>
             <AppSnackbar />
-        </Box>
+        </Stack>
     )
 }
