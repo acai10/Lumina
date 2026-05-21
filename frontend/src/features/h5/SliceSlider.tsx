@@ -1,9 +1,7 @@
-// CHANGED: complex Slider and IconButton styles extracted to SliceSlider.styles.ts
-import { Box, IconButton, Slider, Typography } from '@mui/material'
+import { IconButton, Slider, Stack } from '@mui/material'
 import ClearIcon from '@mui/icons-material/Clear'
 import { useViewerStore } from '../../app/store/viewerSlice'
-import { palette } from '../../shared/theme/palette'
-import { sliderSx, getResetButtonSx } from './SliceSlider.styles'
+import { SliceLabel, sliderSx, getResetButtonSx } from './SliceSlider.styles'
 
 interface SliceSliderProps {
     nSlices: number
@@ -24,7 +22,9 @@ export default function SliceSlider({ nSlices }: SliceSliderProps) {
     const displayValue = currentSliceIndex === null ? nSlices - 1 : nSlices - 1 - currentSliceIndex
 
     return (
-        <Box
+        <Stack
+            alignItems="center"
+            spacing={1.5}
             sx={{
                 position: 'fixed',
                 right: 28,
@@ -32,23 +32,10 @@ export default function SliceSlider({ nSlices }: SliceSliderProps) {
                 bottom: 70,
                 background: 'transparent',
                 zIndex: 20,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 1.5,
                 py: 1,
             }}
         >
-            <Typography
-                sx={{
-                    color: palette.textDim,
-                    fontSize: '0.7rem',
-                    letterSpacing: '0.08em',
-                    textShadow: '0 1px 4px rgba(0,0,0,0.8)',
-                }}
-            >
-                {currentSliceIndex === null ? '—' : `${currentSliceIndex}`}
-            </Typography>
+            <SliceLabel>{currentSliceIndex === null ? '—' : `${currentSliceIndex}`}</SliceLabel>
 
             <Slider
                 orientation="vertical"
@@ -68,6 +55,6 @@ export default function SliceSlider({ nSlices }: SliceSliderProps) {
             >
                 <ClearIcon sx={{ fontSize: '0.9rem' }} />
             </IconButton>
-        </Box>
+        </Stack>
     )
 }

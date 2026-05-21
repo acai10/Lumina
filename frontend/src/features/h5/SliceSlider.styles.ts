@@ -1,5 +1,13 @@
-// NEW: Slider has 3 nested pseudo-selectors; IconButton has dynamic colors — justifies extraction
+import { styled } from '@mui/material/styles'
+import Typography from '@mui/material/Typography'
 import { palette } from '../../shared/theme/palette'
+
+export const SliceLabel = styled(Typography)({
+    color: palette.textDim,
+    fontSize: '0.7rem',
+    letterSpacing: '0.08em',
+    textShadow: '0 1px 4px rgba(0,0,0,0.8)',
+})
 
 export const sliderSx = {
     flex: 1,
