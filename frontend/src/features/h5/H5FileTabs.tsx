@@ -1,18 +1,14 @@
 import { Tab, Tabs } from '@mui/material'
 import { palette } from '../../shared/theme/palette'
-import type { H5FileEntry } from '../toolbar/useFileUpload'
+import { useViewerStore } from '../../app/store/viewerSlice'
 
-interface H5FileTabsProps {
-    files: H5FileEntry[]
-    activeIndex: number
-    onChange: (index: number) => void
-}
+export default function H5FileTabs() {
+    const { h5Files, activeH5Index, selectH5 } = useViewerStore()
 
-export default function H5FileTabs({ files, activeIndex, onChange }: H5FileTabsProps) {
     return (
         <Tabs
-            value={activeIndex}
-            onChange={(_, i) => onChange(i)}
+            value={activeH5Index}
+            onChange={(_, i) => selectH5(i)}
             variant="scrollable"
             scrollButtons="auto"
             sx={{
@@ -31,7 +27,7 @@ export default function H5FileTabs({ files, activeIndex, onChange }: H5FileTabsP
                 '& .MuiTabs-indicator': { backgroundColor: palette.tealBorder },
             }}
         >
-            {files.map((f) => (
+            {h5Files.map((f) => (
                 <Tab key={f.name} label={f.name} />
             ))}
         </Tabs>

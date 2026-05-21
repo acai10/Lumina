@@ -1,4 +1,3 @@
-// CHANGED: renderer.setClearColor uses palette.bgDeepHex — same color as STLViewer
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
@@ -11,6 +10,8 @@ import type { H5Meta } from '../../shared/types/viewer.types'
 interface H5ViewerProps {
     slices: string[]
     meta: H5Meta
+    fileIndex: number
+    onError?: (msg: string) => void
 }
 
 const PLANE_OPACITY_ALL = 0.1
@@ -77,7 +78,7 @@ function buildSlicePlanes(
     return { planes, textures }
 }
 
-export default function H5Viewer({ slices, meta }: H5ViewerProps) {
+export default function H5Viewer({ slices, meta, fileIndex, onError }: H5ViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const planesRef = useRef<THREE.Mesh[]>([])
     const { currentSliceIndex } = useViewerStore()
@@ -94,6 +95,7 @@ export default function H5Viewer({ slices, meta }: H5ViewerProps) {
         let planes: THREE.Mesh[] = []
         let textures: THREE.Texture[] = []
         let cancelled = false
+        let sceneReady = false
 
         const buildPlanes = async () => {
             let images: HTMLImageElement[]
@@ -101,6 +103,7 @@ export default function H5Viewer({ slices, meta }: H5ViewerProps) {
                 images = await Promise.all(slices.map(loadImage))
             } catch (err) {
                 console.error('H5Viewer: failed to load slice images', err)
+                onError?.('Failed to load H5 slices.')
                 return
             }
             if (cancelled) return
@@ -108,12 +111,20 @@ export default function H5Viewer({ slices, meta }: H5ViewerProps) {
             planesRef.current = planes
 
             const maxDim = Math.max(volW, volH, totalDepth)
-            camera.position.set(0, maxDim * 1.8, maxDim * 0.4)
-            camera.lookAt(0, 0, 0)
+            const saved = useViewerStore.getState().h5PerFileStates[fileIndex]
+            if (saved) {
+                camera.position.fromArray(saved.cameraPosition)
+                camera.quaternion.fromArray(saved.cameraQuaternion)
+                controls.target.fromArray(saved.controlsTarget)
+            } else {
+                camera.position.set(0, maxDim * 1.8, maxDim * 0.4)
+                camera.lookAt(0, 0, 0)
+            }
             camera.near = maxDim * 0.001
             camera.far = maxDim * 100
             camera.updateProjectionMatrix()
             controls.update()
+            sceneReady = true
         }
 
         buildPlanes()
@@ -139,6 +150,13 @@ export default function H5Viewer({ slices, meta }: H5ViewerProps) {
             cancelled = true
             cancelAnimationFrame(animId)
             window.removeEventListener('resize', handleResize)
+            if (sceneReady) {
+                useViewerStore.getState().saveH5CameraState(fileIndex, {
+                    cameraPosition: camera.position.toArray() as [number, number, number],
+                    cameraQuaternion: camera.quaternion.toArray() as [number, number, number, number],
+                    controlsTarget: controls.target.toArray() as [number, number, number],
+                })
+            }
             controls.dispose()
             planesRef.current = []
             planes.forEach((p) => {
@@ -149,7 +167,7 @@ export default function H5Viewer({ slices, meta }: H5ViewerProps) {
             renderer.dispose()
             container.removeChild(renderer.domElement)
         }
-    }, [slices, meta])
+    }, [slices, meta, onError, fileIndex])
 
     // Update plane opacities when slice selection changes
     useEffect(() => {

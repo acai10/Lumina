@@ -32,7 +32,7 @@ async def upload_h5(file: UploadFile) -> UploadResponse:
         try:
             volume = load_volume(data)
         except Exception as exc:
-            raise HTTPException(status_code=422, detail=f"Failed to read .h5 file: {exc}") from exc
+            raise HTTPException(status_code=400, detail=f"Failed to read .h5 file: {exc}") from exc
         # Single-volume memory management: evict previous volume before storing new one.
         _volume_cache.clear()
         _volume_cache[key] = volume
