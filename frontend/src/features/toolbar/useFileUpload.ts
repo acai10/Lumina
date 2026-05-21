@@ -5,10 +5,7 @@ import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5FileEntry } from '../../shared/types/viewer.types'
 
 export function useFileUpload() {
-    const {
-        setMode, setStlFile, loadH5, setIsLoading,
-        setCurrentSliceIndex, setNotification,
-    } = useViewerStore()
+    const { setMode, setStlFile, loadH5, setIsLoading, setNotification } = useViewerStore()
 
     const stlInputRef = useRef<HTMLInputElement>(null)
     const h5InputRef = useRef<HTMLInputElement>(null)
@@ -16,14 +13,13 @@ export function useFileUpload() {
 
     const _performH5Upload = async (uploadFn: () => Promise<H5FileEntry[]>) => {
         setIsLoading(true)
-        setCurrentSliceIndex(null)
         try {
             const results = await uploadFn()
             loadH5(results)
-            setMode('h5')
-            if (results.length > 1) {
-                setNotification({ message: `${results.length} H5 files loaded`, severity: 'success' })
-            }
+            setNotification({
+                message: results.length === 1 ? 'File added' : `${results.length} files added`,
+                severity: 'success',
+            })
         } catch (err) {
             console.error('H5 upload failed:', err)
             setNotification({
@@ -44,10 +40,12 @@ export function useFileUpload() {
     }
 
     const handleH5Upload = async (e: ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file) return
+        const files = Array.from(e.target.files ?? [])
+        if (files.length === 0) return
         e.target.value = ''
-        await _performH5Upload(async () => [{ name: file.name, data: await uploadH5(file) }])
+        await _performH5Upload(() =>
+            Promise.all(files.map(async (f) => ({ name: f.name, data: await uploadH5(f) }))),
+        )
     }
 
     const handleH5FolderUpload = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -61,5 +59,12 @@ export function useFileUpload() {
         )
     }
 
-    return { stlInputRef, h5InputRef, h5FolderInputRef, handleSTLUpload, handleH5Upload, handleH5FolderUpload }
+    return {
+        stlInputRef,
+        h5InputRef,
+        h5FolderInputRef,
+        handleSTLUpload,
+        handleH5Upload,
+        handleH5FolderUpload,
+    }
 }
