@@ -1,4 +1,3 @@
-// CHANGED: renderer.setClearColor uses palette.bgDeepHex — same color as STLViewer
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
@@ -11,6 +10,7 @@ import type { H5Meta } from '../../shared/types/viewer.types'
 interface H5ViewerProps {
     slices: string[]
     meta: H5Meta
+    onError?: (msg: string) => void
 }
 
 const PLANE_OPACITY_ALL = 0.1
@@ -77,7 +77,7 @@ function buildSlicePlanes(
     return { planes, textures }
 }
 
-export default function H5Viewer({ slices, meta }: H5ViewerProps) {
+export default function H5Viewer({ slices, meta, onError }: H5ViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const planesRef = useRef<THREE.Mesh[]>([])
     const { currentSliceIndex } = useViewerStore()
@@ -101,6 +101,7 @@ export default function H5Viewer({ slices, meta }: H5ViewerProps) {
                 images = await Promise.all(slices.map(loadImage))
             } catch (err) {
                 console.error('H5Viewer: failed to load slice images', err)
+                onError?.('Failed to load H5 slices.')
                 return
             }
             if (cancelled) return
@@ -149,7 +150,7 @@ export default function H5Viewer({ slices, meta }: H5ViewerProps) {
             renderer.dispose()
             container.removeChild(renderer.domElement)
         }
-    }, [slices, meta])
+    }, [slices, meta, onError])
 
     // Update plane opacities when slice selection changes
     useEffect(() => {

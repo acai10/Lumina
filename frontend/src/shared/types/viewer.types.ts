@@ -7,3 +7,8 @@ export interface H5Meta {
 export interface H5UploadResponse extends H5Meta {
     slices: string[]
 }
+
+export interface H5FileEntry {
+    name: string
+    data: H5UploadResponse
+}

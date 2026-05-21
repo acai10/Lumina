@@ -2,32 +2,25 @@ import { useState } from 'react'
 import { Box, Button, CircularProgress, Menu, MenuItem, Typography } from '@mui/material'
 import { palette } from '../../shared/theme/palette'
 import { glowSx } from '../../app/App.styles'
+import { useViewerStore } from '../../app/store/viewerSlice'
+import { useFileUpload } from './useFileUpload'
 
-interface ToolbarProps {
-    onLoadSTL: () => void
-    onLoadH5: () => void
-    onLoadH5Folder: () => void
-    onClear: () => void
-    activeFileName: string | null
-    mode: 'none' | 'stl' | 'h5'
-    isLoading: boolean
-    errorMsg: string | null
-}
+export default function Toolbar() {
+    const { mode, isLoading, stlFile, h5Files, activeH5Index, reset } = useViewerStore()
+    const {
+        stlInputRef, h5InputRef, h5FolderInputRef,
+        handleSTLUpload, handleH5Upload, handleH5FolderUpload,
+    } = useFileUpload()
 
-export default function Toolbar({
-    onLoadSTL,
-    onLoadH5,
-    onLoadH5Folder,
-    onClear,
-    activeFileName,
-    mode,
-    isLoading,
-    errorMsg,
-}: ToolbarProps) {
     const [h5MenuAnchor, setH5MenuAnchor] = useState<HTMLElement | null>(null)
+
+    const activeFileName = mode === 'stl'
+        ? (stlFile?.name ?? '')
+        : (h5Files[activeH5Index]?.name ?? '')
+
     const menuItemSx = { fontSize: '0.85rem', color: palette.tealLabel }
-    const handleFileLoad = () => { setH5MenuAnchor(null); onLoadH5() }
-    const handleFolderLoad = () => { setH5MenuAnchor(null); onLoadH5Folder() }
+    const handleFileLoad = () => { setH5MenuAnchor(null); h5InputRef.current?.click() }
+    const handleFolderLoad = () => { setH5MenuAnchor(null); h5FolderInputRef.current?.click() }
 
     return (
         <Box
@@ -43,6 +36,10 @@ export default function Toolbar({
                 borderBottom: `1px solid ${palette.toolbarBorder}`,
             }}
         >
+            <input ref={stlInputRef} type="file" accept=".stl" style={{ display: 'none' }} onChange={handleSTLUpload} />
+            <input ref={h5InputRef} type="file" accept=".h5" style={{ display: 'none' }} onChange={handleH5Upload} />
+            <input ref={h5FolderInputRef} type="file" {...{ webkitdirectory: '' }} style={{ display: 'none' }} onChange={handleH5FolderUpload} />
+
             {isLoading ? (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                     <CircularProgress size={18} sx={{ color: palette.cyan }} />
@@ -56,7 +53,7 @@ export default function Toolbar({
                         variant="outlined"
                         size="small"
                         sx={{ ...glowSx, borderColor: palette.cyanBorder, color: palette.cyanLabel }}
-                        onClick={onLoadSTL}
+                        onClick={() => stlInputRef.current?.click()}
                     >
                         Load STL
                     </Button>
@@ -99,7 +96,7 @@ export default function Toolbar({
                                 color: palette.clearLabel,
                                 '&:hover': { boxShadow: `0 0 18px 3px ${palette.clearGlow}` },
                             }}
-                            onClick={onClear}
+                            onClick={reset}
                         >
                             Clear
                         </Button>
@@ -107,23 +104,7 @@ export default function Toolbar({
                 </>
             )}
 
-            {errorMsg && (
-                <Typography
-                    sx={{
-                        ml: 1,
-                        color: palette.errorText,
-                        fontSize: '0.8rem',
-                        maxWidth: 400,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                    }}
-                >
-                    {errorMsg}
-                </Typography>
-            )}
-
-            {!errorMsg && activeFileName && (
+            {activeFileName && (
                 <Typography
                     sx={{
                         ml: 'auto',
