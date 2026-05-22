@@ -2,16 +2,7 @@ import { ready, File as H5File } from 'h5wasm'
 import type { H5VolumeData } from '../types/viewer.types'
 
 const VOLUME_DIMS: [number, number, number] = [512, 250, 250]
-
-function computeMinMax(data: Float32Array): [number, number] {
-    let min = Infinity,
-        max = -Infinity
-    for (let i = 0; i < data.length; i++) {
-        if (data[i] < min) min = data[i]
-        if (data[i] > max) max = data[i]
-    }
-    return [min, max]
-}
+const PRE_FILTER_THRESHOLD = 0.05
 
 export async function loadH5File(
     file: File,
@@ -51,7 +42,7 @@ export async function loadH5File(
             } else if (Array.isArray(raw)) {
                 data = Float32Array.from(raw as number[])
             } else {
-                throw new Error(`Unsupported data type in "oct" dataset`)
+                throw new Error(`Unsupported data type in "OCT" dataset`)
             }
 
             if (data.length !== expected) {
@@ -61,13 +52,34 @@ export async function loadH5File(
             }
 
             const sliceSize = height * width
-            const slices = Array.from(
-                { length: nSlices },
-                (_, i) => data.slice(i * sliceSize, (i + 1) * sliceSize) as Float32Array,
-            )
-            const sliceMinMax = slices.map(computeMinMax)
+            const tmpIndices = new Float32Array(expected)
+            const tmpIntensities = new Float32Array(expected)
+            let count = 0
 
-            return { nSlices, height, width, slices, sliceMinMax }
+            for (let s = 0; s < nSlices; s++) {
+                const offset = s * sliceSize
+                let min = Infinity,
+                    max = -Infinity
+                for (let i = 0; i < sliceSize; i++) {
+                    const v = data[offset + i]
+                    if (v < min) min = v
+                    if (v > max) max = v
+                }
+                const range = max > min ? max - min : 1
+                for (let i = 0; i < sliceSize; i++) {
+                    const n = (data[offset + i] - min) / range
+                    if (n >= PRE_FILTER_THRESHOLD) {
+                        tmpIndices[count] = offset + i
+                        tmpIntensities[count] = n
+                        count++
+                    }
+                }
+            }
+
+            const vIndices = tmpIndices.slice(0, count)
+            const vIntensities = tmpIntensities.slice(0, count)
+
+            return { nSlices, height, width, vIndices, vIntensities }
         } finally {
             f.close()
         }

@@ -4,6 +4,7 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { Box } from '@mui/material'
 import { palette } from '../../shared/theme/palette'
 import { createScene } from '../../shared/three/sceneUtils'
+import { useViewerStore } from '../../app/store/viewerSlice'
 
 interface STLViewerProps {
     file: File
@@ -11,18 +12,14 @@ interface STLViewerProps {
 }
 
 function addLights(scene: THREE.Scene): void {
-    // Soft ambient fill — cool sky, dark ground
     const hemi = new THREE.HemisphereLight(0x4466cc, 0x001122, 0.7)
     scene.add(hemi)
-    // Key light — strong, front-right-top
     const key = new THREE.DirectionalLight(0xffffff, 2.2)
     key.position.set(3, 4, 5)
     scene.add(key)
-    // Fill light — left side, softer
     const fill = new THREE.DirectionalLight(0xaaccff, 0.7)
     fill.position.set(-4, 1, 2)
     scene.add(fill)
-    // Rim light — warm, from behind for edge pop
     const rim = new THREE.DirectionalLight(0xffc080, 1.0)
     rim.position.set(0, -2, -4)
     scene.add(rim)
@@ -30,6 +27,10 @@ function addLights(scene: THREE.Scene): void {
 
 export default function STLViewer({ file, onError }: STLViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
+    const meshRef = useRef<THREE.Mesh | null>(null)
+    const materialRef = useRef<THREE.MeshStandardMaterial | null>(null)
+
+    const { stlOpacity } = useViewerStore()
 
     useEffect(() => {
         const container = containerRef.current
@@ -81,13 +82,17 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
                 metalness: 0.1,
                 roughness: 0.55,
                 side: THREE.DoubleSide,
+                transparent: true,
+                opacity: useViewerStore.getState().stlOpacity,
             })
             const mesh = new THREE.Mesh(geometry, material)
             scene.add(mesh)
+            meshRef.current = mesh
+            materialRef.current = material
 
-            // Edge overlay — draws contour lines along every hard edge (spiral, text, plate rim).
-            // Threshold 20°: only edges where adjacent faces meet at ≥20° get a line,
-            // so smooth curved surfaces stay clean but raised feature boundaries are visible.
+            const boxHelper = new THREE.BoxHelper(mesh, new THREE.Color(0x64ffc8))
+            scene.add(boxHelper)
+
             const edges = new THREE.EdgesGeometry(geometry, 20)
             const edgeMat = new THREE.LineBasicMaterial({
                 color: palette.edgeColorHex,
@@ -95,7 +100,7 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
                 opacity: 0.55,
             })
             const edgeLines = new THREE.LineSegments(edges, edgeMat)
-            scene.add(edgeLines)
+            mesh.add(edgeLines)
 
             camera.position.set(0, 0, maxDim * 1.8)
             camera.near = maxDim * 0.001
@@ -122,6 +127,8 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
         return () => {
             reader.abort()
             cancelAnimationFrame(animId)
+            meshRef.current = null
+            materialRef.current = null
             scene.traverse((obj) => {
                 if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments) {
                     obj.geometry.dispose()
@@ -132,6 +139,13 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
             disposeBase()
         }
     }, [file, onError])
+
+    useEffect(() => {
+        if (materialRef.current) {
+            materialRef.current.opacity = stlOpacity
+            materialRef.current.needsUpdate = true
+        }
+    }, [stlOpacity])
 
     return <Box ref={containerRef} sx={{ width: '100%', height: '100%' }} />
 }
