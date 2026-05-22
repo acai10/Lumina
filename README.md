@@ -4,10 +4,10 @@ Browser-based medical imaging viewer. Supports loading OCT volumetric data (`.h5
 
 ## Supported File Formats
 
-| Format | Description               | Display                                                               |
-|--------|---------------------------|-----------------------------------------------------------------------|
-| `.h5`  | OCT C-scan volume (HDF5)  | Holographic stack of semi-transparent B-scan planes with slice slider |
-| `.stl` | 3D surface mesh           | Lit 3D model with edge overlay, OrbitControls                         |
+| Format | Description              | Display                                                                                                                              |
+|--------|--------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `.h5`  | OCT C-scan volume (HDF5) | Interactive 3D point cloud rendered via custom GLSL shaders with live threshold, brightness, contrast, and spatial clipping controls |
+| `.stl` | 3D surface mesh          | Lit 3D model with edge overlay, OrbitControls                                                                                        |
 
 ---
 
@@ -33,11 +33,13 @@ Lumina/
     ├── app/
     │   └── store/          # Zustand state (viewerSlice)
     ├── features/
+    │   ├── controls/       # ControlsPanel, ControlsPanel.styles, useNumberInput, renderControlLimits
     │   ├── stl/            # STLViewer
-    │   ├── h5/             # H5Viewer, SliceSlider
-    │   └── toolbar/        # Toolbar, useFileUpload
+    │   ├── h5/             # H5Viewer
+    │   └── toolbar/        # Toolbar, useFileUpload, H5FileTabs
     └── shared/
-        ├── h5/             # h5Reader (HDF5 → Float32Array → PNG/base64 via h5wasm)
+        ├── h5/             # h5Reader, h5.worker (HDF5 → vIndices/vIntensities via h5wasm)
+        ├── three/          # sceneUtils (renderer, camera, OrbitControls setup)
         ├── theme/          # palette.ts, theme.ts
         └── types/          # viewer.types.ts
 ```

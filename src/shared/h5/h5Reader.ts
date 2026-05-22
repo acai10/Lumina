@@ -67,10 +67,10 @@ export async function loadH5File(
                 }
                 const range = max > min ? max - min : 1
                 for (let i = 0; i < sliceSize; i++) {
-                    const n = (data[offset + i] - min) / range
-                    if (n >= PRE_FILTER_THRESHOLD) {
+                    const normalized = (data[offset + i] - min) / range
+                    if (normalized >= PRE_FILTER_THRESHOLD) {
                         tmpIndices[count] = offset + i
-                        tmpIntensities[count] = n
+                        tmpIntensities[count] = normalized
                         count++
                     }
                 }

@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import type React from 'react'
 import { IconButton, Stack, Tab } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import { useViewerStore } from '../../app/store/viewerSlice'

@@ -3,7 +3,11 @@ import * as THREE from 'three'
 import { Box } from '@mui/material'
 import { useViewerStore, defaultRenderControls } from '../../app/store/viewerSlice'
 import { createScene } from '../../shared/three/sceneUtils'
+import { palette } from '../../shared/theme/palette'
 import type { H5Meta } from '../../shared/types/viewer.types'
+
+const AXIS_LABEL_CANVAS_SIZE = 64
+const AXIS_LABEL_FONT = 'bold 52px sans-serif'
 
 interface H5ViewerProps {
     vIndices: Float32Array
@@ -83,7 +87,7 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
     const materialRef = useRef<THREE.ShaderMaterial | null>(null)
     const needsRenderRef = useRef(true)
 
-    const rc = useViewerStore(
+    const renderControls = useViewerStore(
         (s) => s.h5PerFileStates[fileKey]?.renderControls ?? defaultRenderControls,
     )
 
@@ -94,10 +98,10 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
         const { scene, camera, renderer, controls, disposeBase } = createScene(container)
 
         const { nSlices, height, width } = meta
-        const rc0 =
+        const initialRc =
             useViewerStore.getState().h5PerFileStates[fileKey]?.renderControls ??
             defaultRenderControls
-        const maxDim = Math.max(width, height, rc0.volumeSpacing)
+        const maxDim = Math.max(width, height, initialRc.volumeSpacing)
 
         const axes = new THREE.AxesHelper(maxDim * 0.7)
         scene.add(axes)
@@ -106,17 +110,17 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
         const labelScale = maxDim * 0.09
         const axisLabels = (
             [
-                { text: 'X', color: '#ff4444', pos: [axisLen, 0, 0] },
-                { text: 'Y', color: '#44ff88', pos: [0, axisLen, 0] },
-                { text: 'Z', color: '#4488ff', pos: [0, 0, axisLen] },
+                { text: 'X', color: palette.axisX, pos: [axisLen, 0, 0] },
+                { text: 'Y', color: palette.axisY, pos: [0, axisLen, 0] },
+                { text: 'Z', color: palette.axisZ, pos: [0, 0, axisLen] },
             ] as const
         ).map(({ text, color, pos }) => {
             const canvas = document.createElement('canvas')
-            canvas.width = 64
-            canvas.height = 64
+            canvas.width = AXIS_LABEL_CANVAS_SIZE
+            canvas.height = AXIS_LABEL_CANVAS_SIZE
             const ctx = canvas.getContext('2d')!
             ctx.fillStyle = color
-            ctx.font = 'bold 52px sans-serif'
+            ctx.font = AXIS_LABEL_FONT
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
             ctx.fillText(text, 32, 32)
@@ -140,18 +144,18 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
                 uNSlices: { value: nSlices },
                 uHeight: { value: height },
                 uWidth: { value: width },
-                uVolumeSpacing: { value: rc0.volumeSpacing },
-                uPointSize: { value: rc0.h5PointSize },
-                uThreshold: { value: rc0.h5Threshold },
-                uBrightness: { value: rc0.h5Brightness },
-                uContrast: { value: rc0.h5Contrast },
-                uOpacity: { value: rc0.h5Opacity },
-                uSliceMin: { value: rc0.h5SliceRange[0] },
-                uSliceMax: { value: rc0.h5SliceRange[1] },
-                uWidthMin: { value: rc0.h5WidthRange[0] },
-                uWidthMax: { value: rc0.h5WidthRange[1] },
-                uHeightMin: { value: rc0.h5HeightRange[0] },
-                uHeightMax: { value: rc0.h5HeightRange[1] },
+                uVolumeSpacing: { value: initialRc.volumeSpacing },
+                uPointSize: { value: initialRc.h5PointSize },
+                uThreshold: { value: initialRc.h5Threshold },
+                uBrightness: { value: initialRc.h5Brightness },
+                uContrast: { value: initialRc.h5Contrast },
+                uOpacity: { value: initialRc.h5Opacity },
+                uSliceMin: { value: initialRc.h5SliceRange[0] },
+                uSliceMax: { value: initialRc.h5SliceRange[1] },
+                uWidthMin: { value: initialRc.h5WidthRange[0] },
+                uWidthMax: { value: initialRc.h5WidthRange[1] },
+                uHeightMin: { value: initialRc.h5HeightRange[0] },
+                uHeightMax: { value: initialRc.h5HeightRange[1] },
             },
             vertexShader,
             fragmentShader,
@@ -160,10 +164,10 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
         })
 
         const boundingBox = new THREE.Box3(
-            new THREE.Vector3(-width / 2, -rc0.volumeSpacing / 2, -height / 2),
-            new THREE.Vector3(width / 2, rc0.volumeSpacing / 2, height / 2),
+            new THREE.Vector3(-width / 2, -initialRc.volumeSpacing / 2, -height / 2),
+            new THREE.Vector3(width / 2, initialRc.volumeSpacing / 2, height / 2),
         )
-        const boxHelper = new THREE.Box3Helper(boundingBox, new THREE.Color(0x64ffc8))
+        const boxHelper = new THREE.Box3Helper(boundingBox, new THREE.Color(palette.tealBorderHex))
         scene.add(boxHelper)
 
         const points = new THREE.Points(geometry, material)
@@ -208,45 +212,59 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
             material.dispose()
             axes.dispose()
             boxHelper.dispose()
-            axisLabels.forEach((s) => {
-                s.material.map?.dispose()
-                s.material.dispose()
+            axisLabels.forEach((sprite) => {
+                sprite.material.map?.dispose()
+                sprite.material.dispose()
             })
             materialRef.current = null
             disposeBase()
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [vIndices, vIntensities, meta, fileKey])
+
+    const {
+        volumeSpacing,
+        h5PointSize,
+        h5Threshold,
+        h5Brightness,
+        h5Contrast,
+        h5Opacity,
+        h5SliceRange,
+        h5WidthRange,
+        h5HeightRange,
+    } = renderControls
+    const [sliceMin, sliceMax] = h5SliceRange
+    const [widthMin, widthMax] = h5WidthRange
+    const [heightMin, heightMax] = h5HeightRange
 
     useEffect(() => {
         const mat = materialRef.current
         if (!mat) return
-        mat.uniforms.uVolumeSpacing.value = rc.volumeSpacing
-        mat.uniforms.uPointSize.value = rc.h5PointSize
-        mat.uniforms.uThreshold.value = rc.h5Threshold
-        mat.uniforms.uBrightness.value = rc.h5Brightness
-        mat.uniforms.uContrast.value = rc.h5Contrast
-        mat.uniforms.uOpacity.value = rc.h5Opacity
-        mat.uniforms.uSliceMin.value = rc.h5SliceRange[0]
-        mat.uniforms.uSliceMax.value = rc.h5SliceRange[1]
-        mat.uniforms.uWidthMin.value = rc.h5WidthRange[0]
-        mat.uniforms.uWidthMax.value = rc.h5WidthRange[1]
-        mat.uniforms.uHeightMin.value = rc.h5HeightRange[0]
-        mat.uniforms.uHeightMax.value = rc.h5HeightRange[1]
+        mat.uniforms.uVolumeSpacing.value = volumeSpacing
+        mat.uniforms.uPointSize.value = h5PointSize
+        mat.uniforms.uThreshold.value = h5Threshold
+        mat.uniforms.uBrightness.value = h5Brightness
+        mat.uniforms.uContrast.value = h5Contrast
+        mat.uniforms.uOpacity.value = h5Opacity
+        mat.uniforms.uSliceMin.value = sliceMin
+        mat.uniforms.uSliceMax.value = sliceMax
+        mat.uniforms.uWidthMin.value = widthMin
+        mat.uniforms.uWidthMax.value = widthMax
+        mat.uniforms.uHeightMin.value = heightMin
+        mat.uniforms.uHeightMax.value = heightMax
         needsRenderRef.current = true
     }, [
-        rc.volumeSpacing,
-        rc.h5PointSize,
-        rc.h5Threshold,
-        rc.h5Brightness,
-        rc.h5Contrast,
-        rc.h5Opacity,
-        rc.h5SliceRange[0],
-        rc.h5SliceRange[1],
-        rc.h5WidthRange[0],
-        rc.h5WidthRange[1],
-        rc.h5HeightRange[0],
-        rc.h5HeightRange[1],
+        volumeSpacing,
+        h5PointSize,
+        h5Threshold,
+        h5Brightness,
+        h5Contrast,
+        h5Opacity,
+        sliceMin,
+        sliceMax,
+        widthMin,
+        widthMax,
+        heightMin,
+        heightMax,
     ])
 
     return <Box ref={containerRef} sx={{ width: '100%', height: '100%' }} />

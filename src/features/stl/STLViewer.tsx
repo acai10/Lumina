@@ -6,21 +6,33 @@ import { palette } from '../../shared/theme/palette'
 import { createScene } from '../../shared/three/sceneUtils'
 import { useViewerStore } from '../../app/store/viewerSlice'
 
+const HEMI_INTENSITY = 0.7
+const DIR_KEY_COLOR = 0xffffff
+const DIR_KEY_INTENSITY = 2.2
+const DIR_FILL_INTENSITY = 0.7
+const DIR_RIM_INTENSITY = 1.0
+const EDGE_THRESHOLD_ANGLE = 20
+const EDGE_OPACITY = 0.55
+
 interface STLViewerProps {
     file: File
     onError?: (msg: string) => void
 }
 
 function addLights(scene: THREE.Scene): void {
-    const hemi = new THREE.HemisphereLight(0x4466cc, 0x001122, 0.7)
+    const hemi = new THREE.HemisphereLight(
+        palette.hemiSkyHex,
+        palette.hemiGroundHex,
+        HEMI_INTENSITY,
+    )
     scene.add(hemi)
-    const key = new THREE.DirectionalLight(0xffffff, 2.2)
+    const key = new THREE.DirectionalLight(DIR_KEY_COLOR, DIR_KEY_INTENSITY)
     key.position.set(3, 4, 5)
     scene.add(key)
-    const fill = new THREE.DirectionalLight(0xaaccff, 0.7)
+    const fill = new THREE.DirectionalLight(palette.fillLightHex, DIR_FILL_INTENSITY)
     fill.position.set(-4, 1, 2)
     scene.add(fill)
-    const rim = new THREE.DirectionalLight(0xffc080, 1.0)
+    const rim = new THREE.DirectionalLight(palette.rimLightHex, DIR_RIM_INTENSITY)
     rim.position.set(0, -2, -4)
     scene.add(rim)
 }
@@ -90,14 +102,14 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
             meshRef.current = mesh
             materialRef.current = material
 
-            const boxHelper = new THREE.BoxHelper(mesh, new THREE.Color(0x64ffc8))
+            const boxHelper = new THREE.BoxHelper(mesh, new THREE.Color(palette.tealBorderHex))
             scene.add(boxHelper)
 
-            const edges = new THREE.EdgesGeometry(geometry, 20)
+            const edges = new THREE.EdgesGeometry(geometry, EDGE_THRESHOLD_ANGLE)
             const edgeMat = new THREE.LineBasicMaterial({
                 color: palette.edgeColorHex,
                 transparent: true,
-                opacity: 0.55,
+                opacity: EDGE_OPACITY,
             })
             const edgeLines = new THREE.LineSegments(edges, edgeMat)
             mesh.add(edgeLines)

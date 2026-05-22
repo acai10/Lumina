@@ -6,6 +6,8 @@ export interface AppNotification {
     severity: 'error' | 'success' | 'info'
 }
 
+export const DEFAULT_STL_OPACITY = 0.55
+
 export const defaultRenderControls: H5RenderControls = {
     volumeSpacing: 200,
     h5Threshold: 0.75,
@@ -54,7 +56,7 @@ const initialState = {
     h5PerFileStates: {} as Record<string, H5PerFileState>,
     isLoading: false,
     notification: null,
-    stlOpacity: 0.55,
+    stlOpacity: DEFAULT_STL_OPACITY,
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => ({
@@ -87,7 +89,9 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
         const { h5Files, h5PerFileStates, activeH5Index } = get()
         const fileKey = h5Files[index].name
         const newFiles = h5Files.filter((_, i) => i !== index)
-        const { [fileKey]: _removed, ...newStates } = h5PerFileStates
+        const newStates = Object.fromEntries(
+            Object.entries(h5PerFileStates).filter(([k]) => k !== fileKey),
+        ) as typeof h5PerFileStates
         if (newFiles.length === 0) {
             set({ h5Files: [], h5PerFileStates: {}, mode: 'none', activeH5Index: 0 })
             return
@@ -109,10 +113,10 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
         set({ h5Files: newFiles, activeH5Index: newActive })
     },
     saveH5CameraState: (fileKey, cam) =>
-        set((s) => ({
+        set((state) => ({
             h5PerFileStates: {
-                ...s.h5PerFileStates,
-                [fileKey]: { ...s.h5PerFileStates[fileKey], ...cam },
+                ...state.h5PerFileStates,
+                [fileKey]: { ...state.h5PerFileStates[fileKey], ...cam },
             },
         })),
     updateActiveRenderState: (patch) => {
