@@ -288,25 +288,14 @@ function findVolumeDataset(f: InstanceType<typeof H5File>): DatasetResult | null
     return search(f)
 }
 
-// Per-slice local min/max normalization → RGBA Uint8Array (no PNG encoding)
-function normalizeSlice(data: Float32Array, height: number, width: number): Uint8Array {
+function computeMinMax(data: Float32Array): [number, number] {
     let min = Infinity,
         max = -Infinity
     for (let i = 0; i < data.length; i++) {
         if (data[i] < min) min = data[i]
         if (data[i] > max) max = data[i]
     }
-    const range = max > min ? max - min : 1
-    const rgba = new Uint8Array(height * width * 4)
-    for (let i = 0; i < height * width; i++) {
-        const v = Math.round(((data[i] - min) / range) * 255)
-        const off = i * 4
-        rgba[off] = v
-        rgba[off + 1] = v
-        rgba[off + 2] = v
-        rgba[off + 3] = 255
-    }
-    return rgba
+    return [min, max]
 }
 
 export async function loadH5File(file: File): Promise<H5VolumeData> {
@@ -326,15 +315,13 @@ export async function loadH5File(file: File): Promise<H5VolumeData> {
             const [nSlices, height, width] = result.shape
             const sliceSize = height * width
 
-            const slices = Array.from({ length: nSlices }, (_, i) =>
-                normalizeSlice(
-                    result.data.slice(i * sliceSize, (i + 1) * sliceSize) as Float32Array,
-                    height,
-                    width,
-                ),
+            const slices = Array.from(
+                { length: nSlices },
+                (_, i) => result.data.slice(i * sliceSize, (i + 1) * sliceSize) as Float32Array,
             )
+            const sliceMinMax = slices.map(computeMinMax)
 
-            return { nSlices, height, width, slices }
+            return { nSlices, height, width, slices, sliceMinMax }
         } finally {
             f.close()
         }
@@ -345,4 +332,20 @@ export async function loadH5File(file: File): Promise<H5VolumeData> {
             // ignore cleanup errors
         }
     }
+}
+
+export function loadH5FileInWorker(file: File): Promise<H5VolumeData> {
+    return new Promise((resolve, reject) => {
+        const worker = new Worker(new URL('./h5.worker.ts', import.meta.url), { type: 'module' })
+        worker.onmessage = (e) => {
+            worker.terminate()
+            if (e.data.ok) resolve(e.data.result as H5VolumeData)
+            else reject(new Error(e.data.error))
+        }
+        worker.onerror = (err) => {
+            worker.terminate()
+            reject(new Error(err.message))
+        }
+        worker.postMessage({ file })
+    })
 }

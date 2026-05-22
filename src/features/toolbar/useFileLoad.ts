@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import type { ChangeEvent } from 'react'
-import { loadH5File } from '../../shared/h5/h5Reader'
+import { loadH5FileInWorker } from '../../shared/h5/h5Reader'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5FileEntry } from '../../shared/types/viewer.types'
 
@@ -15,7 +15,7 @@ export function useFileLoad() {
         setIsLoading(true)
         try {
             const results: H5FileEntry[] = await Promise.all(
-                files.map(async (f) => ({ name: f.name, data: await loadH5File(f) })),
+                files.map(async (f) => ({ name: f.name, data: await loadH5FileInWorker(f) })),
             )
             loadH5(results)
             setNotification({

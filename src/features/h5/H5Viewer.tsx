@@ -7,7 +7,8 @@ import { createScene } from '../../shared/three/sceneUtils'
 import type { H5Meta } from '../../shared/types/viewer.types'
 
 interface H5ViewerProps {
-    slices: Uint8Array[]
+    slices: Float32Array[]
+    sliceMinMax: [number, number][]
     meta: H5Meta
     fileKey: string
     onError?: (msg: string) => void
@@ -16,8 +17,30 @@ interface H5ViewerProps {
 const PLANE_OPACITY_ALL = 0.1
 const PLANE_OPACITY_SELECTED = 0.9
 
+const vertexShader = /* glsl */ `
+varying vec2 vUv;
+void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`
+
+const fragmentShader = /* glsl */ `
+uniform sampler2D uTexture;
+uniform float uMin;
+uniform float uMax;
+uniform float uOpacity;
+varying vec2 vUv;
+void main() {
+    float v = texture2D(uTexture, vUv).r;
+    float n = clamp((uMax > uMin) ? (v - uMin) / (uMax - uMin) : 0.0, 0.0, 1.0);
+    gl_FragColor = vec4(n, n, n, uOpacity);
+}
+`
+
 function buildSlicePlanes(
-    slices: Uint8Array[],
+    slices: Float32Array[],
+    sliceMinMax: [number, number][],
     volW: number,
     volH: number,
     totalDepth: number,
@@ -27,13 +50,25 @@ function buildSlicePlanes(
     const textures: THREE.DataTexture[] = []
     const n = slices.length
     for (let i = 0; i < n; i++) {
-        const texture = new THREE.DataTexture(slices[i], volW, volH, THREE.RGBAFormat)
+        const texture = new THREE.DataTexture(
+            slices[i],
+            volW,
+            volH,
+            THREE.RedFormat,
+            THREE.FloatType,
+        )
         texture.needsUpdate = true
         textures.push(texture)
-        const material = new THREE.MeshBasicMaterial({
-            map: texture,
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uTexture: { value: texture },
+                uMin: { value: sliceMinMax[i][0] },
+                uMax: { value: sliceMinMax[i][1] },
+                uOpacity: { value: PLANE_OPACITY_ALL },
+            },
+            vertexShader,
+            fragmentShader,
             transparent: true,
-            opacity: PLANE_OPACITY_ALL,
             depthWrite: false,
             side: THREE.DoubleSide,
         })
@@ -47,7 +82,7 @@ function buildSlicePlanes(
     return { planes, textures }
 }
 
-export default function H5Viewer({ slices, meta, fileKey }: H5ViewerProps) {
+export default function H5Viewer({ slices, sliceMinMax, meta, fileKey }: H5ViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const planesRef = useRef<THREE.Mesh[]>([])
     const { currentSliceIndex } = useViewerStore()
@@ -61,7 +96,14 @@ export default function H5Viewer({ slices, meta, fileKey }: H5ViewerProps) {
         const { width: volW, height: volH } = meta
         const totalDepth = volH * 0.8
 
-        const { planes, textures } = buildSlicePlanes(slices, volW, volH, totalDepth, scene)
+        const { planes, textures } = buildSlicePlanes(
+            slices,
+            sliceMinMax,
+            volW,
+            volH,
+            totalDepth,
+            scene,
+        )
         planesRef.current = planes
 
         const maxDim = Math.max(volW, volH, totalDepth)
@@ -96,13 +138,13 @@ export default function H5Viewer({ slices, meta, fileKey }: H5ViewerProps) {
             })
             planesRef.current = []
             planes.forEach((p) => {
-                ;(p.material as THREE.MeshBasicMaterial).dispose()
+                ;(p.material as THREE.ShaderMaterial).dispose()
                 p.geometry.dispose()
             })
             textures.forEach((t) => t.dispose())
             disposeBase()
         }
-    }, [slices, meta, fileKey])
+    }, [slices, sliceMinMax, meta, fileKey])
 
     // Update plane opacities when slice selection changes
     useEffect(() => {
@@ -110,16 +152,16 @@ export default function H5Viewer({ slices, meta, fileKey }: H5ViewerProps) {
         if (planes.length === 0) return
 
         planes.forEach((p, i) => {
-            const mat = p.material as THREE.MeshBasicMaterial
+            const mat = p.material as THREE.ShaderMaterial
             if (currentSliceIndex === null) {
                 p.visible = true
-                mat.opacity = PLANE_OPACITY_ALL
+                mat.uniforms.uOpacity.value = PLANE_OPACITY_ALL
             } else if (i === currentSliceIndex) {
                 p.visible = true
-                mat.opacity = PLANE_OPACITY_SELECTED
+                mat.uniforms.uOpacity.value = PLANE_OPACITY_SELECTED
             } else if (i > currentSliceIndex) {
                 p.visible = true
-                mat.opacity = PLANE_OPACITY_ALL
+                mat.uniforms.uOpacity.value = PLANE_OPACITY_ALL
             } else {
                 p.visible = false
             }

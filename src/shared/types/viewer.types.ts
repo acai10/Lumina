@@ -5,7 +5,8 @@ export interface H5Meta {
 }
 
 export interface H5VolumeData extends H5Meta {
-    slices: Uint8Array[]
+    slices: Float32Array[]
+    sliceMinMax: [number, number][]
 }
 
 export interface H5FileEntry {

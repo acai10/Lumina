@@ -10,4 +10,7 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['h5wasm'],
   },
+  worker: {
+    format: 'es',
+  },
 })

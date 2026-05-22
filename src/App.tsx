@@ -28,6 +28,7 @@ export default function App() {
                 {mode === 'h5' && activeH5 && (
                     <H5Viewer
                         slices={activeH5.data.slices}
+                        sliceMinMax={activeH5.data.sliceMinMax}
                         meta={activeH5.data}
                         fileKey={activeH5.name}
                         onError={handleViewerError}
