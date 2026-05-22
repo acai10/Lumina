@@ -36,8 +36,11 @@ export function createScene(container: HTMLElement, options: SceneOptions = {}):
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(fov, w / h, near, far)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
-    renderer.setPixelRatio(window.devicePixelRatio)
+    const renderer = new THREE.WebGLRenderer({
+        antialias: window.devicePixelRatio < 1.5,
+        powerPreference: 'high-performance',
+    })
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
     renderer.setSize(w, h)
     renderer.setClearColor(palette.bgDeepHex)
     if (toneMapping !== undefined) renderer.toneMapping = toneMapping
@@ -47,7 +50,7 @@ export function createScene(container: HTMLElement, options: SceneOptions = {}):
 
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
-    controls.dampingFactor = 0.05
+    controls.dampingFactor = 0.15
 
     const handleResize = () => {
         const rw = container.clientWidth

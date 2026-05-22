@@ -81,6 +81,7 @@ void main() {
 export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5ViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const materialRef = useRef<THREE.ShaderMaterial | null>(null)
+    const needsRenderRef = useRef(true)
 
     const rc = useViewerStore(
         (s) => s.h5PerFileStates[fileKey]?.renderControls ?? defaultRenderControls,
@@ -184,11 +185,15 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
         camera.updateProjectionMatrix()
         controls.update()
 
+        needsRenderRef.current = true
         let animId: number
         const animate = () => {
             animId = requestAnimationFrame(animate)
-            controls.update()
-            renderer.render(scene, camera)
+            const changed = controls.update()
+            if (changed || needsRenderRef.current) {
+                renderer.render(scene, camera)
+                needsRenderRef.current = false
+            }
         }
         animate()
 
@@ -228,6 +233,7 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
         mat.uniforms.uWidthMax.value = rc.h5WidthRange[1]
         mat.uniforms.uHeightMin.value = rc.h5HeightRange[0]
         mat.uniforms.uHeightMax.value = rc.h5HeightRange[1]
+        needsRenderRef.current = true
     }, [
         rc.volumeSpacing,
         rc.h5PointSize,
