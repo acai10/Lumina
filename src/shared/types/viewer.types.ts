@@ -4,13 +4,13 @@ export interface H5Meta {
     width: number
 }
 
-export interface H5UploadResponse extends H5Meta {
-    slices: string[]
+export interface H5VolumeData extends H5Meta {
+    slices: Uint8Array[]
 }
 
 export interface H5FileEntry {
     name: string
-    data: H5UploadResponse
+    data: H5VolumeData
 }
 
 export interface H5PerFileState {

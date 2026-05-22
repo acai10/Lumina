@@ -1,6 +1,6 @@
 # Lumina — OCT & STL Viewer
 
-Browser-based medical imaging viewer. Supports loading OCT volumetric data (`.h5`) and 3D surface meshes (`.stl`) directly in the browser — no installation required.
+Browser-based medical imaging viewer. Supports loading OCT volumetric data (`.h5`) and 3D surface meshes (`.stl`) directly in the browser — no installation required, no server needed.
 
 ## Supported File Formats
 
@@ -13,243 +13,94 @@ Browser-based medical imaging viewer. Supports loading OCT volumetric data (`.h5
 
 ## Architecture
 
-```
+Pure frontend SPA — all HDF5 parsing and image encoding runs locally in the browser via WebAssembly. No backend, no server, no Docker required.
+
+```text
 Lumina/
-├── docker-compose.yml
-├── Makefile
 ├── .gitignore
+├── .prettierrc.json
 ├── CLAUDE.md               # Claude Code project guide
 ├── README.md
-├── frontend/               # React + TypeScript + Vite + MUI + Three.js
-│   ├── Dockerfile
-│   ├── package.json
-│   ├── vite.config.ts
-│   └── src/
-│       ├── app/
-│       │   ├── store/      # Zustand state (viewerSlice)
-│       │   └── App.styles.ts  # Shared button glow styles
-│       ├── features/
-│       │   ├── stl/        # STLViewer
-│       │   └── h5/         # H5Viewer, SliceSlider, SliceSlider.styles.ts
-│       └── shared/
-│           ├── api/        # octAPI (HTTP client)
-│           ├── theme/      # palette.ts, theme.ts
-│           └── types/      # viewer.types.ts
-└── backend/                # Python FastAPI
-    ├── Dockerfile
-    ├── pyproject.toml      # Abhängigkeiten + Tool-Konfiguration
-    ├── uv.lock             # Eingefrorener Dependency-Graph (committen!)
-    ├── main.py
-    └── src/
-        ├── routers/        # h5 (upload + slice)
-        └── imaging/        # h5_reader (HDF5 → numpy → PNG/base64)
-```
-
-Frontend and backend share no code. All communication is via HTTP REST.
-
----
-
-## Option A — Docker (empfohlen)
-
-### Voraussetzungen
-
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installiert und gestartet
-
-### Starten
-
-```bash
-docker compose up --build
-```
-
-Beim ersten Start werden alle Images gebaut und Abhängigkeiten installiert. Danach reicht `docker compose up`.
-
-| Service  | URL                        |
-|----------|----------------------------|
-| Frontend | http://localhost:5173      |
-| Backend  | http://localhost:8000      |
-| API Docs | http://localhost:8000/docs |
-
-### Stoppen
-
-```bash
-docker compose down
-```
-
-### Formatierung (beide Services gleichzeitig)
-
-```bash
-make format
+├── eslint.config.js
+├── index.html
+├── package.json
+├── tsconfig.json
+├── tsconfig.node.json
+├── vite.config.ts
+└── src/
+    ├── App.tsx
+    ├── main.tsx
+    ├── app/
+    │   └── store/          # Zustand state (viewerSlice)
+    ├── features/
+    │   ├── stl/            # STLViewer
+    │   ├── h5/             # H5Viewer, SliceSlider
+    │   └── toolbar/        # Toolbar, useFileUpload
+    └── shared/
+        ├── h5/             # h5Reader (HDF5 → Float32Array → PNG/base64 via h5wasm)
+        ├── theme/          # palette.ts, theme.ts
+        └── types/          # viewer.types.ts
 ```
 
 ---
 
-## Option B — Lokal ohne Docker
+## Setup
 
 ### Voraussetzungen
 
-#### macOS (Homebrew)
+Node.js 20+ — [nodejs.org](https://nodejs.org/)
 
 ```bash
-# Homebrew installieren (falls noch nicht vorhanden)
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Node.js + npm installieren
+# macOS (Homebrew)
 brew install node
-
-# uv installieren (Python-Paketmanager)
-brew install uv
 ```
 
-#### Windows / Linux
+### Abhängigkeiten installieren & starten
 
 ```bash
-# Node.js 20+ von https://nodejs.org/ installieren
-
-# uv installieren
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
----
-
-### Backend einrichten
-
-Das Backend verwendet [uv](https://docs.astral.sh/uv/) als Paketmanager.  
-`uv.lock` ist im Repository eingecheckt und stellt sicher, dass alle Entwickler exakt dieselben Paketversionen verwenden.
-
-```bash
-cd backend
-
-# Virtuelle Umgebung erstellen und alle Abhängigkeiten aus uv.lock installieren
-uv sync
-```
-
-`uv sync` erledigt automatisch:
-1. `.venv/` erstellen (falls nicht vorhanden)
-2. Alle Pakete aus `uv.lock` installieren — keine Versionsunterschiede zwischen Entwicklern
-
-#### Backend starten
-
-```bash
-cd backend
-uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
-
-`uv run` führt den Befehl automatisch in der projekteigenen venv aus — kein manuelles `source .venv/bin/activate` nötig.
-
-Backend läuft unter http://localhost:8000  
-API-Dokumentation: http://localhost:8000/docs
-
-#### Backend formatieren
-
-```bash
-cd backend
-uv run black . && uv run isort .
-```
-
-#### Abhängigkeit hinzufügen
-
-```bash
-# Runtime-Abhängigkeit
-cd backend
-uv add <paket>
-
-# Nur für Entwicklung (dev-Gruppe)
-uv add --dev <paket>
-```
-
-`uv add` aktualisiert `pyproject.toml` und `uv.lock` automatisch.  
-Die aktualisierte `uv.lock` danach committen, damit alle Entwickler dieselbe Version erhalten.
-
-#### Lockfile aktualisieren (ohne neue Pakete hinzuzufügen)
-
-```bash
-cd backend
-uv lock --upgrade
-uv sync
-```
-
----
-
-### Frontend einrichten
-
-```bash
-cd frontend
-
-# Abhängigkeiten installieren
 npm install
-```
-
-#### Frontend starten
-
-```bash
-cd frontend
 npm run dev
 ```
 
-Frontend läuft unter http://localhost:5173
+App läuft unter **<http://localhost:5173>**
 
-#### Frontend formatieren
-
-```bash
-cd frontend
-npm run format
-```
-
-#### Frontend für Produktion bauen
+### Produktion-Build (statisch, deploybar)
 
 ```bash
-cd frontend
 npm run build
 ```
 
+Erzeugt `dist/` — deploybar auf GitHub Pages, Netlify, Vercel oder jedem anderen statischen Hosting. Kein Server nötig.
+
 ---
 
-### Beides gleichzeitig formatieren
+## Entwicklung
 
 ```bash
-make format
+npm run dev      # Dev-Server (port 5173, Hot Reload)
+npm run build    # TypeScript-Check + Vite-Build
+npm run lint     # ESLint
+npm run format   # Prettier
 ```
 
-Ruft `uv run black . && uv run isort .` im Backend und `npm run format` im Frontend auf.
+---
+
+## Abhängigkeiten
+
+| Paket                                | Zweck                                   |
+|--------------------------------------|-----------------------------------------|
+| `react` + `react-dom`                | UI-Framework                            |
+| `three`                              | 3D-Rendering (STL + H5 Viewer)          |
+| `@mui/material`                      | Komponenten-Bibliothek                  |
+| `@emotion/react` + `@emotion/styled` | MUI-Styling-Engine                      |
+| `zustand`                            | State Management                        |
+| `h5wasm`                             | HDF5-Parsing im Browser via WebAssembly |
+| `vite`                               | Build-Tool + Dev-Server                 |
+| `typescript`                         | Typsicherheit                           |
+| `prettier`                           | Formatierung                            |
 
 ---
 
-### IDE-Einrichtung (VS Code)
+## Browser-Kompatibilität
 
-Die Datei `.vscode/settings.json` ist bereits im Repository enthalten und zeigt automatisch auf die Backend-venv unter `backend/.venv`.  
-Pylance löst alle Python-Imports korrekt auf, sobald der Workspace-Root `Lumina/` geöffnet ist.
-
-Empfohlene Extensions:
-- [Pylance](https://marketplace.visualstudio.com/items?itemName=ms-python.vscode-pylance) — Python-Sprachserver
-- [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) — TypeScript-Linting
-- [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode) — TypeScript-Formatierung
-
----
-
-## Abhängigkeiten im Überblick
-
-### Backend (`pyproject.toml` — verwaltet mit uv)
-
-| Paket                | Zweck                                    |
-|----------------------|------------------------------------------|
-| `fastapi`            | REST-API-Framework                       |
-| `uvicorn[standard]`  | ASGI-Server                              |
-| `python-multipart`   | Datei-Upload                             |
-| `h5py`               | HDF5-Dateien lesen                       |
-| `numpy`              | Array-Verarbeitung                       |
-| `Pillow`             | PNG-Encoding für Base64-Antworten        |
-| `black` *(dev)*      | Python-Formatter                         |
-| `isort` *(dev)*      | Import-Sortierung                        |
-
-### Frontend (`package.json`)
-
-| Paket                                | Zweck                          |
-|--------------------------------------|--------------------------------|
-| `react` + `react-dom`                | UI-Framework                   |
-| `three`                              | 3D-Rendering (STL + H5 Viewer) |
-| `@mui/material`                      | Komponenten-Bibliothek         |
-| `@emotion/react` + `@emotion/styled` | MUI-Styling-Engine             |
-| `zustand`                            | State Management               |
-| `vite`                               | Build-Tool + Dev-Server        |
-| `typescript`                         | Typsicherheit                  |
-| `prettier`                           | Formatierung                   |
+Benötigt WebAssembly und OffscreenCanvas — unterstützt von allen modernen Browsern (Chrome 69+, Firefox 105+, Safari 16.4+).

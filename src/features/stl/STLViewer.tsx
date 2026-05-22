@@ -1,10 +1,9 @@
-// CHANGED: renderer.setClearColor uses palette.bgDeepHex — same color as H5Viewer
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Box } from '@mui/material'
 import { palette } from '../../shared/theme/palette'
+import { createScene } from '../../shared/three/sceneUtils'
 
 interface STLViewerProps {
     file: File
@@ -36,25 +35,13 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
         const container = containerRef.current
         if (!container) return
 
-        const width = container.clientWidth
-        const height = container.clientHeight
-
-        const scene = new THREE.Scene()
-        const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1e7)
-        const renderer = new THREE.WebGLRenderer({ antialias: true })
-        renderer.setPixelRatio(window.devicePixelRatio)
-        renderer.setSize(width, height)
-        renderer.setClearColor(palette.bgDeepHex)
-        renderer.toneMapping = THREE.ACESFilmicToneMapping
-        renderer.toneMappingExposure = 1.1
-        renderer.outputColorSpace = THREE.SRGBColorSpace
-        container.appendChild(renderer.domElement)
+        const { scene, camera, renderer, controls, disposeBase } = createScene(container, {
+            toneMapping: THREE.ACESFilmicToneMapping,
+            toneMappingExposure: 1.1,
+            outputColorSpace: THREE.SRGBColorSpace,
+        })
 
         addLights(scene)
-
-        const controls = new OrbitControls(camera, renderer.domElement)
-        controls.enableDamping = true
-        controls.dampingFactor = 0.05
 
         const loader = new STLLoader()
         const reader = new FileReader()
@@ -132,20 +119,9 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
         }
         animate()
 
-        const handleResize = () => {
-            const w = container.clientWidth
-            const h = container.clientHeight
-            camera.aspect = w / h
-            camera.updateProjectionMatrix()
-            renderer.setSize(w, h)
-        }
-        window.addEventListener('resize', handleResize)
-
         return () => {
             reader.abort()
             cancelAnimationFrame(animId)
-            window.removeEventListener('resize', handleResize)
-            controls.dispose()
             scene.traverse((obj) => {
                 if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments) {
                     obj.geometry.dispose()
@@ -153,8 +129,7 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
                     else obj.material.dispose()
                 }
             })
-            renderer.dispose()
-            container.removeChild(renderer.domElement)
+            disposeBase()
         }
     }, [file, onError])
 

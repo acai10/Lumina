@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Button, CircularProgress, Menu, MenuItem, Stack } from '@mui/material'
 import { useViewerStore } from '../../app/store/viewerSlice'
-import { useFileUpload } from './useFileUpload'
+import { useFileLoad } from './useFileLoad'
 import {
     ToolbarRoot,
     FileNameText,
@@ -20,10 +20,10 @@ export default function Toolbar() {
         stlInputRef,
         h5InputRef,
         h5FolderInputRef,
-        handleSTLUpload,
-        handleH5Upload,
-        handleH5FolderUpload,
-    } = useFileUpload()
+        handleSTLLoad,
+        handleH5Load,
+        handleH5FolderLoad,
+    } = useFileLoad()
 
     const [h5MenuAnchor, setH5MenuAnchor] = useState<HTMLElement | null>(null)
 
@@ -46,7 +46,7 @@ export default function Toolbar() {
                 type="file"
                 accept=".stl"
                 style={{ display: 'none' }}
-                onChange={handleSTLUpload}
+                onChange={handleSTLLoad}
             />
             <input
                 ref={h5InputRef}
@@ -54,14 +54,14 @@ export default function Toolbar() {
                 accept=".h5"
                 multiple
                 style={{ display: 'none' }}
-                onChange={handleH5Upload}
+                onChange={handleH5Load}
             />
             <input
                 ref={h5FolderInputRef}
                 type="file"
                 {...{ webkitdirectory: '' }}
                 style={{ display: 'none' }}
-                onChange={handleH5FolderUpload}
+                onChange={handleH5FolderLoad}
             />
 
             {isLoading ? (

@@ -1,29 +1,31 @@
 import { useRef } from 'react'
 import type { ChangeEvent } from 'react'
-import { uploadH5 } from '../../shared/api/octAPI'
+import { loadH5File } from '../../shared/h5/h5Reader'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5FileEntry } from '../../shared/types/viewer.types'
 
-export function useFileUpload() {
+export function useFileLoad() {
     const { setMode, setStlFile, loadH5, setIsLoading, setNotification } = useViewerStore()
 
     const stlInputRef = useRef<HTMLInputElement>(null)
     const h5InputRef = useRef<HTMLInputElement>(null)
     const h5FolderInputRef = useRef<HTMLInputElement>(null)
 
-    const _performH5Upload = async (uploadFn: () => Promise<H5FileEntry[]>) => {
+    const processH5Files = async (files: File[]) => {
         setIsLoading(true)
         try {
-            const results = await uploadFn()
+            const results: H5FileEntry[] = await Promise.all(
+                files.map(async (f) => ({ name: f.name, data: await loadH5File(f) })),
+            )
             loadH5(results)
             setNotification({
-                message: results.length === 1 ? 'File added' : `${results.length} files added`,
+                message: results.length === 1 ? 'File loaded' : `${results.length} files loaded`,
                 severity: 'success',
             })
         } catch (err) {
-            console.error('H5 upload failed:', err)
+            console.error('H5 processing failed:', err)
             setNotification({
-                message: err instanceof Error ? err.message : 'Upload failed.',
+                message: err instanceof Error ? err.message : 'Failed to load file.',
                 severity: 'error',
             })
         } finally {
@@ -31,7 +33,7 @@ export function useFileUpload() {
         }
     }
 
-    const handleSTLUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const handleSTLLoad = (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (!file) return
         e.target.value = ''
@@ -39,32 +41,28 @@ export function useFileUpload() {
         setMode('stl')
     }
 
-    const handleH5Upload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const handleH5Load = async (e: ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files ?? [])
-        if (files.length === 0) return
         e.target.value = ''
-        await _performH5Upload(() =>
-            Promise.all(files.map(async (f) => ({ name: f.name, data: await uploadH5(f) }))),
-        )
+        if (files.length === 0) return
+        await processH5Files(files)
     }
 
-    const handleH5FolderUpload = async (e: ChangeEvent<HTMLInputElement>) => {
-        const all = Array.from(e.target.files ?? []).filter((f) =>
+    const handleH5FolderLoad = async (e: ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files ?? []).filter((f) =>
             f.name.toLowerCase().endsWith('.h5'),
         )
         e.target.value = ''
-        if (all.length === 0) return
-        await _performH5Upload(() =>
-            Promise.all(all.map(async (f) => ({ name: f.name, data: await uploadH5(f) }))),
-        )
+        if (files.length === 0) return
+        await processH5Files(files)
     }
 
     return {
         stlInputRef,
         h5InputRef,
         h5FolderInputRef,
-        handleSTLUpload,
-        handleH5Upload,
-        handleH5FolderUpload,
+        handleSTLLoad,
+        handleH5Load,
+        handleH5FolderLoad,
     }
 }
