@@ -19,9 +19,9 @@ export function useFilterParams() {
                 case 'gaussian':
                     return { sigma: gaussianSigma }
                 case 'median':
-                    return { radius: medianRadius }
+                    return { size: medianRadius }
                 case 'lee':
-                    return { window_size: leeWindow }
+                    return { window: leeWindow }
                 case 'bm3d':
                     return { sigma_psd: bm3dSigma }
                 case 'normalize':
