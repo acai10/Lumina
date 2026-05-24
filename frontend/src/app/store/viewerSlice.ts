@@ -1,6 +1,5 @@
 import { create } from 'zustand'
-import type { H5FileEntry, H5PerFileState, H5RenderControls, FilterParams } from '../../shared/types/viewer.types'
-import { reprocessH5InWorker } from '../../shared/h5/h5Reader'
+import type { H5FileEntry, H5PerFileState, H5RenderControls } from '../../shared/types/viewer.types'
 
 export interface AppNotification {
     message: string
@@ -19,7 +18,6 @@ export const defaultRenderControls: H5RenderControls = {
     h5SliceRange: [0, 512],
     h5WidthRange: [0, 250],
     h5HeightRange: [0, 250],
-    filterParams: { type: 'none' },
 }
 
 interface ViewerState {
@@ -43,7 +41,6 @@ interface ViewerState {
         cam: Pick<H5PerFileState, 'cameraPosition' | 'cameraQuaternion' | 'controlsTarget'>,
     ) => void
     updateActiveRenderState: (patch: Partial<H5RenderControls>) => void
-    reprocessActiveH5: (filterParams: FilterParams) => void
     setIsLoading: (loading: boolean) => void
     setNotification: (n: AppNotification) => void
     clearNotification: () => void
@@ -74,10 +71,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
         const newActiveIndex = h5Files.length
         const newStates = { ...h5PerFileStates }
         newFiles.forEach((f) => {
-            newStates[f.name] = {
-                renderControls: { ...defaultRenderControls },
-                isReprocessing: false,
-            }
+            newStates[f.name] = { renderControls: { ...defaultRenderControls } }
         })
         set({
             h5Files: updatedFiles,
@@ -129,69 +123,13 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
         const { h5Files, activeH5Index, h5PerFileStates } = get()
         const fileKey = h5Files[activeH5Index]?.name
         if (!fileKey) return
-        const current = h5PerFileStates[fileKey] ?? {
-            renderControls: { ...defaultRenderControls },
-            isReprocessing: false,
-        }
+        const current = h5PerFileStates[fileKey] ?? { renderControls: { ...defaultRenderControls } }
         set({
             h5PerFileStates: {
                 ...h5PerFileStates,
                 [fileKey]: { ...current, renderControls: { ...current.renderControls, ...patch } },
             },
         })
-    },
-    reprocessActiveH5: (filterParams) => {
-        const { h5Files, activeH5Index, h5PerFileStates } = get()
-        const activeFile = h5Files[activeH5Index]
-        if (!activeFile) return
-        const fileKey = activeFile.name
-        const { nSlices, height, width } = activeFile.data
-        const dims: [number, number, number] = [nSlices, height, width]
-
-        const current = h5PerFileStates[fileKey] ?? {
-            renderControls: { ...defaultRenderControls },
-            isReprocessing: false,
-        }
-        set({
-            h5PerFileStates: {
-                ...h5PerFileStates,
-                [fileKey]: { ...current, isReprocessing: true },
-            },
-        })
-
-        reprocessH5InWorker(activeFile.sourceFile, dims, filterParams)
-            .then((newData) => {
-                const state = get()
-                const updatedFiles = state.h5Files.map((f) =>
-                    f.name === fileKey ? { ...f, data: newData } : f,
-                )
-                const perFile = state.h5PerFileStates[fileKey]
-                set({
-                    h5Files: updatedFiles,
-                    h5PerFileStates: {
-                        ...state.h5PerFileStates,
-                        [fileKey]: {
-                            ...perFile,
-                            isReprocessing: false,
-                            renderControls: { ...perFile.renderControls, filterParams },
-                        },
-                    },
-                })
-            })
-            .catch((err) => {
-                const state = get()
-                const perFile = state.h5PerFileStates[fileKey]
-                set({
-                    h5PerFileStates: {
-                        ...state.h5PerFileStates,
-                        [fileKey]: { ...perFile, isReprocessing: false },
-                    },
-                    notification: {
-                        message: `Fehler beim Verarbeiten: ${String(err)}`,
-                        severity: 'error',
-                    },
-                })
-            })
     },
     setIsLoading: (isLoading) => set({ isLoading }),
     setNotification: (notification) => set({ notification }),

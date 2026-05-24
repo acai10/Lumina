@@ -1,60 +1,12 @@
 import { ready, File as H5File } from 'h5wasm'
-import type { H5VolumeData, FilterParams } from '../types/viewer.types'
-import { applyFilter } from './octFilters'
+import type { H5VolumeData } from '../types/viewer.types'
 
 const VOLUME_DIMS: [number, number, number] = [512, 250, 250]
 const PRE_FILTER_THRESHOLD = 0.05
 
-function buildVolumeData(
-    data: Float32Array,
-    dims: [number, number, number],
-    filterParams: FilterParams,
-): H5VolumeData {
-    const [nSlices, height, width] = dims
-    const sliceSize = height * width
-    const expected = nSlices * sliceSize
-    const tmpIndices = new Float32Array(expected)
-    const tmpIntensities = new Float32Array(expected)
-    let count = 0
-
-    for (let s = 0; s < nSlices; s++) {
-        const offset = s * sliceSize
-        let min = Infinity,
-            max = -Infinity
-        for (let i = 0; i < sliceSize; i++) {
-            const v = data[offset + i]
-            if (v < min) min = v
-            if (v > max) max = v
-        }
-        const range = max > min ? max - min : 1
-
-        // Normalize this slice into a temporary buffer
-        const normalized = new Float32Array(sliceSize)
-        for (let i = 0; i < sliceSize; i++) {
-            normalized[i] = (data[offset + i] - min) / range
-        }
-
-        // Apply spatial filter per slice
-        const filtered = applyFilter(normalized, width, height, filterParams)
-
-        for (let i = 0; i < sliceSize; i++) {
-            if (filtered[i] >= PRE_FILTER_THRESHOLD) {
-                tmpIndices[count] = offset + i
-                tmpIntensities[count] = filtered[i]
-                count++
-            }
-        }
-    }
-
-    const vIndices = tmpIndices.slice(0, count)
-    const vIntensities = tmpIntensities.slice(0, count)
-    return { nSlices, height, width, vIndices, vIntensities }
-}
-
 export async function loadH5File(
     file: File,
     dims: [number, number, number] = VOLUME_DIMS,
-    filterParams: FilterParams = { type: 'none' },
 ): Promise<H5VolumeData> {
     const { FS } = await ready
     const buf = await file.arrayBuffer()
@@ -99,7 +51,35 @@ export async function loadH5File(
                 )
             }
 
-            return buildVolumeData(data, dims, filterParams)
+            const sliceSize = height * width
+            const tmpIndices = new Float32Array(expected)
+            const tmpIntensities = new Float32Array(expected)
+            let count = 0
+
+            for (let s = 0; s < nSlices; s++) {
+                const offset = s * sliceSize
+                let min = Infinity,
+                    max = -Infinity
+                for (let i = 0; i < sliceSize; i++) {
+                    const v = data[offset + i]
+                    if (v < min) min = v
+                    if (v > max) max = v
+                }
+                const range = max > min ? max - min : 1
+                for (let i = 0; i < sliceSize; i++) {
+                    const normalized = (data[offset + i] - min) / range
+                    if (normalized >= PRE_FILTER_THRESHOLD) {
+                        tmpIndices[count] = offset + i
+                        tmpIntensities[count] = normalized
+                        count++
+                    }
+                }
+            }
+
+            const vIndices = tmpIndices.slice(0, count)
+            const vIntensities = tmpIntensities.slice(0, count)
+
+            return { nSlices, height, width, vIndices, vIntensities }
         } finally {
             f.close()
         }
@@ -127,26 +107,6 @@ export function loadH5FileInWorker(
             worker.terminate()
             reject(new Error(err.message))
         }
-        worker.postMessage({ type: 'LOAD', file, dims })
-    })
-}
-
-export function reprocessH5InWorker(
-    file: File,
-    dims: [number, number, number] = VOLUME_DIMS,
-    filterParams: FilterParams,
-): Promise<H5VolumeData> {
-    return new Promise((resolve, reject) => {
-        const worker = new Worker(new URL('./h5.worker.ts', import.meta.url), { type: 'module' })
-        worker.onmessage = (e) => {
-            worker.terminate()
-            if (e.data.ok) resolve(e.data.result as H5VolumeData)
-            else reject(new Error(e.data.error))
-        }
-        worker.onerror = (err) => {
-            worker.terminate()
-            reject(new Error(err.message))
-        }
-        worker.postMessage({ type: 'REPROCESS', file, dims, filterParams })
+        worker.postMessage({ file, dims })
     })
 }
