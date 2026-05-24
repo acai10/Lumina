@@ -1,9 +1,30 @@
 import { useState } from 'react'
 import { uploadVolume, createJob, pollJob, fetchResultVolume } from '../../shared/api/client'
-import { normalizeVolume } from '../../shared/h5/h5Normalizer'
 import { loadH5FileInWorker, PRE_FILTER_THRESHOLD } from '../../shared/h5/h5Reader'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { FilterStep } from '../../shared/api/types'
+import type { H5VolumeData } from '../../shared/types/viewer.types'
+
+function normalizeInWorker(
+    raw: Float32Array,
+    shape: [number, number, number],
+): Promise<H5VolumeData> {
+    return new Promise((resolve, reject) => {
+        const worker = new Worker(new URL('../../shared/h5/h5.worker.ts', import.meta.url), {
+            type: 'module',
+        })
+        worker.onmessage = (e) => {
+            worker.terminate()
+            if (e.data.ok) resolve(e.data.result as H5VolumeData)
+            else reject(new Error(e.data.error))
+        }
+        worker.onerror = (err) => {
+            worker.terminate()
+            reject(new Error(err.message))
+        }
+        worker.postMessage({ raw, dims: shape, threshold: PRE_FILTER_THRESHOLD }, [raw.buffer])
+    })
+}
 
 export type FilterPhase = 'idle' | 'uploading' | 'processing' | 'downloading' | 'reverting'
 
@@ -43,7 +64,7 @@ export function useFilterJob(fileKey: string, sourceFile: File) {
 
             setPhase('downloading')
             const { data, shape } = await fetchResultVolume(job_id, 'phase_correlation')
-            const newData = normalizeVolume(data, shape, PRE_FILTER_THRESHOLD)
+            const newData = await normalizeInWorker(data, shape)
             applyBackendFilter(fileKey, newData)
             setNotification({ message: 'Filter applied', severity: 'success' })
         } catch (err) {

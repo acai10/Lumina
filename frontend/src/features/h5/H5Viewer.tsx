@@ -8,6 +8,35 @@ import type { H5Meta } from '../../shared/types/viewer.types'
 
 const AXIS_LABEL_CANVAS_SIZE = 64
 const AXIS_LABEL_FONT = 'bold 52px sans-serif'
+// Firefox caps drawArraysInstanced at 30 M vertices per draw call; leave headroom
+const MAX_VERTS_PER_DRAW = 28_000_000
+
+// vIntensities is sorted descending; returns count of elements >= threshold
+function countAboveThreshold(arr: Float32Array, threshold: number): number {
+    let lo = 0,
+        hi = arr.length
+    while (lo < hi) {
+        const mid = (lo + hi) >>> 1
+        if (arr[mid] >= threshold) lo = mid + 1
+        else hi = mid
+    }
+    return lo
+}
+
+function applyDrawRanges(
+    geos: THREE.BufferGeometry[],
+    vIntensities: Float32Array,
+    threshold: number,
+) {
+    const total = countAboveThreshold(vIntensities, threshold)
+    let remaining = total
+    for (const geo of geos) {
+        const chunkSize = (geo.attributes['vIntensity'] as THREE.BufferAttribute).count
+        const draw = Math.min(chunkSize, remaining)
+        geo.setDrawRange(0, draw)
+        remaining = Math.max(0, remaining - draw)
+    }
+}
 
 interface H5ViewerProps {
     vIndices: Float32Array
@@ -85,6 +114,7 @@ void main() {
 export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5ViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const materialRef = useRef<THREE.ShaderMaterial | null>(null)
+    const chunkGeosRef = useRef<THREE.BufferGeometry[]>([])
     const needsRenderRef = useRef(true)
 
     const renderControls = useViewerStore(
@@ -133,11 +163,6 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
             return sprite
         })
 
-        const geometry = new THREE.BufferGeometry()
-        geometry.setAttribute('vIndex', new THREE.BufferAttribute(vIndices, 1))
-        geometry.setAttribute('vIntensity', new THREE.BufferAttribute(vIntensities, 1))
-        geometry.setDrawRange(0, vIndices.length)
-
         const material = new THREE.ShaderMaterial({
             glslVersion: THREE.GLSL3,
             uniforms: {
@@ -170,9 +195,24 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
         const boxHelper = new THREE.Box3Helper(boundingBox, new THREE.Color(palette.tealBorderHex))
         scene.add(boxHelper)
 
-        const points = new THREE.Points(geometry, material)
-        points.frustumCulled = false
-        scene.add(points)
+        chunkGeosRef.current = []
+        for (let offset = 0; offset < vIndices.length; offset += MAX_VERTS_PER_DRAW) {
+            const count = Math.min(MAX_VERTS_PER_DRAW, vIndices.length - offset)
+            const geo = new THREE.BufferGeometry()
+            geo.setAttribute(
+                'vIndex',
+                new THREE.BufferAttribute(vIndices.subarray(offset, offset + count), 1),
+            )
+            geo.setAttribute(
+                'vIntensity',
+                new THREE.BufferAttribute(vIntensities.subarray(offset, offset + count), 1),
+            )
+            const chunk = new THREE.Points(geo, material)
+            chunk.frustumCulled = false
+            scene.add(chunk)
+            chunkGeosRef.current.push(geo)
+        }
+        applyDrawRanges(chunkGeosRef.current, vIntensities, initialRc.h5Threshold)
         materialRef.current = material
 
         const saved = useViewerStore.getState().h5PerFileStates[fileKey]
@@ -189,6 +229,13 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
         camera.updateProjectionMatrix()
         controls.update()
 
+        // OrbitControls.update() can return false for sub-EPS scroll increments (trackpad);
+        // this listener guarantees one render after every wheel event regardless.
+        const onWheel = () => {
+            needsRenderRef.current = true
+        }
+        renderer.domElement.addEventListener('wheel', onWheel, { passive: true })
+
         needsRenderRef.current = true
         let animId: number
         const animate = () => {
@@ -202,6 +249,7 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
         animate()
 
         return () => {
+            renderer.domElement.removeEventListener('wheel', onWheel)
             cancelAnimationFrame(animId)
             useViewerStore.getState().saveH5CameraState(fileKey, {
                 cameraPosition: camera.position.toArray() as [number, number, number],
@@ -213,6 +261,7 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
                 sprite.material.dispose()
             })
             materialRef.current = null
+            chunkGeosRef.current = []
             disposeSceneGeometry(scene)
             disposeBase()
         }
@@ -239,6 +288,7 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
         mat.uniforms.uVolumeSpacing.value = volumeSpacing
         mat.uniforms.uPointSize.value = h5PointSize
         mat.uniforms.uThreshold.value = h5Threshold
+        applyDrawRanges(chunkGeosRef.current, vIntensities, h5Threshold)
         mat.uniforms.uBrightness.value = h5Brightness
         mat.uniforms.uContrast.value = h5Contrast
         mat.uniforms.uOpacity.value = h5Opacity

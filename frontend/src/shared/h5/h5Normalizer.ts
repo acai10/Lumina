@@ -32,11 +32,41 @@ export function normalizeVolume(
         }
     }
 
-    return {
-        nSlices,
-        height,
-        width,
-        vIndices: tmpIndices.slice(0, count),
-        vIntensities: tmpIntensities.slice(0, count),
+    // Sort by intensity descending (2-pass radix sort, O(n)) so setDrawRange(0, N) gives the N
+    // brightest points. Using Uint32Array avoids the GC overhead of a regular JS Array.
+    const BITS = 12
+    const BUCKETS = 1 << BITS // 4096 per pass
+    const MASK = BUCKETS - 1
+
+    // 24-bit sort key: invert so that higher intensity → smaller key → sorted first
+    const sortKeys = new Uint32Array(count)
+    for (let i = 0; i < count; i++) {
+        sortKeys[i] = ~Math.round(tmpIntensities[i] * 0xffffff) & 0xffffff
     }
+
+    const perm = new Uint32Array(count)
+    for (let i = 0; i < count; i++) perm[i] = i
+    const tempPerm = new Uint32Array(count)
+    const hist = new Uint32Array(BUCKETS)
+
+    // Pass 1: sort by bits 0–11
+    for (let i = 0; i < count; i++) hist[sortKeys[i] & MASK]++
+    for (let i = 1; i < BUCKETS; i++) hist[i] += hist[i - 1]
+    for (let i = count - 1; i >= 0; i--) tempPerm[--hist[sortKeys[perm[i]] & MASK]] = perm[i]
+
+    // Pass 2: sort by bits 12–23
+    hist.fill(0)
+    for (let i = 0; i < count; i++) hist[(sortKeys[tempPerm[i]] >> BITS) & MASK]++
+    for (let i = 1; i < BUCKETS; i++) hist[i] += hist[i - 1]
+    for (let i = count - 1; i >= 0; i--)
+        perm[--hist[(sortKeys[tempPerm[i]] >> BITS) & MASK]] = tempPerm[i]
+
+    const vIndices = new Float32Array(count)
+    const vIntensities = new Float32Array(count)
+    for (let i = 0; i < count; i++) {
+        vIndices[i] = tmpIndices[perm[i]]
+        vIntensities[i] = tmpIntensities[perm[i]]
+    }
+
+    return { nSlices, height, width, vIndices, vIntensities }
 }
