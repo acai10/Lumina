@@ -1,133 +1,15 @@
-import { IconButton, Slider, Stack, Tooltip, Typography } from '@mui/material'
+import { Divider, IconButton, Stack, Tooltip } from '@mui/material'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import {
     useViewerStore,
     defaultRenderControls,
     DEFAULT_STL_OPACITY,
 } from '../../app/store/viewerSlice'
-import {
-    sliderSx,
-    labelSx,
-    inputStyle,
-    panelSx,
-    resetButtonSx,
-    sliderStackSx,
-    separatorSx,
-} from './ControlsPanel.styles'
-import { useNumberInput } from './useNumberInput'
+import { panelSx, resetButtonSx } from './ControlsPanel.styles'
 import { RENDER_CONTROL_LIMITS } from './renderControlLimits'
+import { PreprocessingSection } from './PreprocessingSection'
+import { SliderRow, RangeSliderRow } from './SliderRow'
 import type { H5RenderControls } from '../../shared/types/viewer.types'
-
-// ── Single slider ────────────────────────────────────────────────────────────
-
-interface SliderRowProps {
-    label: string
-    value: number
-    min: number
-    max: number
-    step: number
-    onChange: (v: number) => void
-}
-
-function SliderRow({ label, value, min, max, step, onChange }: SliderRowProps) {
-    const { inputVal, setInputVal, commit } = useNumberInput(value, min, max, onChange)
-
-    return (
-        <Stack spacing={2.5} sx={sliderStackSx}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography sx={labelSx}>{label}</Typography>
-                <input
-                    type="number"
-                    value={inputVal}
-                    min={min}
-                    max={max}
-                    step={step}
-                    onChange={(e) => setInputVal(e.target.value)}
-                    onBlur={commit}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') e.currentTarget.blur()
-                    }}
-                    style={inputStyle}
-                />
-            </Stack>
-            <Slider
-                size="small"
-                min={min}
-                max={max}
-                step={step}
-                value={value}
-                onChange={(_, v) => onChange(typeof v === 'number' ? v : v[0])}
-                sx={sliderSx}
-            />
-        </Stack>
-    )
-}
-
-// ── Range slider (two handles) ───────────────────────────────────────────────
-
-interface RangeSliderRowProps {
-    label: string
-    value: [number, number]
-    min: number
-    max: number
-    step: number
-    onChange: (v: [number, number]) => void
-}
-
-function RangeSliderRow({ label, value, min, max, step, onChange }: RangeSliderRowProps) {
-    const minInput = useNumberInput(value[0], min, value[1], (v) => onChange([v, value[1]]))
-    const maxInput = useNumberInput(value[1], value[0], max, (v) => onChange([value[0], v]))
-
-    return (
-        <Stack spacing={2.5} sx={sliderStackSx}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography sx={labelSx}>{label}</Typography>
-                <Stack direction="row" spacing={0.5} alignItems="center">
-                    <input
-                        type="number"
-                        value={minInput.inputVal}
-                        min={min}
-                        max={max}
-                        step={step}
-                        onChange={(e) => minInput.setInputVal(e.target.value)}
-                        onBlur={minInput.commit}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') e.currentTarget.blur()
-                        }}
-                        style={inputStyle}
-                    />
-                    <Typography sx={separatorSx}>–</Typography>
-                    <input
-                        type="number"
-                        value={maxInput.inputVal}
-                        min={min}
-                        max={max}
-                        step={step}
-                        onChange={(e) => maxInput.setInputVal(e.target.value)}
-                        onBlur={maxInput.commit}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') e.currentTarget.blur()
-                        }}
-                        style={inputStyle}
-                    />
-                </Stack>
-            </Stack>
-            <Slider
-                size="small"
-                min={min}
-                max={max}
-                step={step}
-                value={value}
-                onChange={(_, v) => {
-                    if (Array.isArray(v)) onChange(v as [number, number])
-                }}
-                sx={sliderSx}
-            />
-        </Stack>
-    )
-}
-
-// ── Panel ────────────────────────────────────────────────────────────────────
 
 export default function ControlsPanel() {
     const {
@@ -153,6 +35,8 @@ export default function ControlsPanel() {
         <Stack spacing={4} sx={panelSx}>
             {mode === 'h5' && (
                 <>
+                    <PreprocessingSection />
+                    <Divider sx={{ opacity: 0.2 }} />
                     <SliderRow
                         label="Volume spacing"
                         value={renderControls.volumeSpacing}

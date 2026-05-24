@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { Box } from '@mui/material'
 import { useViewerStore, defaultRenderControls } from '../../app/store/viewerSlice'
-import { createScene } from '../../shared/three/sceneUtils'
+import { createScene, disposeSceneGeometry } from '../../shared/three/sceneUtils'
 import { palette } from '../../shared/theme/palette'
 import type { H5Meta } from '../../shared/types/viewer.types'
 
@@ -208,15 +208,12 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
                 cameraQuaternion: camera.quaternion.toArray() as [number, number, number, number],
                 controlsTarget: controls.target.toArray() as [number, number, number],
             })
-            geometry.dispose()
-            material.dispose()
-            axes.dispose()
-            boxHelper.dispose()
             axisLabels.forEach((sprite) => {
                 sprite.material.map?.dispose()
                 sprite.material.dispose()
             })
             materialRef.current = null
+            disposeSceneGeometry(scene)
             disposeBase()
         }
     }, [vIndices, vIntensities, meta, fileKey])

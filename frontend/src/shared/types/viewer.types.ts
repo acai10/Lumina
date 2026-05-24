@@ -12,6 +12,7 @@ export interface H5VolumeData extends H5Meta {
 export interface H5FileEntry {
     name: string
     data: H5VolumeData
+    sourceFile: File
 }
 
 export interface H5RenderControls {
@@ -31,4 +32,5 @@ export interface H5PerFileState {
     cameraQuaternion?: [number, number, number, number]
     controlsTarget?: [number, number, number]
     renderControls: H5RenderControls
+    isFiltering?: boolean
 }

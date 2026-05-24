@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { Box } from '@mui/material'
 import { palette } from '../../shared/theme/palette'
-import { createScene } from '../../shared/three/sceneUtils'
+import { createScene, disposeSceneGeometry } from '../../shared/three/sceneUtils'
 import { useViewerStore } from '../../app/store/viewerSlice'
 
 const HEMI_INTENSITY = 0.7
@@ -141,13 +141,7 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
             cancelAnimationFrame(animId)
             meshRef.current = null
             materialRef.current = null
-            scene.traverse((obj) => {
-                if (obj instanceof THREE.Mesh || obj instanceof THREE.LineSegments) {
-                    obj.geometry.dispose()
-                    if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose())
-                    else obj.material.dispose()
-                }
-            })
+            disposeSceneGeometry(scene)
             disposeBase()
         }
     }, [file, onError])

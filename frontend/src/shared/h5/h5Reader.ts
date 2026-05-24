@@ -1,8 +1,9 @@
 import { ready, File as H5File } from 'h5wasm'
 import type { H5VolumeData } from '../types/viewer.types'
+import { normalizeVolume } from './h5Normalizer'
 
-const VOLUME_DIMS: [number, number, number] = [512, 250, 250]
-const PRE_FILTER_THRESHOLD = 0.05
+export const VOLUME_DIMS: [number, number, number] = [512, 250, 250]
+export const PRE_FILTER_THRESHOLD = 0.05
 
 export async function loadH5File(
     file: File,
@@ -51,35 +52,7 @@ export async function loadH5File(
                 )
             }
 
-            const sliceSize = height * width
-            const tmpIndices = new Float32Array(expected)
-            const tmpIntensities = new Float32Array(expected)
-            let count = 0
-
-            for (let s = 0; s < nSlices; s++) {
-                const offset = s * sliceSize
-                let min = Infinity,
-                    max = -Infinity
-                for (let i = 0; i < sliceSize; i++) {
-                    const v = data[offset + i]
-                    if (v < min) min = v
-                    if (v > max) max = v
-                }
-                const range = max > min ? max - min : 1
-                for (let i = 0; i < sliceSize; i++) {
-                    const normalized = (data[offset + i] - min) / range
-                    if (normalized >= PRE_FILTER_THRESHOLD) {
-                        tmpIndices[count] = offset + i
-                        tmpIntensities[count] = normalized
-                        count++
-                    }
-                }
-            }
-
-            const vIndices = tmpIndices.slice(0, count)
-            const vIntensities = tmpIntensities.slice(0, count)
-
-            return { nSlices, height, width, vIndices, vIntensities }
+            return normalizeVolume(data, [nSlices, height, width], PRE_FILTER_THRESHOLD)
         } finally {
             f.close()
         }

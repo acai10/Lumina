@@ -13,26 +13,27 @@ export function useFileLoad() {
 
     const processH5Files = async (files: File[]) => {
         setIsLoading(true)
-        try {
-            const results: H5FileEntry[] = await Promise.all(
-                files.map(async (f) => ({
-                    name: f.name,
-                    data: await loadH5FileInWorker(f, [512, 250, 250]),
-                })),
-            )
-            loadH5(results)
+        let loaded = 0
+        for (const f of files) {
+            try {
+                const data = await loadH5FileInWorker(f, [512, 250, 250])
+                const entry: H5FileEntry = { name: f.name, data, sourceFile: f }
+                loadH5([entry])
+                loaded++
+            } catch (err) {
+                console.error(`Failed to load ${f.name}:`, err)
+                setNotification({
+                    message: `Failed to load "${f.name}": ${err instanceof Error ? err.message : String(err)}`,
+                    severity: 'error',
+                })
+            }
+        }
+        setIsLoading(false)
+        if (loaded > 0) {
             setNotification({
-                message: results.length === 1 ? 'File loaded' : `${results.length} files loaded`,
+                message: loaded === 1 ? 'File loaded' : `${loaded} files loaded`,
                 severity: 'success',
             })
-        } catch (err) {
-            console.error('H5 processing failed:', err)
-            setNotification({
-                message: err instanceof Error ? err.message : 'Failed to load file.',
-                severity: 'error',
-            })
-        } finally {
-            setIsLoading(false)
         }
     }
 
@@ -52,8 +53,10 @@ export function useFileLoad() {
     }
 
     const handleH5FolderLoad = async (e: ChangeEvent<HTMLInputElement>) => {
-        const files = Array.from(e.target.files ?? []).filter((f) =>
-            f.name.toLowerCase().endsWith('.h5'),
+        const files = Array.from(e.target.files ?? []).filter(
+            (f) =>
+                f.name.toLowerCase().endsWith('.h5') &&
+                f.webkitRelativePath.split('/').length === 2,
         )
         e.target.value = ''
         if (files.length === 0) return

@@ -1,108 +1,51 @@
-# Lumina — OCT & STL Viewer
+# Lumina — OCT Volume Stitcher Comparison Tool
 
-Browser-based medical imaging viewer. Supports loading OCT volumetric data (`.h5`) and 3D surface meshes (`.stl`) directly in the browser — no installation required, no server needed.
+Browser-based tool for comparing OCT volume stitching algorithms.
+Python backend for computation, React/Three.js frontend for visualisation.
 
-## Supported File Formats
-
-| Format | Description              | Display                                                                                                                              |
-|--------|--------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
-| `.h5`  | OCT C-scan volume (HDF5) | Interactive 3D point cloud rendered via custom GLSL shaders with live threshold, brightness, contrast, and spatial clipping controls |
-| `.stl` | 3D surface mesh          | Lit 3D model with edge overlay, OrbitControls                                                                                        |
-
----
-
-## Architecture
-
-Pure frontend SPA — all HDF5 parsing and image encoding runs locally in the browser via WebAssembly. No backend, no server, no Docker required.
-
-```text
-Lumina/
-├── .gitignore
-├── .prettierrc.json
-├── CLAUDE.md               # Claude Code project guide
-├── README.md
-├── eslint.config.js
-├── index.html
-├── package.json
-├── tsconfig.json
-├── tsconfig.node.json
-├── vite.config.ts
-└── src/
-    ├── App.tsx
-    ├── main.tsx
-    ├── app/
-    │   └── store/          # Zustand state (viewerSlice)
-    ├── features/
-    │   ├── controls/       # ControlsPanel, ControlsPanel.styles, useNumberInput, renderControlLimits
-    │   ├── stl/            # STLViewer
-    │   ├── h5/             # H5Viewer
-    │   └── toolbar/        # Toolbar, useFileUpload, H5FileTabs
-    └── shared/
-        ├── h5/             # h5Reader, h5.worker (HDF5 → vIndices/vIntensities via h5wasm)
-        ├── three/          # sceneUtils (renderer, camera, OrbitControls setup)
-        ├── theme/          # palette.ts, theme.ts
-        └── types/          # viewer.types.ts
-```
-
----
-
-## Setup
-
-### Voraussetzungen
-
-Node.js 20+ — [nodejs.org](https://nodejs.org/)
+## Quick start
 
 ```bash
-# macOS (Homebrew)
-brew install node
+docker compose up --build
 ```
 
-### Abhängigkeiten installieren & starten
+- Frontend: <http://localhost:5173>
+- Backend API: <http://localhost:8000>
+- API docs (Swagger): <http://localhost:8000/docs>
+
+## What it does
+
+1. Upload an `.h5` OCT volume → receive a `volume_id`
+2. Configure a preprocessing filter chain (Gaussian, Median, Lee, BM3D, Normalize, Anisotropy)
+3. Select stitching algorithms to compare (Phase Correlation, SimpleITK Affine, Elastix B-Spline, BigStitcher)
+4. Submit a job — runs concurrently in the backend
+5. Poll for results: NCC, MI, MSE, (Dice if a segmentation mask is provided)
+6. Fetch result volumes as raw float32 for visualisation
+
+## Data format
+
+All `.h5` files must contain a dataset named `"OCT"` with shape `(512, 250, 250)` — nSlices × height × width. The backend validates this on upload.
+
+## Development
+
+See [CLAUDE.md](CLAUDE.md) for all commands.
+
+### Direct (without Docker)
 
 ```bash
-npm install
+# Backend
+cd backend && uv sync
+uv run uvicorn main:app --reload --port 8000
+
+# Frontend
+cd frontend && npm install
 npm run dev
 ```
 
-App läuft unter **<http://localhost:5173>**
+## Stack
 
-### Produktion-Build (statisch, deploybar)
-
-```bash
-npm run build
-```
-
-Erzeugt `dist/` — deploybar auf GitHub Pages, Netlify, Vercel oder jedem anderen statischen Hosting. Kein Server nötig.
-
----
-
-## Entwicklung
-
-```bash
-npm run dev      # Dev-Server (port 5173, Hot Reload)
-npm run build    # TypeScript-Check + Vite-Build
-npm run lint     # ESLint
-npm run format   # Prettier
-```
-
----
-
-## Abhängigkeiten
-
-| Paket                                | Zweck                                   |
-|--------------------------------------|-----------------------------------------|
-| `react` + `react-dom`                | UI-Framework                            |
-| `three`                              | 3D-Rendering (STL + H5 Viewer)          |
-| `@mui/material`                      | Komponenten-Bibliothek                  |
-| `@emotion/react` + `@emotion/styled` | MUI-Styling-Engine                      |
-| `zustand`                            | State Management                        |
-| `h5wasm`                             | HDF5-Parsing im Browser via WebAssembly |
-| `vite`                               | Build-Tool + Dev-Server                 |
-| `typescript`                         | Typsicherheit                           |
-| `prettier`                           | Formatierung                            |
-
----
-
-## Browser-Kompatibilität
-
-Benötigt WebAssembly und OffscreenCanvas — unterstützt von allen modernen Browsern (Chrome 69+, Firefox 105+, Safari 16.4+).
+| Service | Tech |
+|---------|------|
+| Backend | Python 3.11, FastAPI, h5py, numpy, scipy, scikit-image, SimpleITK, itk-elastix, bm3d |
+| Frontend | React 18, TypeScript, Three.js, MUI, Zustand, Vite |
+| Infra | Docker Compose, uv (Python package manager), Node 20 |

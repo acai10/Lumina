@@ -22,5 +22,11 @@ Thumbs.db
 *.swp
 *.swo
 
+# Python
+__pycache__/
+*.pyc
+.venv/
+backend/uploads/
+
 # Logs
 *.log

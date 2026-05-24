@@ -1,5 +1,10 @@
 import { create } from 'zustand'
-import type { H5FileEntry, H5PerFileState, H5RenderControls } from '../../shared/types/viewer.types'
+import type {
+    H5FileEntry,
+    H5PerFileState,
+    H5RenderControls,
+    H5VolumeData,
+} from '../../shared/types/viewer.types'
 
 export interface AppNotification {
     message: string
@@ -10,7 +15,7 @@ export const DEFAULT_STL_OPACITY = 0.55
 
 export const defaultRenderControls: H5RenderControls = {
     volumeSpacing: 200,
-    h5Threshold: 0.75,
+    h5Threshold: 0.8,
     h5Opacity: 0.25,
     h5Brightness: 3.0,
     h5Contrast: 1.0,
@@ -45,6 +50,8 @@ interface ViewerState {
     setNotification: (n: AppNotification) => void
     clearNotification: () => void
     setStlOpacity: (v: number) => void
+    setFilteringState: (fileKey: string, value: boolean) => void
+    applyBackendFilter: (fileKey: string, newData: H5VolumeData) => void
     reset: () => void
 }
 
@@ -135,5 +142,16 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
     setNotification: (notification) => set({ notification }),
     clearNotification: () => set({ notification: null }),
     setStlOpacity: (stlOpacity) => set({ stlOpacity }),
+    setFilteringState: (fileKey, value) =>
+        set((state) => ({
+            h5PerFileStates: {
+                ...state.h5PerFileStates,
+                [fileKey]: { ...state.h5PerFileStates[fileKey], isFiltering: value },
+            },
+        })),
+    applyBackendFilter: (fileKey, newData) =>
+        set((state) => ({
+            h5Files: state.h5Files.map((f) => (f.name === fileKey ? { ...f, data: newData } : f)),
+        })),
     reset: () => set(initialState),
 }))

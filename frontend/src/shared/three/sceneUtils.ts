@@ -72,3 +72,20 @@ export function createScene(container: HTMLElement, options: SceneOptions = {}):
 
     return { scene, camera, renderer, controls, disposeBase }
 }
+
+export function disposeSceneGeometry(scene: THREE.Scene): void {
+    scene.traverse((obj) => {
+        if (
+            obj instanceof THREE.Mesh ||
+            obj instanceof THREE.LineSegments ||
+            obj instanceof THREE.Points
+        ) {
+            obj.geometry.dispose()
+            if (Array.isArray(obj.material)) {
+                obj.material.forEach((m: THREE.Material) => m.dispose())
+            } else {
+                ;(obj.material as THREE.Material).dispose()
+            }
+        }
+    })
+}
