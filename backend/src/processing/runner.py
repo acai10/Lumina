@@ -14,7 +14,15 @@ from .stitchers import STITCHER_REGISTRY
 
 logger = logging.getLogger(__name__)
 
-_executor = ProcessPoolExecutor()
+# Lazy so worker processes (Windows spawn) don't re-instantiate it on import.
+_executor: ProcessPoolExecutor | None = None
+
+
+def _get_executor() -> ProcessPoolExecutor:
+    global _executor
+    if _executor is None:
+        _executor = ProcessPoolExecutor()
+    return _executor
 
 
 @dataclass
@@ -47,7 +55,8 @@ def _run_stitcher_sync(
 
 
 def shutdown_executor() -> None:
-    _executor.shutdown(wait=False)
+    if _executor is not None:
+        _executor.shutdown(wait=False)
 
 
 async def run_job(
@@ -70,7 +79,7 @@ async def run_job(
 
         tasks = {
             name: loop.run_in_executor(
-                _executor,
+                _get_executor(),
                 _run_stitcher_sync,
                 preprocessed,
                 name,
