@@ -1,10 +1,4 @@
-.venv
 __pycache__
 *.pyc
-*.pyo
-*.pyd
-.env
-.env.*
-*.egg-info
-.git
-.gitignore
+.venv
+uploads/

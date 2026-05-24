@@ -1,255 +1,51 @@
-# Lumina — OCT & STL Viewer
+# Lumina — OCT Volume Stitcher Comparison Tool
 
-Browser-based medical imaging viewer. Supports loading OCT volumetric data (`.h5`) and 3D surface meshes (`.stl`) directly in the browser — no installation required.
+Browser-based tool for comparing OCT volume stitching algorithms.
+Python backend for computation, React/Three.js frontend for visualisation.
 
-## Supported File Formats
-
-| Format | Description               | Display                                                               |
-|--------|---------------------------|-----------------------------------------------------------------------|
-| `.h5`  | OCT C-scan volume (HDF5)  | Holographic stack of semi-transparent B-scan planes with slice slider |
-| `.stl` | 3D surface mesh           | Lit 3D model with edge overlay, OrbitControls                         |
-
----
-
-## Architecture
-
-```
-Lumina/
-├── docker-compose.yml
-├── Makefile
-├── .gitignore
-├── CLAUDE.md               # Claude Code project guide
-├── README.md
-├── frontend/               # React + TypeScript + Vite + MUI + Three.js
-│   ├── Dockerfile
-│   ├── package.json
-│   ├── vite.config.ts
-│   └── src/
-│       ├── app/
-│       │   ├── store/      # Zustand state (viewerSlice)
-│       │   └── App.styles.ts  # Shared button glow styles
-│       ├── features/
-│       │   ├── stl/        # STLViewer
-│       │   └── h5/         # H5Viewer, SliceSlider, SliceSlider.styles.ts
-│       └── shared/
-│           ├── api/        # octAPI (HTTP client)
-│           ├── theme/      # palette.ts, theme.ts
-│           └── types/      # viewer.types.ts
-└── backend/                # Python FastAPI
-    ├── Dockerfile
-    ├── pyproject.toml      # Abhängigkeiten + Tool-Konfiguration
-    ├── uv.lock             # Eingefrorener Dependency-Graph (committen!)
-    ├── main.py
-    └── src/
-        ├── routers/        # h5 (upload + slice)
-        └── imaging/        # h5_reader (HDF5 → numpy → PNG/base64)
-```
-
-Frontend and backend share no code. All communication is via HTTP REST.
-
----
-
-## Option A — Docker (empfohlen)
-
-### Voraussetzungen
-
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installiert und gestartet
-
-### Starten
+## Quick start
 
 ```bash
 docker compose up --build
 ```
 
-Beim ersten Start werden alle Images gebaut und Abhängigkeiten installiert. Danach reicht `docker compose up`.
+- Frontend: <http://localhost:5173>
+- Backend API: <http://localhost:8000>
+- API docs (Swagger): <http://localhost:8000/docs>
 
-| Service  | URL                        |
-|----------|----------------------------|
-| Frontend | http://localhost:5173      |
-| Backend  | http://localhost:8000      |
-| API Docs | http://localhost:8000/docs |
+## What it does
 
-### Stoppen
+1. Upload an `.h5` OCT volume → receive a `volume_id`
+2. Configure a preprocessing filter chain (Gaussian, Median, Lee, BM3D, Normalize, Anisotropy)
+3. Select stitching algorithms to compare (Phase Correlation, SimpleITK Affine, Elastix B-Spline, BigStitcher)
+4. Submit a job — runs concurrently in the backend
+5. Poll for results: NCC, MI, MSE, (Dice if a segmentation mask is provided)
+6. Fetch result volumes as raw float32 for visualisation
 
-```bash
-docker compose down
-```
+## Data format
 
-### Formatierung (beide Services gleichzeitig)
+All `.h5` files must contain a dataset named `"OCT"` with shape `(512, 250, 250)` — nSlices × height × width. The backend validates this on upload.
 
-```bash
-make format
-```
+## Development
 
----
+See [CLAUDE.md](CLAUDE.md) for all commands.
 
-## Option B — Lokal ohne Docker
-
-### Voraussetzungen
-
-#### macOS (Homebrew)
+### Direct (without Docker)
 
 ```bash
-# Homebrew installieren (falls noch nicht vorhanden)
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# Backend
+cd backend && uv sync
+uv run uvicorn main:app --reload --port 8000
 
-# Node.js + npm installieren
-brew install node
-
-# uv installieren (Python-Paketmanager)
-brew install uv
-```
-
-#### Windows / Linux
-
-```bash
-# Node.js 20+ von https://nodejs.org/ installieren
-
-# uv installieren
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
----
-
-### Backend einrichten
-
-Das Backend verwendet [uv](https://docs.astral.sh/uv/) als Paketmanager.  
-`uv.lock` ist im Repository eingecheckt und stellt sicher, dass alle Entwickler exakt dieselben Paketversionen verwenden.
-
-```bash
-cd backend
-
-# Virtuelle Umgebung erstellen und alle Abhängigkeiten aus uv.lock installieren
-uv sync
-```
-
-`uv sync` erledigt automatisch:
-1. `.venv/` erstellen (falls nicht vorhanden)
-2. Alle Pakete aus `uv.lock` installieren — keine Versionsunterschiede zwischen Entwicklern
-
-#### Backend starten
-
-```bash
-cd backend
-uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
-
-`uv run` führt den Befehl automatisch in der projekteigenen venv aus — kein manuelles `source .venv/bin/activate` nötig.
-
-Backend läuft unter http://localhost:8000  
-API-Dokumentation: http://localhost:8000/docs
-
-#### Backend formatieren
-
-```bash
-cd backend
-uv run black . && uv run isort .
-```
-
-#### Abhängigkeit hinzufügen
-
-```bash
-# Runtime-Abhängigkeit
-cd backend
-uv add <paket>
-
-# Nur für Entwicklung (dev-Gruppe)
-uv add --dev <paket>
-```
-
-`uv add` aktualisiert `pyproject.toml` und `uv.lock` automatisch.  
-Die aktualisierte `uv.lock` danach committen, damit alle Entwickler dieselbe Version erhalten.
-
-#### Lockfile aktualisieren (ohne neue Pakete hinzuzufügen)
-
-```bash
-cd backend
-uv lock --upgrade
-uv sync
-```
-
----
-
-### Frontend einrichten
-
-```bash
-cd frontend
-
-# Abhängigkeiten installieren
-npm install
-```
-
-#### Frontend starten
-
-```bash
-cd frontend
+# Frontend
+cd frontend && npm install
 npm run dev
 ```
 
-Frontend läuft unter http://localhost:5173
+## Stack
 
-#### Frontend formatieren
-
-```bash
-cd frontend
-npm run format
-```
-
-#### Frontend für Produktion bauen
-
-```bash
-cd frontend
-npm run build
-```
-
----
-
-### Beides gleichzeitig formatieren
-
-```bash
-make format
-```
-
-Ruft `uv run black . && uv run isort .` im Backend und `npm run format` im Frontend auf.
-
----
-
-### IDE-Einrichtung (VS Code)
-
-Die Datei `.vscode/settings.json` ist bereits im Repository enthalten und zeigt automatisch auf die Backend-venv unter `backend/.venv`.  
-Pylance löst alle Python-Imports korrekt auf, sobald der Workspace-Root `Lumina/` geöffnet ist.
-
-Empfohlene Extensions:
-- [Pylance](https://marketplace.visualstudio.com/items?itemName=ms-python.vscode-pylance) — Python-Sprachserver
-- [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) — TypeScript-Linting
-- [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode) — TypeScript-Formatierung
-
----
-
-## Abhängigkeiten im Überblick
-
-### Backend (`pyproject.toml` — verwaltet mit uv)
-
-| Paket                | Zweck                                    |
-|----------------------|------------------------------------------|
-| `fastapi`            | REST-API-Framework                       |
-| `uvicorn[standard]`  | ASGI-Server                              |
-| `python-multipart`   | Datei-Upload                             |
-| `h5py`               | HDF5-Dateien lesen                       |
-| `numpy`              | Array-Verarbeitung                       |
-| `Pillow`             | PNG-Encoding für Base64-Antworten        |
-| `black` *(dev)*      | Python-Formatter                         |
-| `isort` *(dev)*      | Import-Sortierung                        |
-
-### Frontend (`package.json`)
-
-| Paket                                | Zweck                          |
-|--------------------------------------|--------------------------------|
-| `react` + `react-dom`                | UI-Framework                   |
-| `three`                              | 3D-Rendering (STL + H5 Viewer) |
-| `@mui/material`                      | Komponenten-Bibliothek         |
-| `@emotion/react` + `@emotion/styled` | MUI-Styling-Engine             |
-| `zustand`                            | State Management               |
-| `vite`                               | Build-Tool + Dev-Server        |
-| `typescript`                         | Typsicherheit                  |
-| `prettier`                           | Formatierung                   |
+| Service | Tech |
+|---------|------|
+| Backend | Python 3.11, FastAPI, h5py, numpy, scipy, scikit-image, SimpleITK, itk-elastix, bm3d |
+| Frontend | React 18, TypeScript, Three.js, MUI, Zustand, Vite |
+| Infra | Docker Compose, uv (Python package manager), Node 20 |

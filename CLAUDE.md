@@ -4,58 +4,167 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-### Backend
+### Docker (recommended)
 
 ```bash
-cd backend
-uv sync                                                        # install / sync deps from uv.lock
-uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000   # start (port 8000)
-uv run black . && uv run isort .                               # format
-uv add <package>                                               # add dep (updates uv.lock — commit it)
+docker compose up --build   # start backend + frontend
+docker compose down         # stop services
 ```
 
-### Frontend
+### Direct development
 
 ```bash
+# Backend
+cd backend
+uv sync
+uv run uvicorn main:app --reload --port 8000
+
+# Frontend
 cd frontend
 npm install
-npm run dev      # start dev server (port 5173)
-npm run build    # tsc + vite build (TypeScript errors fail the build)
-npm run lint     # eslint src/
-npm run format   # prettier --write
+npm run dev      # port 5173
+npm run build    # TypeScript check + Vite build
+npm run lint     # ESLint
+npm run format   # Prettier
 ```
 
-### Both at once
+### Format both sides
 
 ```bash
-make format   # runs black+isort (backend) and prettier (frontend)
-docker compose up --build   # full stack via Docker
+make format
 ```
-
-No test suite exists yet.
 
 ---
 
 ## Architecture
 
-Two independent services, no shared code. All communication is HTTP REST.
+Monorepo with two services:
 
-**Frontend** (`frontend/src/`): React + TypeScript SPA. View switching is **state-based** (`mode: 'none' | 'stl' | 'h5'` in Zustand) — there is no URL routing. MUI is the sole styling system; no CSS files. All color tokens are in `shared/theme/palette.ts`; the MUI theme is in `shared/theme/theme.ts` (consumed by `main.tsx`). Complex component styles with pseudo-selectors are extracted to co-located `.styles.ts` files; simple 1–3 property overrides stay inline as `sx` props.
+**`backend/`** — Python 3.11, FastAPI, uv as package manager.
+Handles all heavy computation: reading OCT volumes from `.h5`, applying preprocessing filter chains, running stitching algorithms, computing quantitative metrics.
+Uploaded files and job results are stored in `backend/uploads/` (never commit this directory).
 
-**Backend** (`backend/`): FastAPI. Single router at `/h5`. The uploaded volume is held in a **module-level in-memory dict** (`_volume_cache` in `src/routers/h5.py`) — only one volume is cached at a time (cache is cleared on each new upload). No database, no filesystem persistence.
+**`frontend/`** — React + TypeScript SPA, Vite, MUI, Three.js, Zustand.
+Visualisation only (WebGL/GPU via Three.js). Job submission, status polling, and result comparison talk to the backend API via `VITE_API_URL` (set by Docker env or local `.env`).
 
 ---
 
-## Key Architectural Details
+## H5 Data Format
 
-**H5 upload flow**: `POST /h5/upload` reads the entire `.h5` file, calls `load_volume()` (HDF5 → numpy 3-D array), then `volume_to_slices()` (per-slice normalization → PNG → base64). All slices are returned in a single JSON response. The frontend stores them in React state as `string[]`.
+Dataset name: `"OCT"` — fixed, no guessing.
+Shape: `(512, 250, 250)` — `(nSlices, height, width)` — fixed for all files.
+The backend validates both constraints on upload and raises 400 otherwise.
 
-**HDF5 parsing** (`src/imaging/h5_reader.py`): `load_volume()` tries multiple strategies to find a 3-D dataset — named keys (`volume`, `data`, `oct`), attribute-based reshape, sibling scalar datasets, and a heuristic OCT depth guesser. This is intentionally broad to support diverse vendor file layouts.
+---
 
-**H5Viewer rendering**: Stacked `THREE.PlaneGeometry` meshes, one per B-scan, with `transparent: true` / `depthWrite: false`. Camera is positioned mostly overhead `(0, maxDim×1.8, maxDim×0.4)` to minimise perspective shadow accumulation from transparent plane blending. Slice selection hides earlier planes and raises selected plane opacity to 0.9.
+## Backend Structure
 
-**Normalization**: `volume_to_slices()` normalises **per slice** (local min/max). `slice_to_base64()` (used by `GET /h5/slice/:index`) also normalises per slice. Do not switch either to global normalisation — boundary slices have lower OCT signal and would appear artificially dark.
+```text
+backend/
+├── main.py                   # FastAPI app, CORS, router registration, lifespan (calls shutdown_executor on exit)
+└── src/
+    ├── config.py             # UPLOADS_DIR — single source of truth; reads UPLOADS_DIR env var
+    ├── routers/
+    │   ├── volumes.py        # POST /volumes/upload, GET /volumes/{id}/info; volume_id = filename stem
+    │   ├── jobs.py           # POST /jobs/, GET /jobs/{id}
+    │   └── results.py        # GET /jobs/{id}/volume/{stitcher} → raw float32 (X-Shape, X-Dtype headers)
+    └── processing/
+        ├── h5_reader.py      # load_volume() — reads "OCT" dataset, reshapes if flat
+        ├── filters.py        # apply_filter_chain(); gaussian, median, lee, bm3d (optional), normalize, anisotropy
+        ├── stitchers.py      # STITCHER_REGISTRY: phase_correlation, simpleitk_affine, elastix_bspline, bigstitcher
+        ├── metrics.py        # compute_all() -> dict[str, float]: NCC, MI, MSE, Dice
+        └── runner.py         # asyncio + ProcessPoolExecutor job runner; shutdown_executor() for lifespan cleanup
+```
 
-**CORS**: configured via `CORS_ORIGINS` env var (default `http://localhost:5173`). Set it when deploying to a different origin.
+### Backend conventions
 
-**`palette.bgDeepHex`** (`0x0a0f1e`) is the Three.js integer form of `palette.bgDeep` (`#0a0f1e`). Both viewers use it for `renderer.setClearColor()`. Add new Three.js background colors here if needed — don't hardcode hex integers in viewer files.
+- Type hints: always use `list[dict[str, Any]]` and `dict[str, dict[str, Any]]` — never bare `list[dict]` or `dict[str, dict]`.
+- Pydantic mutable defaults: always `Field(default_factory=dict)` / `Field(default_factory=list)`, never `{}` / `[]`.
+- Optional heavy dependencies (`bm3d`, `itk-elastix`): listed under `[project.optional-dependencies]` in `pyproject.toml`; guarded with `try: import X except (ImportError, OSError)` inside the function that needs them.
+- `UPLOADS_DIR`: import from `src.config` — never redeclare locally.
+- Background tasks: pass async `run_job` directly to `background_tasks.add_task(run_job, ...)` — Starlette awaits coroutines automatically; do not wrap in `asyncio.ensure_future`.
+
+### API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/volumes/upload` | Upload `.h5` file → `{ volume_id, n_slices, height, width }` |
+| GET | `/volumes/{id}/info` | Volume shape/dtype |
+| POST | `/jobs/` | Start job → `{ job_id }` (immediate) |
+| GET | `/jobs/{id}` | Poll status + metric results |
+| GET | `/jobs/{id}/volume/{stitcher}` | Raw float32 result volume |
+
+### Job request body
+
+```json
+{
+  "volume_id": "uuid",
+  "filter_chain": [
+    { "type": "gaussian", "params": { "sigma": 1.5 } },
+    { "type": "normalize", "params": {} }
+  ],
+  "stitchers": ["phase_correlation", "simpleitk_affine"],
+  "stitcher_params": { "phase_correlation": { "upsample_factor": 20 } }
+}
+```
+
+Filter types: `"gaussian"`, `"median"`, `"lee"`, `"bm3d"`, `"normalize"`, `"anisotropy"`.
+Stitcher names: `"phase_correlation"`, `"simpleitk_affine"`, `"elastix_bspline"`, `"bigstitcher"`.
+
+---
+
+## Frontend Architecture
+
+View switching is state-based (`mode: 'none' | 'stl' | 'h5'` in Zustand) — no URL routing. MUI is the sole styling system; no CSS files. All colour tokens are in `frontend/src/shared/theme/palette.ts`.
+
+Complex component styles with pseudo-selectors go in co-located `.styles.ts` files; simple 1–3 property overrides stay as inline `sx` props.
+
+**H5 viewer flow** (local): user selects `.h5` → Web Worker runs h5wasm off main thread → per-slice normalisation → zero-copy `Float32Array` transfer → Three.js point-cloud rendering with custom GLSL3 shaders. Files are loaded sequentially (not via `Promise.all`) to avoid OOM on batch/folder uploads.
+
+**Backend filter flow**: `PreprocessingSection` → `useFilterJob(fileKey, sourceFile)` → upload via `/volumes/upload` → POST `/jobs/` → poll `/jobs/{id}` every 2 s → GET `/jobs/{id}/volume/{stitcher}` → `normalizeVolume` → `applyBackendFilter` in Zustand.
+
+New stitcher-comparison UI will live in `frontend/src/features/stitcher/`.
+
+### Frontend structure
+
+```text
+frontend/src/
+├── app/
+│   └── store/viewerSlice.ts        # Zustand: per-file H5 state, camera, notifications
+├── shared/
+│   ├── api/
+│   │   ├── client.ts               # uploadVolume, createJob, pollJob, fetchResultVolume
+│   │   └── types.ts                # FilterStep, JobRequest, JobStatus, UploadResponse
+│   ├── h5/
+│   │   ├── h5Reader.ts             # loadH5FileInWorker; exports VOLUME_DIMS, PRE_FILTER_THRESHOLD
+│   │   ├── h5Normalizer.ts         # normalizeVolume(raw, dims, threshold) → H5VolumeData
+│   │   └── h5.worker.ts            # Web Worker entry point
+│   └── three/
+│       └── sceneUtils.ts           # createScene(), disposeSceneGeometry()
+└── features/
+    ├── controls/
+    │   ├── useFilterJob.ts          # Hook: full upload→job→poll→download pipeline
+    │   ├── useFilterParams.ts       # Hook: filter type + param state + buildFilterStep()
+    │   ├── PreprocessingSection.tsx # Thin UI component using the two hooks above
+    │   ├── SliderRow.tsx            # SliderRow + RangeSliderRow (named exports)
+    │   └── renderControlLimits.ts  # RENDER_CONTROL_LIMITS; max values derived from VOLUME_DIMS
+    ├── h5/H5Viewer.tsx             # Three.js point-cloud viewer; uses disposeSceneGeometry
+    ├── stl/STLViewer.tsx           # Three.js STL viewer; uses disposeSceneGeometry
+    └── notifications/AppSnackbar.tsx
+```
+
+### Frontend conventions
+
+- Magic numbers: module-level named constants in the file that uses them (e.g. `POLL_INTERVAL_MS`, `SNACKBAR_DURATION_MS`). Only promote to a shared `constants.ts` if used in 3+ files.
+- Custom hooks: extract side-effectful logic from components into `use*.ts` files. Hooks own state and async operations; components own only layout and event wiring.
+- Three.js cleanup: call `disposeSceneGeometry(scene)` from `shared/three/sceneUtils.ts` before `disposeBase()`. Sprite materials with canvas textures need explicit disposal before that call.
+- `VOLUME_DIMS` from `shared/h5/h5Reader.ts` is the single source of truth for `[512, 250, 250]` — derive all slider maxima from it, never hardcode.
+
+---
+
+## Conventions
+
+- **Backend formatting**: `black` + `isort`, line-length 100. Run `cd backend && .venv/bin/black . && .venv/bin/isort .`. No bare `# type: ignore` without a comment explaining why.
+- **Frontend formatting**: Prettier via `npm run format`. No new CSS files, MUI only.
+- **Uploads**: `backend/uploads/` is in `.gitignore` — never commit it.
+- **No test suite yet** — add tests under `backend/tests/` and `frontend/src/__tests__/` when needed.

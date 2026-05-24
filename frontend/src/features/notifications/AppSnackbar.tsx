@@ -1,13 +1,15 @@
 import { Alert, Snackbar } from '@mui/material'
 import { useViewerStore } from '../../app/store/viewerSlice'
 
+const SNACKBAR_DURATION_MS = 4_000
+
 export default function AppSnackbar() {
     const { notification, clearNotification } = useViewerStore()
 
     return (
         <Snackbar
             open={Boolean(notification)}
-            autoHideDuration={4000}
+            autoHideDuration={SNACKBAR_DURATION_MS}
             onClose={clearNotification}
             anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         >

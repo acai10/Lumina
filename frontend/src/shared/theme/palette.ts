@@ -39,4 +39,16 @@ export const palette = {
     // Three.js mesh colors
     meshColorHex: 0x4477bb as const,
     edgeColorHex: 0x88ccff as const,
+    tealBorderHex: 0x64ffc8 as const, // Three.js integer form of teal — used for bounding box helpers
+
+    // Three.js STL lighting colors
+    hemiSkyHex: 0x4466cc as const,
+    hemiGroundHex: 0x001122 as const,
+    fillLightHex: 0xaaccff as const,
+    rimLightHex: 0xffc080 as const,
+
+    // Axis helper colors
+    axisX: '#ff4444',
+    axisY: '#44ff88',
+    axisZ: '#4488ff',
 } as const

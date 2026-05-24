@@ -1,205 +1,318 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Box } from '@mui/material'
-import { useViewerStore } from '../../app/store/viewerSlice'
-import SliceSlider from './SliceSlider'
+import { useViewerStore, defaultRenderControls } from '../../app/store/viewerSlice'
+import { createScene, disposeSceneGeometry } from '../../shared/three/sceneUtils'
 import { palette } from '../../shared/theme/palette'
 import type { H5Meta } from '../../shared/types/viewer.types'
 
+const AXIS_LABEL_CANVAS_SIZE = 64
+const AXIS_LABEL_FONT = 'bold 52px sans-serif'
+// Firefox caps drawArraysInstanced at 30 M vertices per draw call; leave headroom
+const MAX_VERTS_PER_DRAW = 28_000_000
+
+// vIntensities is sorted descending; returns count of elements >= threshold
+function countAboveThreshold(arr: Float32Array, threshold: number): number {
+    let lo = 0,
+        hi = arr.length
+    while (lo < hi) {
+        const mid = (lo + hi) >>> 1
+        if (arr[mid] >= threshold) lo = mid + 1
+        else hi = mid
+    }
+    return lo
+}
+
+function applyDrawRanges(
+    geos: THREE.BufferGeometry[],
+    vIntensities: Float32Array,
+    threshold: number,
+) {
+    const total = countAboveThreshold(vIntensities, threshold)
+    let remaining = total
+    for (const geo of geos) {
+        const chunkSize = (geo.attributes['vIntensity'] as THREE.BufferAttribute).count
+        const draw = Math.min(chunkSize, remaining)
+        geo.setDrawRange(0, draw)
+        remaining = Math.max(0, remaining - draw)
+    }
+}
+
 interface H5ViewerProps {
-    slices: string[]
+    vIndices: Float32Array
+    vIntensities: Float32Array
     meta: H5Meta
     fileKey: string
     onError?: (msg: string) => void
 }
 
-const PLANE_OPACITY_ALL = 0.1
-const PLANE_OPACITY_SELECTED = 0.9
+const vertexShader = /* glsl */ `
+in float vIndex;
+in float vIntensity;
+out float fIntensity;
+out float fS;
+out float fW;
+out float fH;
 
-function loadImage(src: string): Promise<HTMLImageElement> {
-    return new Promise((resolve, reject) => {
-        const img = new Image()
-        img.onload = () => resolve(img)
-        img.onerror = () => reject(new Error(`Failed to load slice: ${src.slice(0, 40)}`))
-        img.src = src
-    })
+uniform float uNSlices;
+uniform float uHeight;
+uniform float uWidth;
+uniform float uVolumeSpacing;
+uniform float uPointSize;
+
+void main() {
+    float sliceSize = uHeight * uWidth;
+    float s = floor(vIndex / sliceSize);
+    float rem = mod(vIndex, sliceSize);
+    float h = floor(rem / uWidth);
+    float w = mod(rem, uWidth);
+
+    float x = w - uWidth * 0.5;
+    float y = (s - uNSlices * 0.5) * (uVolumeSpacing / uNSlices);
+    float z = h - uHeight * 0.5;
+
+    fIntensity = vIntensity;
+    fS = s;
+    fW = w;
+    fH = h;
+    gl_PointSize = uPointSize;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(x, y, z, 1.0);
 }
+`
 
-function buildScene(container: HTMLDivElement): {
-    renderer: THREE.WebGLRenderer
-    camera: THREE.PerspectiveCamera
-    scene: THREE.Scene
-    controls: OrbitControls
-} {
-    const width = container.clientWidth
-    const height = container.clientHeight
-    const scene = new THREE.Scene()
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1e6)
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
-    renderer.setPixelRatio(window.devicePixelRatio)
-    renderer.setSize(width, height)
-    renderer.setClearColor(palette.bgDeepHex)
-    container.appendChild(renderer.domElement)
-    const controls = new OrbitControls(camera, renderer.domElement)
-    controls.enableDamping = true
-    controls.dampingFactor = 0.05
-    return { renderer, camera, scene, controls }
+const fragmentShader = /* glsl */ `
+precision highp float;
+in float fIntensity;
+in float fS;
+in float fW;
+in float fH;
+out vec4 fragColor;
+
+uniform float uThreshold;
+uniform float uBrightness;
+uniform float uContrast;
+uniform float uOpacity;
+uniform float uSliceMin;
+uniform float uSliceMax;
+uniform float uWidthMin;
+uniform float uWidthMax;
+uniform float uHeightMin;
+uniform float uHeightMax;
+
+void main() {
+    if (fIntensity < uThreshold) discard;
+    if (fS < uSliceMin || fS >= uSliceMax) discard;
+    if (fW < uWidthMin || fW >= uWidthMax) discard;
+    if (fH < uHeightMin || fH >= uHeightMax) discard;
+    float c = clamp(fIntensity * uBrightness, 0.0, 1.0);
+    if (c < 0.5) c = 0.5 * pow(2.0 * c, uContrast);
+    else         c = 1.0 - 0.5 * pow(2.0 * (1.0 - c), uContrast);
+    fragColor = vec4(c, c, c, uOpacity);
 }
+`
 
-function buildSlicePlanes(
-    images: HTMLImageElement[],
-    volW: number,
-    volH: number,
-    totalDepth: number,
-    scene: THREE.Scene,
-): { planes: THREE.Mesh[]; textures: THREE.Texture[] } {
-    const planes: THREE.Mesh[] = []
-    const textures: THREE.Texture[] = []
-    const n = images.length
-    for (let i = 0; i < n; i++) {
-        const texture = new THREE.Texture(images[i])
-        texture.needsUpdate = true
-        textures.push(texture)
-        const material = new THREE.MeshBasicMaterial({
-            map: texture,
-            transparent: true,
-            opacity: PLANE_OPACITY_ALL,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-        })
-        const geometry = new THREE.PlaneGeometry(volW, volH)
-        const mesh = new THREE.Mesh(geometry, material)
-        mesh.rotation.x = Math.PI / 2
-        mesh.position.y = (0.5 - (n > 1 ? i / (n - 1) : 0)) * totalDepth
-        scene.add(mesh)
-        planes.push(mesh)
-    }
-    return { planes, textures }
-}
-
-export default function H5Viewer({ slices, meta, fileKey, onError }: H5ViewerProps) {
+export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5ViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
-    const planesRef = useRef<THREE.Mesh[]>([])
-    const { currentSliceIndex } = useViewerStore()
+    const materialRef = useRef<THREE.ShaderMaterial | null>(null)
+    const chunkGeosRef = useRef<THREE.BufferGeometry[]>([])
+    const needsRenderRef = useRef(true)
+
+    const renderControls = useViewerStore(
+        (s) => s.h5PerFileStates[fileKey]?.renderControls ?? defaultRenderControls,
+    )
 
     useEffect(() => {
         const container = containerRef.current
         if (!container) return
 
-        const { renderer, camera, scene, controls } = buildScene(container)
+        const { scene, camera, renderer, controls, disposeBase } = createScene(container)
 
-        const { width: volW, height: volH } = meta
-        const totalDepth = volH * 0.8
+        const { nSlices, height, width } = meta
+        const initialRc =
+            useViewerStore.getState().h5PerFileStates[fileKey]?.renderControls ??
+            defaultRenderControls
+        const maxDim = Math.max(width, height, initialRc.volumeSpacing)
 
-        let planes: THREE.Mesh[] = []
-        let textures: THREE.Texture[] = []
-        let cancelled = false
-        let sceneReady = false
+        const axes = new THREE.AxesHelper(maxDim * 0.7)
+        scene.add(axes)
 
-        const buildPlanes = async () => {
-            let images: HTMLImageElement[]
-            try {
-                images = await Promise.all(slices.map(loadImage))
-            } catch (err) {
-                console.error('H5Viewer: failed to load slice images', err)
-                onError?.('Failed to load H5 slices.')
-                return
-            }
-            if (cancelled) return
-            ;({ planes, textures } = buildSlicePlanes(images, volW, volH, totalDepth, scene))
-            planesRef.current = planes
+        const axisLen = maxDim * 0.78
+        const labelScale = maxDim * 0.09
+        const axisLabels = (
+            [
+                { text: 'X', color: palette.axisX, pos: [axisLen, 0, 0] },
+                { text: 'Y', color: palette.axisY, pos: [0, axisLen, 0] },
+                { text: 'Z', color: palette.axisZ, pos: [0, 0, axisLen] },
+            ] as const
+        ).map(({ text, color, pos }) => {
+            const canvas = document.createElement('canvas')
+            canvas.width = AXIS_LABEL_CANVAS_SIZE
+            canvas.height = AXIS_LABEL_CANVAS_SIZE
+            const ctx = canvas.getContext('2d')!
+            ctx.fillStyle = color
+            ctx.font = AXIS_LABEL_FONT
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillText(text, 32, 32)
+            const texture = new THREE.CanvasTexture(canvas)
+            const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false })
+            const sprite = new THREE.Sprite(mat)
+            sprite.position.set(pos[0], pos[1], pos[2])
+            sprite.scale.setScalar(labelScale)
+            scene.add(sprite)
+            return sprite
+        })
 
-            const maxDim = Math.max(volW, volH, totalDepth)
-            const saved = useViewerStore.getState().h5PerFileStates[fileKey]
-            if (saved) {
-                camera.position.fromArray(saved.cameraPosition)
-                camera.quaternion.fromArray(saved.cameraQuaternion)
-                controls.target.fromArray(saved.controlsTarget)
-            } else {
-                camera.position.set(0, maxDim * 1.8, maxDim * 0.4)
-                camera.lookAt(0, 0, 0)
-            }
-            camera.near = maxDim * 0.001
-            camera.far = maxDim * 100
-            camera.updateProjectionMatrix()
-            controls.update()
-            sceneReady = true
+        const material = new THREE.ShaderMaterial({
+            glslVersion: THREE.GLSL3,
+            uniforms: {
+                uNSlices: { value: nSlices },
+                uHeight: { value: height },
+                uWidth: { value: width },
+                uVolumeSpacing: { value: initialRc.volumeSpacing },
+                uPointSize: { value: initialRc.h5PointSize },
+                uThreshold: { value: initialRc.h5Threshold },
+                uBrightness: { value: initialRc.h5Brightness },
+                uContrast: { value: initialRc.h5Contrast },
+                uOpacity: { value: initialRc.h5Opacity },
+                uSliceMin: { value: initialRc.h5SliceRange[0] },
+                uSliceMax: { value: initialRc.h5SliceRange[1] },
+                uWidthMin: { value: initialRc.h5WidthRange[0] },
+                uWidthMax: { value: initialRc.h5WidthRange[1] },
+                uHeightMin: { value: initialRc.h5HeightRange[0] },
+                uHeightMax: { value: initialRc.h5HeightRange[1] },
+            },
+            vertexShader,
+            fragmentShader,
+            transparent: true,
+            depthWrite: false,
+        })
+
+        const boundingBox = new THREE.Box3(
+            new THREE.Vector3(-width / 2, -initialRc.volumeSpacing / 2, -height / 2),
+            new THREE.Vector3(width / 2, initialRc.volumeSpacing / 2, height / 2),
+        )
+        const boxHelper = new THREE.Box3Helper(boundingBox, new THREE.Color(palette.tealBorderHex))
+        scene.add(boxHelper)
+
+        chunkGeosRef.current = []
+        for (let offset = 0; offset < vIndices.length; offset += MAX_VERTS_PER_DRAW) {
+            const count = Math.min(MAX_VERTS_PER_DRAW, vIndices.length - offset)
+            const geo = new THREE.BufferGeometry()
+            geo.setAttribute(
+                'vIndex',
+                new THREE.BufferAttribute(vIndices.subarray(offset, offset + count), 1),
+            )
+            geo.setAttribute(
+                'vIntensity',
+                new THREE.BufferAttribute(vIntensities.subarray(offset, offset + count), 1),
+            )
+            const chunk = new THREE.Points(geo, material)
+            chunk.frustumCulled = false
+            scene.add(chunk)
+            chunkGeosRef.current.push(geo)
         }
+        applyDrawRanges(chunkGeosRef.current, vIntensities, initialRc.h5Threshold)
+        materialRef.current = material
 
-        buildPlanes()
+        const saved = useViewerStore.getState().h5PerFileStates[fileKey]
+        if (saved?.cameraPosition) {
+            camera.position.fromArray(saved.cameraPosition)
+            camera.quaternion.fromArray(saved.cameraQuaternion!)
+            controls.target.fromArray(saved.controlsTarget!)
+        } else {
+            camera.position.set(maxDim * 0.5, maxDim * 1.5, maxDim * 1.2)
+            camera.lookAt(0, 0, 0)
+        }
+        camera.near = maxDim * 0.001
+        camera.far = maxDim * 100
+        camera.updateProjectionMatrix()
+        controls.update()
 
+        // OrbitControls.update() can return false for sub-EPS scroll increments (trackpad);
+        // this listener guarantees one render after every wheel event regardless.
+        const onWheel = () => {
+            needsRenderRef.current = true
+        }
+        renderer.domElement.addEventListener('wheel', onWheel, { passive: true })
+
+        needsRenderRef.current = true
         let animId: number
         const animate = () => {
             animId = requestAnimationFrame(animate)
-            controls.update()
-            renderer.render(scene, camera)
+            const changed = controls.update()
+            if (changed || needsRenderRef.current) {
+                renderer.render(scene, camera)
+                needsRenderRef.current = false
+            }
         }
         animate()
 
-        const handleResize = () => {
-            const w = container.clientWidth
-            const h = container.clientHeight
-            camera.aspect = w / h
-            camera.updateProjectionMatrix()
-            renderer.setSize(w, h)
-        }
-        window.addEventListener('resize', handleResize)
-
         return () => {
-            cancelled = true
+            renderer.domElement.removeEventListener('wheel', onWheel)
             cancelAnimationFrame(animId)
-            window.removeEventListener('resize', handleResize)
-            if (sceneReady) {
-                useViewerStore.getState().saveH5CameraState(fileKey, {
-                    cameraPosition: camera.position.toArray() as [number, number, number],
-                    cameraQuaternion: camera.quaternion.toArray() as [
-                        number,
-                        number,
-                        number,
-                        number,
-                    ],
-                    controlsTarget: controls.target.toArray() as [number, number, number],
-                })
-            }
-            controls.dispose()
-            planesRef.current = []
-            planes.forEach((p) => {
-                ;(p.material as THREE.MeshBasicMaterial).dispose()
-                p.geometry.dispose()
+            useViewerStore.getState().saveH5CameraState(fileKey, {
+                cameraPosition: camera.position.toArray() as [number, number, number],
+                cameraQuaternion: camera.quaternion.toArray() as [number, number, number, number],
+                controlsTarget: controls.target.toArray() as [number, number, number],
             })
-            textures.forEach((t) => t.dispose())
-            renderer.dispose()
-            container.removeChild(renderer.domElement)
+            axisLabels.forEach((sprite) => {
+                sprite.material.map?.dispose()
+                sprite.material.dispose()
+            })
+            materialRef.current = null
+            chunkGeosRef.current = []
+            disposeSceneGeometry(scene)
+            disposeBase()
         }
-    }, [slices, meta, onError, fileKey])
+    }, [vIndices, vIntensities, meta, fileKey])
 
-    // Update plane opacities when slice selection changes
+    const {
+        volumeSpacing,
+        h5PointSize,
+        h5Threshold,
+        h5Brightness,
+        h5Contrast,
+        h5Opacity,
+        h5SliceRange,
+        h5WidthRange,
+        h5HeightRange,
+    } = renderControls
+    const [sliceMin, sliceMax] = h5SliceRange
+    const [widthMin, widthMax] = h5WidthRange
+    const [heightMin, heightMax] = h5HeightRange
+
     useEffect(() => {
-        const planes = planesRef.current
-        if (planes.length === 0) return
+        const mat = materialRef.current
+        if (!mat) return
+        mat.uniforms.uVolumeSpacing.value = volumeSpacing
+        mat.uniforms.uPointSize.value = h5PointSize
+        mat.uniforms.uThreshold.value = h5Threshold
+        applyDrawRanges(chunkGeosRef.current, vIntensities, h5Threshold)
+        mat.uniforms.uBrightness.value = h5Brightness
+        mat.uniforms.uContrast.value = h5Contrast
+        mat.uniforms.uOpacity.value = h5Opacity
+        mat.uniforms.uSliceMin.value = sliceMin
+        mat.uniforms.uSliceMax.value = sliceMax
+        mat.uniforms.uWidthMin.value = widthMin
+        mat.uniforms.uWidthMax.value = widthMax
+        mat.uniforms.uHeightMin.value = heightMin
+        mat.uniforms.uHeightMax.value = heightMax
+        needsRenderRef.current = true
+    }, [
+        volumeSpacing,
+        h5PointSize,
+        h5Threshold,
+        h5Brightness,
+        h5Contrast,
+        h5Opacity,
+        sliceMin,
+        sliceMax,
+        widthMin,
+        widthMax,
+        heightMin,
+        heightMax,
+    ])
 
-        planes.forEach((p, i) => {
-            const mat = p.material as THREE.MeshBasicMaterial
-            if (currentSliceIndex === null) {
-                p.visible = true
-                mat.opacity = PLANE_OPACITY_ALL
-            } else if (i === currentSliceIndex) {
-                p.visible = true
-                mat.opacity = PLANE_OPACITY_SELECTED
-            } else if (i > currentSliceIndex) {
-                p.visible = true
-                mat.opacity = PLANE_OPACITY_ALL
-            } else {
-                p.visible = false
-            }
-        })
-    }, [currentSliceIndex])
-
-    return (
-        <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
-            <Box ref={containerRef} sx={{ width: '100%', height: '100%' }} />
-            <SliceSlider nSlices={meta.nSlices} />
-        </Box>
-    )
+    return <Box ref={containerRef} sx={{ width: '100%', height: '100%' }} />
 }
