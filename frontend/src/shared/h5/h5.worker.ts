@@ -13,7 +13,13 @@ self.onmessage = async (e: MessageEvent<WorkerInput>) => {
                 : normalizeVolume(e.data.raw, e.data.dims, e.data.threshold)
         self.postMessage(
             { ok: true, result },
-            { transfer: [result.vIndices.buffer, result.vIntensities.buffer] },
+            {
+                transfer: [
+                    result.vIndices.buffer,
+                    result.vIntensities.buffer,
+                    result.normalizedVolume.buffer,
+                ],
+            },
         )
     } catch (err) {
         self.postMessage({ ok: false, error: String(err) })

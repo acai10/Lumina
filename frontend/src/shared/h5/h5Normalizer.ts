@@ -10,6 +10,7 @@ export function normalizeVolume(
     const total = nSlices * sliceSize
     const tmpIndices = new Float32Array(total)
     const tmpIntensities = new Float32Array(total)
+    const normalizedVolume = new Float32Array(total)
     let count = 0
 
     for (let s = 0; s < nSlices; s++) {
@@ -24,6 +25,7 @@ export function normalizeVolume(
         const range = max > min ? max - min : 1
         for (let i = 0; i < sliceSize; i++) {
             const normalized = (raw[offset + i] - min) / range
+            normalizedVolume[offset + i] = normalized
             if (normalized >= threshold) {
                 tmpIndices[count] = offset + i
                 tmpIntensities[count] = normalized
@@ -68,5 +70,5 @@ export function normalizeVolume(
         vIntensities[i] = tmpIntensities[perm[i]]
     }
 
-    return { nSlices, height, width, vIndices, vIntensities }
+    return { nSlices, height, width, vIndices, vIntensities, normalizedVolume }
 }

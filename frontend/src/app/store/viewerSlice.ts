@@ -52,6 +52,8 @@ interface ViewerState {
     setStlOpacity: (v: number) => void
     setFilteringState: (fileKey: string, value: boolean) => void
     applyBackendFilter: (fileKey: string, newData: H5VolumeData) => void
+    setH5ViewMode: (fileKey: string, mode: 'pointcloud' | 'slice') => void
+    setH5SliceIndex: (fileKey: string, index: number) => void
     reset: () => void
 }
 
@@ -152,6 +154,20 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
     applyBackendFilter: (fileKey, newData) =>
         set((state) => ({
             h5Files: state.h5Files.map((f) => (f.name === fileKey ? { ...f, data: newData } : f)),
+        })),
+    setH5ViewMode: (fileKey, viewMode) =>
+        set((state) => ({
+            h5PerFileStates: {
+                ...state.h5PerFileStates,
+                [fileKey]: { ...state.h5PerFileStates[fileKey], viewMode },
+            },
+        })),
+    setH5SliceIndex: (fileKey, sliceIndex) =>
+        set((state) => ({
+            h5PerFileStates: {
+                ...state.h5PerFileStates,
+                [fileKey]: { ...state.h5PerFileStates[fileKey], sliceIndex },
+            },
         })),
     reset: () => set(initialState),
 }))
