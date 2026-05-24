@@ -9,4 +9,6 @@ export const RENDER_CONTROL_LIMITS = {
     h5SliceRange: { min: 0, max: 512, step: 1 },
     h5WidthRange: { min: 0, max: 250, step: 1 },
     h5HeightRange: { min: 0, max: 250, step: 1 },
+    filterGaussianSigma: { min: 0.5, max: 5.0, step: 0.1 },
+    filterMedianRadius: { min: 1, max: 3, step: 1 },
 } as const

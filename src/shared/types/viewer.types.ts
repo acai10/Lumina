@@ -9,8 +9,14 @@ export interface H5VolumeData extends H5Meta {
     vIntensities: Float32Array
 }
 
+export type FilterParams =
+    | { type: 'none' }
+    | { type: 'gaussian'; sigma: number }
+    | { type: 'median'; kernelRadius: number }
+
 export interface H5FileEntry {
     name: string
+    sourceFile: File
     data: H5VolumeData
 }
 
@@ -24,6 +30,7 @@ export interface H5RenderControls {
     h5SliceRange: [number, number]
     h5WidthRange: [number, number]
     h5HeightRange: [number, number]
+    filterParams: FilterParams
 }
 
 export interface H5PerFileState {
@@ -31,4 +38,5 @@ export interface H5PerFileState {
     cameraQuaternion?: [number, number, number, number]
     controlsTarget?: [number, number, number]
     renderControls: H5RenderControls
+    isReprocessing: boolean
 }

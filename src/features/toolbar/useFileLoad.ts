@@ -17,6 +17,7 @@ export function useFileLoad() {
             const results: H5FileEntry[] = await Promise.all(
                 files.map(async (f) => ({
                     name: f.name,
+                    sourceFile: f,
                     data: await loadH5FileInWorker(f, [512, 250, 250]),
                 })),
             )
