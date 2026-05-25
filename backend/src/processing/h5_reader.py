@@ -7,6 +7,21 @@ OCT_DIMS = (512, 250, 250)  # nSlices, height, width — fixed for all files
 
 
 def load_volume(path: Path) -> np.ndarray:
+    """Load an OCT volume from an HDF5 file.
+
+    Reads the ``"OCT"`` dataset from *path*, validates its size against
+    :data:`OCT_DIMS`, and reshapes flat arrays if necessary.
+
+    Args:
+        path: Path to the ``.h5`` file.
+
+    Returns:
+        Float32 array of shape ``(512, 250, 250)``.
+
+    Raises:
+        ValueError: If the ``"OCT"`` dataset is missing or the array size
+            does not match the expected element count.
+    """
     with h5py.File(path, "r") as f:
         ds = f.get("OCT")
         if ds is None:

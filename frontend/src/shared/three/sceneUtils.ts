@@ -64,6 +64,7 @@ export function createScene(container: HTMLElement, options: SceneOptions = {}):
     const disposeBase = () => {
         window.removeEventListener('resize', handleResize)
         controls.dispose()
+        renderer.forceContextLoss()
         renderer.dispose()
         if (container.contains(renderer.domElement)) {
             container.removeChild(renderer.domElement)

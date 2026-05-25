@@ -7,6 +7,7 @@ export interface H5Meta {
 export interface H5VolumeData extends H5Meta {
     vIndices: Float32Array
     vIntensities: Float32Array
+    normalizedVolume: Float32Array
 }
 
 export interface H5FileEntry {
@@ -27,10 +28,24 @@ export interface H5RenderControls {
     h5HeightRange: [number, number]
 }
 
+export interface SlicePanelControl {
+    brightness: number
+    contrast: number
+}
+
 export interface H5PerFileState {
     cameraPosition?: [number, number, number]
     cameraQuaternion?: [number, number, number, number]
     controlsTarget?: [number, number, number]
     renderControls: H5RenderControls
     isFiltering?: boolean
+    viewMode?: 'pointcloud' | 'slice'
+    sliceIndex?: number
+    sliceY?: number
+    sliceX?: number
+    slicePanelControls?: {
+        z: SlicePanelControl
+        y: SlicePanelControl
+        x: SlicePanelControl
+    }
 }

@@ -28,10 +28,15 @@ npm run lint     # ESLint
 npm run format   # Prettier
 ```
 
-### Format both sides
+### Backend quality tools
 
 ```bash
-make format
+cd backend
+uv run ruff check src/          # lint (includes unused-import, print() detection)
+uv run ruff check src/ --fix    # auto-fix safe issues
+uv run mypy src/                # type checking
+uv run pytest                   # run test suite
+make format                     # black + isort (both sides)
 ```
 
 ---
@@ -61,38 +66,50 @@ The backend validates both constraints on upload and raises 400 otherwise.
 
 ```text
 backend/
-├── main.py                   # FastAPI app, CORS, router registration, lifespan (calls shutdown_executor on exit)
+├── main.py                   # FastAPI app, CORS (from settings), router registration, lifespan
+├── tests/
+│   ├── conftest.py           # TestClient fixture
+│   ├── test_filters.py       # Unit tests for apply_filter_chain()
+│   ├── test_metrics.py       # Unit tests for NCC/MI/MSE/Dice
+│   └── test_job_store.py     # Unit tests for JobStore
 └── src/
-    ├── config.py             # UPLOADS_DIR — single source of truth; reads UPLOADS_DIR env var
+    ├── config.py             # Pydantic BaseSettings: uploads_dir, cors_origins (env vars)
+    ├── schemas/
+    │   ├── enums.py          # JobStatus (str Enum): PENDING, RUNNING, DONE, ERROR
+    │   ├── jobs.py           # FilterStep, JobRequest, JobCreated, JobStatusResponse
+    │   └── volumes.py        # UploadResponse, VolumeInfo
     ├── routers/
-    │   ├── volumes.py        # POST /volumes/upload, GET /volumes/{id}/info; volume_id = filename stem
-    │   ├── jobs.py           # POST /jobs/, GET /jobs/{id}
-    │   └── results.py        # GET /jobs/{id}/volume/{stitcher} → raw float32 (X-Shape, X-Dtype headers)
+    │   ├── volumes.py        # POST /volumes/upload, GET /volumes/{id}/info
+    │   ├── jobs.py           # POST /jobs/ (201), GET /jobs/{id}
+    │   └── results.py        # GET /jobs/{id}/volume/{stitcher} → raw float32
     └── processing/
-        ├── h5_reader.py      # load_volume() — reads "OCT" dataset, reshapes if flat
-        ├── filters.py        # apply_filter_chain(); gaussian, median, lee, bm3d (optional), normalize, anisotropy
+        ├── h5_reader.py      # load_volume(), OCT_DIMS constant
+        ├── filters.py        # apply_filter_chain(); _FILTER_REGISTRY
         ├── stitchers.py      # STITCHER_REGISTRY: phase_correlation, simpleitk_affine, elastix_bspline, bigstitcher
         ├── metrics.py        # compute_all() -> dict[str, float]: NCC, MI, MSE, Dice
-        └── runner.py         # asyncio + ProcessPoolExecutor job runner; shutdown_executor() for lifespan cleanup
+        └── runner.py         # JobStore class + job_store singleton; async run_job; shutdown_executor()
 ```
 
 ### Backend conventions
 
-- Type hints: always use `list[dict[str, Any]]` and `dict[str, dict[str, Any]]` — never bare `list[dict]` or `dict[str, dict]`.
-- Pydantic mutable defaults: always `Field(default_factory=dict)` / `Field(default_factory=list)`, never `{}` / `[]`.
-- Optional heavy dependencies (`bm3d`, `itk-elastix`): listed under `[project.optional-dependencies]` in `pyproject.toml`; guarded with `try: import X except (ImportError, OSError)` inside the function that needs them.
-- `UPLOADS_DIR`: import from `src.config` — never redeclare locally.
-- Background tasks: pass async `run_job` directly to `background_tasks.add_task(run_job, ...)` — Starlette awaits coroutines automatically; do not wrap in `asyncio.ensure_future`.
+- **Config**: Import `from src.config import settings` everywhere. Use `settings.uploads_dir` and `settings.cors_origins`. Never redeclare env var reads.
+- **Job status**: Always use `JobStatus.PENDING` / `.RUNNING` / `.DONE` / `.ERROR` from `src.schemas.enums`. Never compare against raw strings.
+- **Type hints**: Always use `list[dict[str, Any]]` and `dict[str, dict[str, Any]]` — never bare `list[dict]` or `dict[str, dict]`.
+- **Pydantic mutable defaults**: Always `Field(default_factory=dict)` / `Field(default_factory=list)`, never `{}` / `[]`.
+- **Optional heavy dependencies** (`bm3d`, `itk-elastix`): listed under `[project.optional-dependencies]`; guarded with `try: import X except (ImportError, OSError)` inside the function.
+- **Logging**: Every module in `src/processing/` uses `logger = logging.getLogger(__name__)`. No `print()` anywhere — ruff rule T201 catches this.
+- **Docstrings**: Google style for all public functions. Sections: Args, Returns, Raises.
+- **Background tasks**: Pass async `run_job` directly to `background_tasks.add_task(run_job, ...)` — Starlette awaits coroutines automatically.
 
 ### API endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/volumes/upload` | Upload `.h5` file → `{ volume_id, n_slices, height, width }` |
-| GET | `/volumes/{id}/info` | Volume shape/dtype |
-| POST | `/jobs/` | Start job → `{ job_id }` (immediate) |
-| GET | `/jobs/{id}` | Poll status + metric results |
-| GET | `/jobs/{id}/volume/{stitcher}` | Raw float32 result volume |
+| Method | Path | Status | Description |
+| --- | --- | --- | --- |
+| POST | `/volumes/upload` | 200 | Upload `.h5` → `{ volume_id, n_slices, height, width }` |
+| GET | `/volumes/{id}/info` | 200 | Volume shape/dtype |
+| POST | `/jobs/` | **201** | Start job → `{ job_id }` (immediate) |
+| GET | `/jobs/{id}` | 200 | Poll status + metric results |
+| GET | `/jobs/{id}/volume/{stitcher}` | 200 | Raw float32 result volume |
 
 ### Job request body
 
@@ -129,42 +146,71 @@ New stitcher-comparison UI will live in `frontend/src/features/stitcher/`.
 
 ```text
 frontend/src/
+├── main.tsx
+├── App.tsx
 ├── app/
-│   └── store/viewerSlice.ts        # Zustand: per-file H5 state, camera, notifications
+│   └── store/viewerSlice.ts          # Zustand: per-file H5 state, camera, notifications
 ├── shared/
 │   ├── api/
-│   │   ├── client.ts               # uploadVolume, createJob, pollJob, fetchResultVolume
-│   │   └── types.ts                # FilterStep, JobRequest, JobStatus, UploadResponse
+│   │   ├── index.ts                  # barrel — public API surface
+│   │   ├── client.ts                 # uploadVolume, createJob, pollJob, fetchResultVolume
+│   │   └── types.ts                  # FilterStep, JobRequest, JobStatus, UploadResponse
 │   ├── h5/
-│   │   ├── h5Reader.ts             # loadH5FileInWorker; exports VOLUME_DIMS, PRE_FILTER_THRESHOLD
-│   │   ├── h5Normalizer.ts         # normalizeVolume(raw, dims, threshold) → H5VolumeData
-│   │   └── h5.worker.ts            # Web Worker entry point
-│   └── three/
-│       └── sceneUtils.ts           # createScene(), disposeSceneGeometry()
+│   │   ├── index.ts                  # barrel
+│   │   ├── h5Reader.ts               # loadH5FileInWorker; exports VOLUME_DIMS, PRE_FILTER_THRESHOLD
+│   │   ├── h5Normalizer.ts           # normalizeVolume(raw, dims, threshold) → H5VolumeData
+│   │   └── h5.worker.ts              # Web Worker entry point
+│   ├── three/
+│   │   ├── index.ts                  # barrel
+│   │   └── sceneUtils.ts             # createScene(), disposeSceneGeometry()
+│   └── theme/
+│       ├── index.ts                  # barrel
+│       ├── palette.ts                # all colour tokens
+│       └── theme.ts                  # MUI darkTheme
 └── features/
     ├── controls/
-    │   ├── useFilterJob.ts          # Hook: full upload→job→poll→download pipeline
-    │   ├── useFilterParams.ts       # Hook: filter type + param state + buildFilterStep()
-    │   ├── PreprocessingSection.tsx # Thin UI component using the two hooks above
-    │   ├── SliderRow.tsx            # SliderRow + RangeSliderRow (named exports)
-    │   └── renderControlLimits.ts  # RENDER_CONTROL_LIMITS; max values derived from VOLUME_DIMS
-    ├── h5/H5Viewer.tsx             # Three.js point-cloud viewer; uses disposeSceneGeometry
-    ├── stl/STLViewer.tsx           # Three.js STL viewer; uses disposeSceneGeometry
-    └── notifications/AppSnackbar.tsx
+    │   ├── index.ts                  # barrel
+    │   ├── ControlsPanel.tsx         # right sidebar; delegates to hooks + sub-components
+    │   ├── PreprocessingSection.tsx  # filter UI; uses useFilterJob + useFilterParams
+    │   ├── SliderRow.tsx             # SliderRow + RangeSliderRow (named exports)
+    │   ├── renderControlLimits.ts    # RENDER_CONTROL_LIMITS; derived from VOLUME_DIMS
+    │   ├── useFilterJob.ts           # Hook: full upload→job→poll→download pipeline
+    │   ├── useFilterParams.ts        # Hook: filter type + param state + buildFilterStep()
+    │   └── useNumberInput.ts         # Hook: controlled number input with clamping
+    ├── h5/
+    │   ├── index.ts                  # barrel (H5Viewer, H5SliceViewer, H5FileTabs)
+    │   ├── H5Viewer.tsx              # Three.js point-cloud viewer
+    │   ├── H5SliceViewer.tsx         # 2D slice viewer layout (3 panels)
+    │   ├── H5SliceViewer.styles.ts   # slicePanelSliderSx (pseudo-selectors)
+    │   ├── SlicePanel.tsx            # single-axis 2D canvas panel with zoom/pan
+    │   ├── H5FileTabs.tsx            # tab bar for multiple loaded files
+    │   ├── h5ViewerShaders.ts        # GLSL3 vertexShader + fragmentShader strings
+    │   └── createAxisLabels.ts       # factory for X/Y/Z axis label sprites
+    ├── stl/
+    │   ├── index.ts                  # barrel
+    │   └── STLViewer.tsx             # Three.js STL mesh viewer
+    ├── toolbar/
+    │   ├── index.ts                  # barrel
+    │   ├── Toolbar.tsx               # top toolbar; delegates to useFileLoad
+    │   └── useFileLoad.ts            # Hook: file input refs + H5/STL load handlers
+    └── notifications/
+        ├── index.ts                  # barrel
+        └── AppSnackbar.tsx           # notification snackbar
 ```
 
 ### Frontend conventions
 
-- Magic numbers: module-level named constants in the file that uses them (e.g. `POLL_INTERVAL_MS`, `SNACKBAR_DURATION_MS`). Only promote to a shared `constants.ts` if used in 3+ files.
-- Custom hooks: extract side-effectful logic from components into `use*.ts` files. Hooks own state and async operations; components own only layout and event wiring.
-- Three.js cleanup: call `disposeSceneGeometry(scene)` from `shared/three/sceneUtils.ts` before `disposeBase()`. Sprite materials with canvas textures need explicit disposal before that call.
-- `VOLUME_DIMS` from `shared/h5/h5Reader.ts` is the single source of truth for `[512, 250, 250]` — derive all slider maxima from it, never hardcode.
+- **Barrel exports**: Every feature and shared folder has an `index.ts`. Import from the barrel (`'../../features/h5'`) not from deep paths, unless the file is internal to the same folder. Internal helpers (e.g. `SlicePanel`, `h5ViewerShaders`, `createAxisLabels`) are NOT exported from the barrel.
+- **Magic numbers**: module-level named constants in `SCREAMING_SNAKE_CASE` in the file that uses them (e.g. `POLL_INTERVAL_MS`, `MAX_VERTS_PER_DRAW`). Only promote to a shared `constants.ts` if used in 3+ files.
+- **Custom hooks**: extract side-effectful logic from components into `use*.ts` files. Hooks own state and async operations; components own only layout and event wiring.
+- **Three.js cleanup**: call `disposeSceneGeometry(scene)` from `shared/three/sceneUtils.ts` before `disposeBase()`. Sprite materials with canvas textures need explicit disposal before that call.
+- **VOLUME_DIMS** from `shared/h5/h5Reader.ts` is the single source of truth for `[512, 250, 250]` — derive all slider maxima from it, never hardcode.
 
 ---
 
 ## Conventions
 
-- **Backend formatting**: `black` + `isort`, line-length 100. Run `cd backend && .venv/bin/black . && .venv/bin/isort .`. No bare `# type: ignore` without a comment explaining why.
+- **Backend formatting**: `black` + `isort`, line-length 100. Run `cd backend && uv run ruff check src/ --fix`. No bare `# type: ignore` without a comment explaining why.
 - **Frontend formatting**: Prettier via `npm run format`. No new CSS files, MUI only.
 - **Uploads**: `backend/uploads/` is in `.gitignore` — never commit it.
-- **No test suite yet** — add tests under `backend/tests/` and `frontend/src/__tests__/` when needed.
+- **Tests**: Backend tests live in `backend/tests/`. Frontend tests go in `frontend/src/__tests__/` when added.
