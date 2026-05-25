@@ -28,7 +28,7 @@ All `.h5` files must contain a dataset named `"OCT"` with shape `(512, 250, 250)
 
 ## Development
 
-See [CLAUDE.md](CLAUDE.md) for all commands.
+See [CLAUDE.md](CLAUDE.md) for all commands and conventions.
 
 ### Direct (without Docker)
 
@@ -42,10 +42,39 @@ cd frontend && npm install
 npm run dev
 ```
 
+### Backend quality tools
+
+```bash
+cd backend
+uv run ruff check src/    # lint
+uv run mypy src/          # type check
+uv run pytest             # tests
+```
+
+## Project structure
+
+```text
+Lumina/
+├── backend/
+│   ├── main.py               # FastAPI app entry point
+│   ├── pyproject.toml        # deps + ruff/mypy/pytest config
+│   ├── tests/                # pytest suite (filters, metrics, job store)
+│   └── src/
+│       ├── config.py         # Pydantic BaseSettings (UPLOADS_DIR, CORS_ORIGINS)
+│       ├── schemas/          # Pydantic models + JobStatus enum
+│       ├── routers/          # HTTP layer (volumes, jobs, results)
+│       └── processing/       # filters, stitchers, metrics, runner
+└── frontend/
+    └── src/
+        ├── app/store/        # Zustand store (viewerSlice)
+        ├── shared/           # api, h5, three, theme (each with barrel index.ts)
+        └── features/         # controls, h5, stl, toolbar, notifications
+```
+
 ## Stack
 
 | Service | Tech |
-|---------|------|
-| Backend | Python 3.11, FastAPI, h5py, numpy, scipy, scikit-image, SimpleITK, itk-elastix, bm3d |
+| --- | --- |
+| Backend | Python 3.11, FastAPI, pydantic-settings, h5py, numpy, scipy, scikit-image, SimpleITK |
 | Frontend | React 18, TypeScript, Three.js, MUI, Zustand, Vite |
 | Infra | Docker Compose, uv (Python package manager), Node 20 |

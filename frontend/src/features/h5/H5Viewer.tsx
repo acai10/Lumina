@@ -5,9 +5,9 @@ import { useViewerStore, defaultRenderControls } from '../../app/store/viewerSli
 import { createScene, disposeSceneGeometry } from '../../shared/three/sceneUtils'
 import { palette } from '../../shared/theme/palette'
 import type { H5Meta } from '../../shared/types/viewer.types'
+import { createAxisLabels } from './createAxisLabels'
+import { vertexShader, fragmentShader } from './h5ViewerShaders'
 
-const AXIS_LABEL_CANVAS_SIZE = 64
-const AXIS_LABEL_FONT = 'bold 52px sans-serif'
 // Firefox caps drawArraysInstanced at 30 M vertices per draw call; leave headroom
 const MAX_VERTS_PER_DRAW = 28_000_000
 
@@ -46,71 +46,6 @@ interface H5ViewerProps {
     onError?: (msg: string) => void
 }
 
-const vertexShader = /* glsl */ `
-in float vIndex;
-in float vIntensity;
-out float fIntensity;
-out float fS;
-out float fW;
-out float fH;
-
-uniform float uNSlices;
-uniform float uHeight;
-uniform float uWidth;
-uniform float uVolumeSpacing;
-uniform float uPointSize;
-
-void main() {
-    float sliceSize = uHeight * uWidth;
-    float s = floor(vIndex / sliceSize);
-    float rem = mod(vIndex, sliceSize);
-    float h = floor(rem / uWidth);
-    float w = mod(rem, uWidth);
-
-    float x = w - uWidth * 0.5;
-    float y = (s - uNSlices * 0.5) * (uVolumeSpacing / uNSlices);
-    float z = h - uHeight * 0.5;
-
-    fIntensity = vIntensity;
-    fS = s;
-    fW = w;
-    fH = h;
-    gl_PointSize = uPointSize;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(x, y, z, 1.0);
-}
-`
-
-const fragmentShader = /* glsl */ `
-precision highp float;
-in float fIntensity;
-in float fS;
-in float fW;
-in float fH;
-out vec4 fragColor;
-
-uniform float uThreshold;
-uniform float uBrightness;
-uniform float uContrast;
-uniform float uOpacity;
-uniform float uSliceMin;
-uniform float uSliceMax;
-uniform float uWidthMin;
-uniform float uWidthMax;
-uniform float uHeightMin;
-uniform float uHeightMax;
-
-void main() {
-    if (fIntensity < uThreshold) discard;
-    if (fS < uSliceMin || fS >= uSliceMax) discard;
-    if (fW < uWidthMin || fW >= uWidthMax) discard;
-    if (fH < uHeightMin || fH >= uHeightMax) discard;
-    float c = clamp(fIntensity * uBrightness, 0.0, 1.0);
-    if (c < 0.5) c = 0.5 * pow(2.0 * c, uContrast);
-    else         c = 1.0 - 0.5 * pow(2.0 * (1.0 - c), uContrast);
-    fragColor = vec4(c, c, c, uOpacity);
-}
-`
-
 export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5ViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     const materialRef = useRef<THREE.ShaderMaterial | null>(null)
@@ -138,30 +73,7 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
 
         const axisLen = maxDim * 0.78
         const labelScale = maxDim * 0.09
-        const axisLabels = (
-            [
-                { text: 'X', color: palette.axisX, pos: [axisLen, 0, 0] },
-                { text: 'Y', color: palette.axisY, pos: [0, axisLen, 0] },
-                { text: 'Z', color: palette.axisZ, pos: [0, 0, axisLen] },
-            ] as const
-        ).map(({ text, color, pos }) => {
-            const canvas = document.createElement('canvas')
-            canvas.width = AXIS_LABEL_CANVAS_SIZE
-            canvas.height = AXIS_LABEL_CANVAS_SIZE
-            const ctx = canvas.getContext('2d')!
-            ctx.fillStyle = color
-            ctx.font = AXIS_LABEL_FONT
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            ctx.fillText(text, 32, 32)
-            const texture = new THREE.CanvasTexture(canvas)
-            const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false })
-            const sprite = new THREE.Sprite(mat)
-            sprite.position.set(pos[0], pos[1], pos[2])
-            sprite.scale.setScalar(labelScale)
-            scene.add(sprite)
-            return sprite
-        })
+        const axisLabels = createAxisLabels(scene, axisLen, labelScale)
 
         const material = new THREE.ShaderMaterial({
             glslVersion: THREE.GLSL3,

@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable
 
 import numpy as np
@@ -5,24 +6,45 @@ import scipy.ndimage as ndi
 import SimpleITK as sitk
 from skimage.registration import phase_cross_correlation
 
+logger = logging.getLogger(__name__)
+
 _MATTES_HISTOGRAM_BINS = 50
 _AFFINE_TRANSFORM_DIMS = 3
 _BIGSTITCHER_UPSAMPLE_FACTOR = 10
 
 
 def stitch_phase_correlation(vol: np.ndarray, params: dict) -> np.ndarray:
-    """Align vol to itself using phase cross-correlation (demo: shift by detected offset)."""
+    """Align volume slices using phase cross-correlation.
+
+    Detects the shift between the first and middle slice, then applies
+    a uniform shift to the entire volume along the height/width axes.
+
+    Args:
+        vol: Float32 array of shape (n_slices, height, width).
+        params: Accepts ``upsample_factor`` (int, default 10).
+
+    Returns:
+        Shifted float32 volume of the same shape.
+    """
     upsample = int(params.get("upsample_factor", 10))
-    # Use middle slice as reference; detect shift between first and middle slice
     ref = vol[vol.shape[0] // 2]
     moving = vol[0]
     shift, _, _ = phase_cross_correlation(ref, moving, upsample_factor=upsample)
-    # Apply the detected shift to the entire volume (uniform shift along h/w axes)
+    logger.debug("phase_correlation detected shift %s", shift)
     return ndi.shift(vol, shift=[0, shift[0], shift[1]]).astype(np.float32)
 
 
 def stitch_simpleitk_affine(vol: np.ndarray, params: dict) -> np.ndarray:
-    """Affine registration using SimpleITK with Mattes Mutual Information."""
+    """Global affine registration using SimpleITK with Mattes Mutual Information.
+
+    Args:
+        vol: Float32 array of shape (n_slices, height, width).
+        params: Accepts ``learning_rate`` (float, default 1.0) and
+            ``iterations`` (int, default 100).
+
+    Returns:
+        Resampled float32 volume of the same shape.
+    """
     fixed_img = sitk.GetImageFromArray(vol)
     moving_img = sitk.GetImageFromArray(vol)
 
@@ -45,7 +67,20 @@ def stitch_simpleitk_affine(vol: np.ndarray, params: dict) -> np.ndarray:
 
 
 def stitch_elastix_bspline(vol: np.ndarray, params: dict) -> np.ndarray:
-    """B-spline non-rigid registration via itk-elastix (optional dependency)."""
+    """B-spline non-rigid registration via itk-elastix (optional dependency).
+
+    Requires the optional ``itk-elastix`` package (``uv sync --extra elastix``).
+
+    Args:
+        vol: Float32 array of shape (n_slices, height, width).
+        params: Accepts ``iterations`` (int, default 256).
+
+    Returns:
+        Registered float32 volume of the same shape.
+
+    Raises:
+        RuntimeError: If ``itk-elastix`` is not installed.
+    """
     try:
         import itk
     except ImportError as exc:
@@ -66,18 +101,27 @@ def stitch_elastix_bspline(vol: np.ndarray, params: dict) -> np.ndarray:
 
 
 def stitch_bigstitcher(vol: np.ndarray, params: dict) -> np.ndarray:
-    """BigStitcher-style global optimisation: pairwise phase-correlation + least-squares fusion."""
+    """BigStitcher-style global optimisation: pairwise phase-correlation + least-squares fusion.
+
+    Computes pairwise shifts between consecutive slices, accumulates them via
+    cumulative sum, and centres the result so the middle slice has zero offset.
+
+    Args:
+        vol: Float32 array of shape (n_slices, height, width).
+        params: Not currently used; reserved for future tuning parameters.
+
+    Returns:
+        Stitched float32 volume of the same shape.
+    """
     n = vol.shape[0]
     shifts: list[tuple[float, float]] = []
 
-    # Pairwise phase-correlation between consecutive slices
     for i in range(n - 1):
         shift, _, _ = phase_cross_correlation(
             vol[i], vol[i + 1], upsample_factor=_BIGSTITCHER_UPSAMPLE_FACTOR
         )
         shifts.append((float(shift[0]), float(shift[1])))
 
-    # Least-squares accumulation: absolute position from cumulative sum of shifts
     cum_h = np.concatenate([[0.0], np.cumsum([s[0] for s in shifts])])
     cum_w = np.concatenate([[0.0], np.cumsum([s[1] for s in shifts])])
 
