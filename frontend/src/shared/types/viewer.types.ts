@@ -7,13 +7,13 @@ export interface H5Meta {
 export interface H5VolumeData extends H5Meta {
     vIndices: Float32Array
     vIntensities: Float32Array
-    normalizedVolume: Float32Array
+    normalizedVolume: Float32Array | null
 }
 
 export interface H5FileEntry {
     name: string
     data: H5VolumeData
-    sourceFile: File
+    sourceFile?: File
 }
 
 export interface H5RenderControls {

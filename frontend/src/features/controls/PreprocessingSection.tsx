@@ -39,7 +39,7 @@ export function PreprocessingSection() {
     const { h5Files, activeH5Index } = useViewerStore()
 
     const activeEntry = h5Files[activeH5Index]
-    if (!activeEntry) return null
+    if (!activeEntry || !activeEntry.sourceFile) return null
 
     const fileKey = activeEntry.name
     const { phase, error, isBusy, run, revert, clearError } = useFilterJob(

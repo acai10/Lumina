@@ -20,3 +20,15 @@ export const RENDER_CONTROL_LIMITS = {
     filterNormalizeLow: { min: 0, max: 10, step: 0.5 },
     filterNormalizeHigh: { min: 90, max: 100, step: 0.5 },
 } as const
+
+export function getRenderControlLimits(meta?: { nSlices: number; height: number; width: number }) {
+    const nSlices = meta?.nSlices ?? N_SLICES
+    const height = meta?.height ?? HEIGHT
+    const width = meta?.width ?? WIDTH
+    return {
+        ...RENDER_CONTROL_LIMITS,
+        h5SliceRange: { min: 0, max: nSlices, step: 1 },
+        h5WidthRange: { min: 0, max: width, step: 1 },
+        h5HeightRange: { min: 0, max: height, step: 1 },
+    }
+}

@@ -43,8 +43,10 @@ interface ViewerState {
     isLoading: boolean
     notification: AppNotification | null
     stlOpacity: number
+    stitchPanelOpen: boolean
     // Actions
     setMode: (mode: 'none' | 'stl' | 'h5') => void
+    toggleStitchPanel: () => void
     setStlFile: (file: File | null) => void
     loadH5: (files: H5FileEntry[]) => void
     selectH5: (index: number) => void
@@ -83,11 +85,13 @@ const initialState = {
     isLoading: false,
     notification: null,
     stlOpacity: DEFAULT_STL_OPACITY,
+    stitchPanelOpen: false,
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => ({
     ...initialState,
     setMode: (mode) => set({ mode }),
+    toggleStitchPanel: () => set((s) => ({ stitchPanelOpen: !s.stitchPanelOpen })),
     setStlFile: (stlFile) => set({ stlFile }),
     loadH5: (files) => {
         const { h5Files, h5PerFileStates } = get()
@@ -97,7 +101,14 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
         const newActiveIndex = h5Files.length
         const newStates = { ...h5PerFileStates }
         newFiles.forEach((f) => {
-            newStates[f.name] = { renderControls: { ...defaultRenderControls } }
+            newStates[f.name] = {
+                renderControls: {
+                    ...defaultRenderControls,
+                    h5SliceRange: [0, f.data.nSlices] as [number, number],
+                    h5HeightRange: [0, f.data.height] as [number, number],
+                    h5WidthRange: [0, f.data.width] as [number, number],
+                },
+            }
         })
         set({
             h5Files: updatedFiles,

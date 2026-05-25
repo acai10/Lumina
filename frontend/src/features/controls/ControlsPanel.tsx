@@ -6,7 +6,7 @@ import {
     DEFAULT_STL_OPACITY,
 } from '../../app/store/viewerSlice'
 import { panelSx, resetButtonSx } from './ControlsPanel.styles'
-import { RENDER_CONTROL_LIMITS } from './renderControlLimits'
+import { RENDER_CONTROL_LIMITS, getRenderControlLimits } from './renderControlLimits'
 import { PreprocessingSection } from './PreprocessingSection'
 import { SliderRow, RangeSliderRow } from './SliderRow'
 import type { H5RenderControls } from '../../shared/types/viewer.types'
@@ -24,11 +24,14 @@ export default function ControlsPanel() {
         resetSlicePanelControls,
     } = useViewerStore()
 
-    const activeKey = h5Files[activeH5Index]?.name
+    const activeH5 = h5Files[activeH5Index]
+    const activeKey = activeH5?.name
+    const hasSliceView = activeH5?.data.normalizedVolume != null
     const renderControls: H5RenderControls =
         (activeKey ? h5PerFileStates[activeKey]?.renderControls : undefined) ??
         defaultRenderControls
     const viewMode = (activeKey ? h5PerFileStates[activeKey]?.viewMode : undefined) ?? 'pointcloud'
+    const limits = getRenderControlLimits(activeH5?.data)
 
     const updateControls = (patch: Partial<H5RenderControls>) => updateActiveRenderState(patch)
 
@@ -48,7 +51,7 @@ export default function ControlsPanel() {
                         sx={{ alignSelf: 'flex-start' }}
                     >
                         <ToggleButton value="pointcloud">3D</ToggleButton>
-                        <ToggleButton value="slice">Slices</ToggleButton>
+                        {hasSliceView && <ToggleButton value="slice">Slices</ToggleButton>}
                     </ToggleButtonGroup>
                     <PreprocessingSection />
                     <Divider sx={{ opacity: 0.2 }} />
@@ -93,19 +96,19 @@ export default function ControlsPanel() {
                             <RangeSliderRow
                                 label="Slices (Y)"
                                 value={renderControls.h5SliceRange}
-                                {...RENDER_CONTROL_LIMITS.h5SliceRange}
+                                {...limits.h5SliceRange}
                                 onChange={(v) => updateControls({ h5SliceRange: v })}
                             />
                             <RangeSliderRow
                                 label="Width (X)"
                                 value={renderControls.h5WidthRange}
-                                {...RENDER_CONTROL_LIMITS.h5WidthRange}
+                                {...limits.h5WidthRange}
                                 onChange={(v) => updateControls({ h5WidthRange: v })}
                             />
                             <RangeSliderRow
                                 label="Height (Z)"
                                 value={renderControls.h5HeightRange}
-                                {...RENDER_CONTROL_LIMITS.h5HeightRange}
+                                {...limits.h5HeightRange}
                                 onChange={(v) => updateControls({ h5HeightRange: v })}
                             />
                         </>

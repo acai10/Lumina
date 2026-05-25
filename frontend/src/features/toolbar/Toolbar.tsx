@@ -9,13 +9,23 @@ import {
     stlButtonSx,
     h5ButtonSx,
     clearButtonSx,
+    stitchButtonSx,
     menuPaperSx,
     menuItemSx,
     loadingSpinnerSx,
 } from './Toolbar.styles'
 
 export default function Toolbar() {
-    const { mode, isLoading, stlFile, h5Files, activeH5Index, reset } = useViewerStore()
+    const {
+        mode,
+        isLoading,
+        stlFile,
+        h5Files,
+        activeH5Index,
+        reset,
+        stitchPanelOpen,
+        toggleStitchPanel,
+    } = useViewerStore()
     const {
         stlInputRef,
         h5InputRef,
@@ -86,6 +96,17 @@ export default function Toolbar() {
                         onClick={(e) => setH5MenuAnchor(e.currentTarget)}
                     >
                         Load H5
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        sx={{
+                            ...stitchButtonSx,
+                            ...(stitchPanelOpen ? { opacity: 1 } : { opacity: 0.7 }),
+                        }}
+                        onClick={toggleStitchPanel}
+                    >
+                        Stitch
                     </Button>
                     <Menu
                         anchorEl={h5MenuAnchor}

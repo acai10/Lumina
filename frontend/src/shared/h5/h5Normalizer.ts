@@ -4,43 +4,70 @@ export function normalizeVolume(
     raw: Float32Array,
     dims: [number, number, number],
     threshold: number,
+    skipNormalizedVolume = false,
 ): H5VolumeData {
     const [nSlices, height, width] = dims
     const sliceSize = height * width
     const total = nSlices * sliceSize
-    const tmpIndices = new Float32Array(total)
-    const tmpIntensities = new Float32Array(total)
-    const normalizedVolume = new Float32Array(total)
-    let count = 0
+
+    // Pass 1 — per-slice min/max then count above-threshold voxels.
+    // Keeping min/max in small typed arrays avoids a second raw-data pass for stats.
+    const sliceMin = new Float32Array(nSlices)
+    const sliceMax = new Float32Array(nSlices)
 
     for (let s = 0; s < nSlices; s++) {
         const offset = s * sliceSize
-        let min = Infinity,
-            max = -Infinity
+        let mn = Infinity,
+            mx = -Infinity
         for (let i = 0; i < sliceSize; i++) {
             const v = raw[offset + i]
-            if (v < min) min = v
-            if (v > max) max = v
+            if (v < mn) mn = v
+            if (v > mx) mx = v
         }
-        const range = max > min ? max - min : 1
+        sliceMin[s] = mn
+        sliceMax[s] = mx
+    }
+
+    let count = 0
+    for (let s = 0; s < nSlices; s++) {
+        const offset = s * sliceSize
+        const mn = sliceMin[s]
+        const range = sliceMax[s] > mn ? sliceMax[s] - mn : 1
         for (let i = 0; i < sliceSize; i++) {
-            const normalized = (raw[offset + i] - min) / range
-            normalizedVolume[offset + i] = normalized
+            if ((raw[offset + i] - mn) / range >= threshold) count++
+        }
+    }
+
+    // Pass 2 — allocate exact-size buffers and fill them.
+    // Peak JS heap = raw (total×4) + normalizedVolume (total×4, optional)
+    //              + tmpIndices (count×4) + tmpIntensities (count×4).
+    // Skipping normalizedVolume cuts ~128 MB for a standard 32 M-voxel volume.
+    const normalizedVolume = skipNormalizedVolume ? null : new Float32Array(total)
+    const tmpIndices = new Float32Array(count)
+    const tmpIntensities = new Float32Array(count)
+    let idx = 0
+
+    for (let s = 0; s < nSlices; s++) {
+        const offset = s * sliceSize
+        const mn = sliceMin[s]
+        const range = sliceMax[s] > mn ? sliceMax[s] - mn : 1
+        for (let i = 0; i < sliceSize; i++) {
+            const normalized = (raw[offset + i] - mn) / range
+            if (normalizedVolume) normalizedVolume[offset + i] = normalized
             if (normalized >= threshold) {
-                tmpIndices[count] = offset + i
-                tmpIntensities[count] = normalized
-                count++
+                tmpIndices[idx] = offset + i
+                tmpIntensities[idx] = normalized
+                idx++
             }
         }
     }
 
-    // Sort by intensity descending (2-pass radix sort, O(n)) so setDrawRange(0, N) gives the N
-    // brightest points. Using Uint32Array avoids the GC overhead of a regular JS Array.
+    // Radix sort by intensity descending — O(n), 2 passes, 12-bit buckets.
+    // Higher intensity → smaller sort key so setDrawRange(0, N) shows N brightest.
     const BITS = 12
-    const BUCKETS = 1 << BITS // 4096 per pass
+    const BUCKETS = 1 << BITS
     const MASK = BUCKETS - 1
 
-    // 24-bit sort key: invert so that higher intensity → smaller key → sorted first
     const sortKeys = new Uint32Array(count)
     for (let i = 0; i < count; i++) {
         sortKeys[i] = ~Math.round(tmpIntensities[i] * 0xffffff) & 0xffffff
@@ -51,12 +78,12 @@ export function normalizeVolume(
     const tempPerm = new Uint32Array(count)
     const hist = new Uint32Array(BUCKETS)
 
-    // Pass 1: sort by bits 0–11
+    // Pass 1: bits 0–11
     for (let i = 0; i < count; i++) hist[sortKeys[i] & MASK]++
     for (let i = 1; i < BUCKETS; i++) hist[i] += hist[i - 1]
     for (let i = count - 1; i >= 0; i--) tempPerm[--hist[sortKeys[perm[i]] & MASK]] = perm[i]
 
-    // Pass 2: sort by bits 12–23
+    // Pass 2: bits 12–23
     hist.fill(0)
     for (let i = 0; i < count; i++) hist[(sortKeys[tempPerm[i]] >> BITS) & MASK]++
     for (let i = 1; i < BUCKETS; i++) hist[i] += hist[i - 1]

@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from src.config import settings
 from src.processing.runner import shutdown_executor
-from src.routers import jobs, results, volumes
+from src.routers import jobs, results, sessions, volumes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,6 +37,7 @@ app.add_middleware(
 app.include_router(volumes.router, prefix="/volumes", tags=["volumes"])
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 app.include_router(results.router, prefix="/jobs", tags=["results"])
+app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 
 
 @app.get("/", summary="Health check")
