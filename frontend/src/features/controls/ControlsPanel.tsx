@@ -21,7 +21,7 @@ export default function ControlsPanel() {
         stlOpacity,
         setStlOpacity,
         setH5ViewMode,
-        setH5SliceIndex,
+        resetSlicePanelControls,
     } = useViewerStore()
 
     const activeKey = h5Files[activeH5Index]?.name
@@ -29,8 +29,6 @@ export default function ControlsPanel() {
         (activeKey ? h5PerFileStates[activeKey]?.renderControls : undefined) ??
         defaultRenderControls
     const viewMode = (activeKey ? h5PerFileStates[activeKey]?.viewMode : undefined) ?? 'pointcloud'
-    const sliceIndex = (activeKey ? h5PerFileStates[activeKey]?.sliceIndex : undefined) ?? 256
-    const nSlices = h5Files[activeH5Index]?.data.nSlices ?? 512
 
     const updateControls = (patch: Partial<H5RenderControls>) => updateActiveRenderState(patch)
 
@@ -112,32 +110,6 @@ export default function ControlsPanel() {
                             />
                         </>
                     )}
-                    {viewMode === 'slice' && (
-                        <>
-                            <SliderRow
-                                label="Slice"
-                                value={sliceIndex}
-                                min={0}
-                                max={nSlices - 1}
-                                step={1}
-                                onChange={(v) => {
-                                    if (activeKey) setH5SliceIndex(activeKey, Math.round(v))
-                                }}
-                            />
-                            <SliderRow
-                                label="H5 brightness"
-                                value={renderControls.h5Brightness}
-                                {...RENDER_CONTROL_LIMITS.h5Brightness}
-                                onChange={(v) => updateControls({ h5Brightness: v })}
-                            />
-                            <SliderRow
-                                label="H5 contrast"
-                                value={renderControls.h5Contrast}
-                                {...RENDER_CONTROL_LIMITS.h5Contrast}
-                                onChange={(v) => updateControls({ h5Contrast: v })}
-                            />
-                        </>
-                    )}
                 </>
             )}
             {mode === 'stl' && (
@@ -152,8 +124,13 @@ export default function ControlsPanel() {
                 <IconButton
                     size="small"
                     onClick={() => {
-                        if (mode === 'h5') updateActiveRenderState({ ...defaultRenderControls })
-                        else setStlOpacity(DEFAULT_STL_OPACITY)
+                        if (mode === 'h5') {
+                            if (viewMode === 'slice' && activeKey)
+                                resetSlicePanelControls(activeKey)
+                            else updateActiveRenderState({ ...defaultRenderControls })
+                        } else {
+                            setStlOpacity(DEFAULT_STL_OPACITY)
+                        }
                     }}
                     sx={resetButtonSx}
                 >

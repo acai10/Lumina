@@ -4,6 +4,7 @@ import type {
     H5PerFileState,
     H5RenderControls,
     H5VolumeData,
+    SlicePanelControl,
 } from '../../shared/types/viewer.types'
 
 export interface AppNotification {
@@ -13,11 +14,19 @@ export interface AppNotification {
 
 export const DEFAULT_STL_OPACITY = 0.55
 
+export const DEFAULT_SLICE_PANEL_CONTROL: SlicePanelControl = { brightness: 1.0, contrast: 1.0 }
+
+const defaultSlicePanelControls = () => ({
+    z: { ...DEFAULT_SLICE_PANEL_CONTROL },
+    y: { ...DEFAULT_SLICE_PANEL_CONTROL },
+    x: { ...DEFAULT_SLICE_PANEL_CONTROL },
+})
+
 export const defaultRenderControls: H5RenderControls = {
     volumeSpacing: 200,
     h5Threshold: 0.8,
     h5Opacity: 0.25,
-    h5Brightness: 3.0,
+    h5Brightness: 1.0,
     h5Contrast: 1.0,
     h5PointSize: 1.0,
     h5SliceRange: [0, 512],
@@ -54,6 +63,14 @@ interface ViewerState {
     applyBackendFilter: (fileKey: string, newData: H5VolumeData) => void
     setH5ViewMode: (fileKey: string, mode: 'pointcloud' | 'slice') => void
     setH5SliceIndex: (fileKey: string, index: number) => void
+    setH5SliceY: (fileKey: string, index: number) => void
+    setH5SliceX: (fileKey: string, index: number) => void
+    setSlicePanelControl: (
+        fileKey: string,
+        axis: 'z' | 'y' | 'x',
+        patch: Partial<SlicePanelControl>,
+    ) => void
+    resetSlicePanelControls: (fileKey: string) => void
     reset: () => void
 }
 
@@ -167,6 +184,47 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
             h5PerFileStates: {
                 ...state.h5PerFileStates,
                 [fileKey]: { ...state.h5PerFileStates[fileKey], sliceIndex },
+            },
+        })),
+    setH5SliceY: (fileKey, sliceY) =>
+        set((state) => ({
+            h5PerFileStates: {
+                ...state.h5PerFileStates,
+                [fileKey]: { ...state.h5PerFileStates[fileKey], sliceY },
+            },
+        })),
+    setH5SliceX: (fileKey, sliceX) =>
+        set((state) => ({
+            h5PerFileStates: {
+                ...state.h5PerFileStates,
+                [fileKey]: { ...state.h5PerFileStates[fileKey], sliceX },
+            },
+        })),
+    setSlicePanelControl: (fileKey, axis, patch) =>
+        set((state) => {
+            const current = state.h5PerFileStates[fileKey]
+            const controls = current?.slicePanelControls ?? defaultSlicePanelControls()
+            return {
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: {
+                        ...current,
+                        slicePanelControls: {
+                            ...controls,
+                            [axis]: { ...controls[axis], ...patch },
+                        },
+                    },
+                },
+            }
+        }),
+    resetSlicePanelControls: (fileKey) =>
+        set((state) => ({
+            h5PerFileStates: {
+                ...state.h5PerFileStates,
+                [fileKey]: {
+                    ...state.h5PerFileStates[fileKey],
+                    slicePanelControls: defaultSlicePanelControls(),
+                },
             },
         })),
     reset: () => set(initialState),

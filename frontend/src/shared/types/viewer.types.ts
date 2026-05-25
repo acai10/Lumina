@@ -28,6 +28,11 @@ export interface H5RenderControls {
     h5HeightRange: [number, number]
 }
 
+export interface SlicePanelControl {
+    brightness: number
+    contrast: number
+}
+
 export interface H5PerFileState {
     cameraPosition?: [number, number, number]
     cameraQuaternion?: [number, number, number, number]
@@ -36,4 +41,11 @@ export interface H5PerFileState {
     isFiltering?: boolean
     viewMode?: 'pointcloud' | 'slice'
     sliceIndex?: number
+    sliceY?: number
+    sliceX?: number
+    slicePanelControls?: {
+        z: SlicePanelControl
+        y: SlicePanelControl
+        x: SlicePanelControl
+    }
 }
