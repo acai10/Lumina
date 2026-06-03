@@ -36,15 +36,17 @@ const PHASE_LABEL: Record<string, string> = {
 }
 
 export function PreprocessingSection() {
-    const { h5Files, activeH5Index } = useViewerStore()
+    const { tabs, activeTabIndex } = useViewerStore()
 
-    const activeEntry = h5Files[activeH5Index]
-    if (!activeEntry || !activeEntry.sourceFile) return null
+    const activeTab = tabs[activeTabIndex]
+    const activeEntry = activeTab?.type === 'h5' ? activeTab : null
+    if (!activeEntry || (!activeEntry.sourceFile && !activeEntry.backendVolumeId)) return null
 
     const fileKey = activeEntry.name
     const { phase, error, isBusy, run, revert, clearError } = useFilterJob(
         fileKey,
         activeEntry.sourceFile,
+        activeEntry.backendVolumeId,
     )
     const {
         filterType,

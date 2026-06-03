@@ -1,11 +1,21 @@
-import { Divider, IconButton, Stack, ToggleButton, ToggleButtonGroup, Tooltip } from '@mui/material'
+import {
+    Divider,
+    IconButton,
+    MenuItem,
+    Select,
+    Stack,
+    ToggleButton,
+    ToggleButtonGroup,
+    Tooltip,
+    Typography,
+} from '@mui/material'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import {
     useViewerStore,
     defaultRenderControls,
     DEFAULT_STL_OPACITY,
 } from '../../app/store/viewerSlice'
-import { panelSx, resetButtonSx } from './ControlsPanel.styles'
+import { panelSx, resetButtonSx, labelSx } from './ControlsPanel.styles'
 import { RENDER_CONTROL_LIMITS, getRenderControlLimits } from './renderControlLimits'
 import { PreprocessingSection } from './PreprocessingSection'
 import { SliderRow, RangeSliderRow } from './SliderRow'
@@ -13,33 +23,41 @@ import type { H5RenderControls } from '../../shared/types/viewer.types'
 
 export default function ControlsPanel() {
     const {
-        mode,
-        h5Files,
-        activeH5Index,
+        tabs,
+        activeTabIndex,
         h5PerFileStates,
         updateActiveRenderState,
         stlOpacity,
         setStlOpacity,
         setH5ViewMode,
         resetSlicePanelControls,
+        stlOverlayIndex,
+        setStlOverlayIndex,
     } = useViewerStore()
 
-    const activeH5 = h5Files[activeH5Index]
+    const activeTab = tabs[activeTabIndex]
+    const activeH5 = activeTab?.type === 'h5' ? activeTab : null
+    const activeStl = activeTab?.type === 'stl' ? activeTab : null
     const activeKey = activeH5?.name
-    const hasSliceView = activeH5?.data.normalizedVolume != null
+
     const renderControls: H5RenderControls =
         (activeKey ? h5PerFileStates[activeKey]?.renderControls : undefined) ??
         defaultRenderControls
     const viewMode = (activeKey ? h5PerFileStates[activeKey]?.viewMode : undefined) ?? 'pointcloud'
     const limits = getRenderControlLimits(activeH5?.data)
+    const hasSliceView = !!activeH5?.data.normalizedVolume
+
+    const stlTabs = tabs
+        .map((t, i) => ({ tab: t, index: i }))
+        .filter(({ tab }) => tab.type === 'stl')
 
     const updateControls = (patch: Partial<H5RenderControls>) => updateActiveRenderState(patch)
 
-    if (mode === 'none') return null
+    if (tabs.length === 0) return null
 
     return (
         <Stack spacing={4} sx={panelSx}>
-            {mode === 'h5' && (
+            {activeH5 && (
                 <>
                     <ToggleButtonGroup
                         value={viewMode}
@@ -111,11 +129,49 @@ export default function ControlsPanel() {
                                 {...limits.h5HeightRange}
                                 onChange={(v) => updateControls({ h5HeightRange: v })}
                             />
+                            {stlTabs.length > 0 && (
+                                <>
+                                    <Divider sx={{ opacity: 0.2 }} />
+                                    <Typography sx={{ ...labelSx, opacity: 0.7 }}>
+                                        STL OVERLAY
+                                    </Typography>
+                                    <Select
+                                        size="small"
+                                        value={stlOverlayIndex ?? -1}
+                                        onChange={(e) => {
+                                            const v = e.target.value as number
+                                            setStlOverlayIndex(v === -1 ? null : v)
+                                        }}
+                                        sx={{ fontSize: '0.7rem' }}
+                                    >
+                                        <MenuItem value={-1} sx={{ fontSize: '0.7rem' }}>
+                                            None
+                                        </MenuItem>
+                                        {stlTabs.map(({ tab, index }) => (
+                                            <MenuItem
+                                                key={tab.name}
+                                                value={index}
+                                                sx={{ fontSize: '0.7rem' }}
+                                            >
+                                                {tab.name}
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                    {stlOverlayIndex !== null && (
+                                        <SliderRow
+                                            label="STL opacity"
+                                            value={stlOpacity}
+                                            {...RENDER_CONTROL_LIMITS.stlOpacity}
+                                            onChange={setStlOpacity}
+                                        />
+                                    )}
+                                </>
+                            )}
                         </>
                     )}
                 </>
             )}
-            {mode === 'stl' && (
+            {activeStl && (
                 <SliderRow
                     label="STL opacity"
                     value={stlOpacity}
@@ -127,7 +183,7 @@ export default function ControlsPanel() {
                 <IconButton
                     size="small"
                     onClick={() => {
-                        if (mode === 'h5') {
+                        if (activeH5) {
                             if (viewMode === 'slice' && activeKey)
                                 resetSlicePanelControls(activeKey)
                             else updateActiveRenderState({ ...defaultRenderControls })

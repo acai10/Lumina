@@ -44,5 +44,10 @@ export interface SessionStatus {
     status: 'pending' | 'running' | 'done' | 'error'
     offsets: Record<string, [number, number]>
     metrics: Record<string, number>
+    merged_volume_id?: string
     error?: string
+}
+
+export interface SessionFilterRequest {
+    filter_chain: FilterStep[]
 }

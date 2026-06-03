@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { Box } from '@mui/material'
 import { useViewerStore, defaultRenderControls } from '../../app/store/viewerSlice'
 import { createScene, disposeSceneGeometry } from '../../shared/three/sceneUtils'
@@ -43,14 +44,25 @@ interface H5ViewerProps {
     vIntensities: Float32Array
     meta: H5Meta
     fileKey: string
+    stlOverlayFile?: File
     onError?: (msg: string) => void
 }
 
-export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5ViewerProps) {
+export default function H5Viewer({
+    vIndices,
+    vIntensities,
+    meta,
+    fileKey,
+    stlOverlayFile,
+}: H5ViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
+    // Persistent canvas survives StrictMode cleanup so the same WebGL context is
+    // reused on remount — prevents "too many active WebGL contexts" browser errors.
+    const canvasRef = useRef<HTMLCanvasElement | null>(null)
     const materialRef = useRef<THREE.ShaderMaterial | null>(null)
     const chunkGeosRef = useRef<THREE.BufferGeometry[]>([])
     const needsRenderRef = useRef(true)
+    const sceneRef = useRef<THREE.Scene | null>(null)
 
     const renderControls = useViewerStore(
         (s) => s.h5PerFileStates[fileKey]?.renderControls ?? defaultRenderControls,
@@ -60,7 +72,13 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
         const container = containerRef.current
         if (!container) return
 
-        const { scene, camera, renderer, controls, disposeBase } = createScene(container)
+        const { scene, camera, renderer, controls, disposeBase } = createScene(
+            container,
+            {},
+            canvasRef.current,
+        )
+        canvasRef.current = renderer.domElement
+        sceneRef.current = scene
 
         const { nSlices, height, width } = meta
         const initialRc =
@@ -174,10 +192,64 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
             })
             materialRef.current = null
             chunkGeosRef.current = []
+            sceneRef.current = null
             disposeSceneGeometry(scene)
             disposeBase()
         }
     }, [vIndices, vIntensities, meta, fileKey])
+
+    // STL overlay — loads the mesh into the existing H5 scene whenever the file changes.
+    useEffect(() => {
+        const scene = sceneRef.current
+        if (!scene) return
+
+        const stlMeshGroup = new THREE.Group()
+        const lights: THREE.Light[] = []
+
+        if (stlOverlayFile) {
+            const loader = new STLLoader()
+            const reader = new FileReader()
+            reader.onload = (e) => {
+                if (!(e.target?.result instanceof ArrayBuffer)) return
+                const geo = loader.parse(e.target.result)
+                geo.computeVertexNormals()
+                geo.computeBoundingBox()
+                const center = new THREE.Vector3()
+                geo.boundingBox!.getCenter(center)
+                geo.translate(-center.x, -center.y, -center.z)
+
+                const mat = new THREE.MeshStandardMaterial({
+                    color: 0x88aaff,
+                    transparent: true,
+                    opacity: 0.4,
+                    side: THREE.DoubleSide,
+                    depthWrite: false,
+                })
+                stlMeshGroup.add(new THREE.Mesh(geo, mat))
+                scene.add(stlMeshGroup)
+
+                const ambient = new THREE.AmbientLight(0xffffff, 0.6)
+                const dir = new THREE.DirectionalLight(0xffffff, 1.2)
+                dir.position.set(1, 2, 3)
+                lights.push(ambient, dir)
+                lights.forEach((l) => scene.add(l))
+                needsRenderRef.current = true
+            }
+            reader.readAsArrayBuffer(stlOverlayFile)
+        }
+
+        return () => {
+            stlMeshGroup.traverse((obj) => {
+                if (obj instanceof THREE.Mesh) {
+                    obj.geometry.dispose()
+                    ;(obj.material as THREE.Material).dispose()
+                }
+            })
+            scene.remove(stlMeshGroup)
+            lights.forEach((l) => scene.remove(l))
+            if (needsRenderRef.current !== undefined) needsRenderRef.current = true
+        }
+    }, [stlOverlayFile])
 
     const {
         volumeSpacing,

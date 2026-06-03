@@ -39,6 +39,8 @@ function addLights(scene: THREE.Scene): void {
 
 export default function STLViewer({ file, onError }: STLViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
+    // Persistent canvas — reused across StrictMode mounts to avoid WebGL context limit.
+    const canvasRef = useRef<HTMLCanvasElement | null>(null)
     const meshRef = useRef<THREE.Mesh | null>(null)
     const materialRef = useRef<THREE.MeshStandardMaterial | null>(null)
 
@@ -48,11 +50,16 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
         const container = containerRef.current
         if (!container) return
 
-        const { scene, camera, renderer, controls, disposeBase } = createScene(container, {
-            toneMapping: THREE.ACESFilmicToneMapping,
-            toneMappingExposure: 1.1,
-            outputColorSpace: THREE.SRGBColorSpace,
-        })
+        const { scene, camera, renderer, controls, disposeBase } = createScene(
+            container,
+            {
+                toneMapping: THREE.ACESFilmicToneMapping,
+                toneMappingExposure: 1.1,
+                outputColorSpace: THREE.SRGBColorSpace,
+            },
+            canvasRef.current,
+        )
+        canvasRef.current = renderer.domElement
 
         addLights(scene)
 

@@ -22,8 +22,10 @@ self.onmessage = async (e: MessageEvent<WorkerInput>) => {
                       e.data.skipNormalizedVolume ?? false,
                   )
         const transferables = [result.vIndices.buffer, result.vIntensities.buffer] as ArrayBuffer[]
-        if (result.normalizedVolume)
+        if (result.normalizedVolume) {
+            // normalizedVolume is Uint8Array — transfer its underlying ArrayBuffer.
             transferables.push(result.normalizedVolume.buffer as ArrayBuffer)
+        }
         self.postMessage({ ok: true, result }, { transfer: transferables })
     } catch (err) {
         self.postMessage({ ok: false, error: String(err) })

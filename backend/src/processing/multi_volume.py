@@ -130,6 +130,7 @@ def _phase_corr_padded(img_a: np.ndarray, img_b: np.ndarray) -> tuple[float, flo
     H, W = img_a.shape
     H2 = next_fast_len(2 * H - 1)
     W2 = next_fast_len(2 * W - 1)
+
     fa = fft2(img_a.astype(np.float64), s=(H2, W2))
     fb = fft2(img_b.astype(np.float64), s=(H2, W2))
     cross = fa * np.conj(fb)

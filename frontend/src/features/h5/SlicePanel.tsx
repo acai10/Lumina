@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Slider, Stack, Typography } from '@mui/material'
 import { useViewerStore, DEFAULT_SLICE_PANEL_CONTROL } from '../../app/store/viewerSlice'
 import type { H5Meta } from '../../shared/types/viewer.types'
 import { slicePanelSliderSx } from './H5SliceViewer.styles'
 
 export interface SlicePanelProps {
-    normalizedVolume: Float32Array
+    normalizedVolume: Uint8Array
     meta: H5Meta
     axis: 'z' | 'y' | 'x'
     sliceIndex: number
@@ -54,58 +54,75 @@ export function SlicePanel({
     const canvasW = orient === 'ccw90' ? origH : origW
     const canvasH = orient === 'ccw90' ? origW : origH
 
+    // Precompute a 256-entry tone-map LUT for the current brightness/contrast.
+    // This replaces ~500 000 Math.pow() calls per frame (for a 697×694 canvas)
+    // with ~500 000 O(1) array lookups — roughly 5–10× faster canvas redraws.
+    const lut = useMemo(() => {
+        const table = new Uint8Array(256)
+        for (let i = 0; i < 256; i++) {
+            table[i] = applyToneMap(i / 255, brightness, contrast)
+        }
+        return table
+    }, [brightness, contrast])
+
     useEffect(() => {
         const canvas = canvasRef.current
         if (!canvas) return
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
-        canvas.width = canvasW
-        canvas.height = canvasH
-        const imageData = ctx.createImageData(canvasW, canvasH)
 
-        for (let ny = 0; ny < canvasH; ny++) {
-            for (let nx = 0; nx < canvasW; nx++) {
-                // Map output pixel back to native axis coordinates
-                let ox: number, oy: number
-                if (orient === 'ccw90') {
-                    ox = origW - 1 - ny
-                    oy = nx
-                } else if (orient === 'flipH') {
-                    ox = origW - 1 - nx
-                    oy = ny
-                } else if (orient === 'flip180') {
-                    ox = origW - 1 - nx
-                    oy = origH - 1 - ny
-                } else {
-                    ox = nx
-                    oy = ny
+        // Schedule the expensive pixel loop on the next animation frame so that
+        // rapid slider drags never queue more than one pending repaint.
+        let rafId = requestAnimationFrame(() => {
+            const ctx = canvas.getContext('2d')
+            if (!ctx) return
+            canvas.width = canvasW
+            canvas.height = canvasH
+            const imageData = ctx.createImageData(canvasW, canvasH)
+            const pixels = imageData.data
+
+            for (let ny = 0; ny < canvasH; ny++) {
+                for (let nx = 0; nx < canvasW; nx++) {
+                    let ox: number, oy: number
+                    if (orient === 'ccw90') {
+                        ox = origW - 1 - ny
+                        oy = nx
+                    } else if (orient === 'flipH') {
+                        ox = origW - 1 - nx
+                        oy = ny
+                    } else if (orient === 'flip180') {
+                        ox = origW - 1 - nx
+                        oy = origH - 1 - ny
+                    } else {
+                        ox = nx
+                        oy = ny
+                    }
+
+                    let volIdx: number
+                    if (axis === 'z') {
+                        volIdx = sliceIndex * height * width + oy * width + ox
+                    } else if (axis === 'y') {
+                        volIdx = oy * height * width + sliceIndex * width + ox
+                    } else {
+                        volIdx = ox * height * width + oy * width + sliceIndex
+                    }
+
+                    const byte = lut[normalizedVolume[volIdx]]
+                    const pi = (ny * canvasW + nx) * 4
+                    pixels[pi] = byte
+                    pixels[pi + 1] = byte
+                    pixels[pi + 2] = byte
+                    pixels[pi + 3] = 255
                 }
-
-                let volIdx: number
-                if (axis === 'z') {
-                    volIdx = sliceIndex * height * width + oy * width + ox
-                } else if (axis === 'y') {
-                    volIdx = oy * height * width + sliceIndex * width + ox
-                } else {
-                    volIdx = ox * height * width + oy * width + sliceIndex
-                }
-
-                const byte = applyToneMap(normalizedVolume[volIdx], brightness, contrast)
-                const pi = (ny * canvasW + nx) * 4
-                imageData.data[pi] = byte
-                imageData.data[pi + 1] = byte
-                imageData.data[pi + 2] = byte
-                imageData.data[pi + 3] = 255
             }
-        }
-        ctx.putImageData(imageData, 0, 0)
+            ctx.putImageData(imageData, 0, 0)
+        })
+
+        return () => cancelAnimationFrame(rafId)
     }, [
         normalizedVolume,
         axis,
         orient,
         sliceIndex,
-        brightness,
-        contrast,
+        lut,
         origW,
         origH,
         canvasW,

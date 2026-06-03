@@ -3,6 +3,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from src.schemas.enums import JobStatus
+from src.schemas.jobs import FilterStep
 
 
 class VolumeEntry(BaseModel):
@@ -25,4 +26,9 @@ class SessionStatusResponse(BaseModel):
     status: JobStatus
     offsets: dict[str, list[float]] = Field(default_factory=dict)
     metrics: dict[str, float] = Field(default_factory=dict)
+    merged_volume_id: str | None = None
     error: str | None = None
+
+
+class SessionFilterRequest(BaseModel):
+    filter_chain: list[FilterStep] = Field(default_factory=list)

@@ -16,11 +16,29 @@ export interface SceneBundle {
     camera: THREE.PerspectiveCamera
     renderer: THREE.WebGLRenderer
     controls: OrbitControls
-    /** Removes the resize listener, disposes controls + renderer, removes canvas from container. */
     disposeBase: () => void
 }
 
-export function createScene(container: HTMLElement, options: SceneOptions = {}): SceneBundle {
+/**
+ * Create a Three.js scene, camera, renderer, and OrbitControls attached to *container*.
+ *
+ * Pass *existingCanvas* to reuse an already-created HTMLCanvasElement (and therefore
+ * its WebGL context) across React StrictMode double-mounts.  Each viewer component
+ * keeps a `useRef<HTMLCanvasElement | null>(null)` that persists across the
+ * StrictMode cleanup cycle; passing `ref.current` here avoids allocating a second
+ * context on the remount, preventing the browser's "too many active WebGL contexts"
+ * limit from being hit.
+ *
+ * disposeBase does NOT call `renderer.forceContextLoss()` — the canvas ref inside
+ * the component keeps the context alive so it can be reused on the next mount.
+ * The context is released by the browser's GC when the component truly unmounts and
+ * the ref becomes unreachable.
+ */
+export function createScene(
+    container: HTMLElement,
+    options: SceneOptions = {},
+    existingCanvas?: HTMLCanvasElement | null,
+): SceneBundle {
     const {
         fov = 45,
         near = 0.1,
@@ -36,7 +54,21 @@ export function createScene(container: HTMLElement, options: SceneOptions = {}):
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(fov, w / h, near, far)
 
+    // When reusing an existing canvas the previous renderer may have left
+    // UNPACK_FLIP_Y_WEBGL or UNPACK_PREMULTIPLY_ALPHA_WEBGL set to true.
+    // WebGL2 forbids texImage3D while either flag is enabled, which causes
+    // "INVALID_OPERATION: texImage3D: FLIP_Y or PREMULTIPLY_ALPHA isn't allowed"
+    // during Three.js re-initialisation.  Reset both before creating the renderer.
+    if (existingCanvas) {
+        const gl = existingCanvas.getContext('webgl2') ?? existingCanvas.getContext('webgl')
+        if (gl) {
+            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+            gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)
+        }
+    }
+
     const renderer = new THREE.WebGLRenderer({
+        canvas: existingCanvas ?? undefined,
         antialias: window.devicePixelRatio < 1.5,
         powerPreference: 'high-performance',
     })
@@ -46,7 +78,10 @@ export function createScene(container: HTMLElement, options: SceneOptions = {}):
     if (toneMapping !== undefined) renderer.toneMapping = toneMapping
     if (toneMappingExposure !== undefined) renderer.toneMappingExposure = toneMappingExposure
     if (outputColorSpace !== undefined) renderer.outputColorSpace = outputColorSpace
-    container.appendChild(renderer.domElement)
+
+    if (!container.contains(renderer.domElement)) {
+        container.appendChild(renderer.domElement)
+    }
 
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
@@ -64,7 +99,9 @@ export function createScene(container: HTMLElement, options: SceneOptions = {}):
     const disposeBase = () => {
         window.removeEventListener('resize', handleResize)
         controls.dispose()
-        renderer.forceContextLoss()
+        // forceContextLoss is intentionally omitted — the caller's canvas ref keeps
+        // the context alive so StrictMode remounts can reuse it.  The browser frees
+        // the context via GC when the component truly unmounts and the ref drops.
         renderer.dispose()
         if (container.contains(renderer.domElement)) {
             container.removeChild(renderer.domElement)

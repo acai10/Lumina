@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { createSession, pollSession, fetchSessionMerged, uploadVolume } from '../../shared/api'
 import type { RegistrationMethod, SessionStatus } from '../../shared/api'
-import { PRE_FILTER_THRESHOLD } from '../../shared/h5/h5Reader'
 import { useViewerStore } from '../../app/store/viewerSlice'
-import type { H5FileEntry, H5VolumeData } from '../../shared/types/viewer.types'
+import type { H5FileEntry } from '../../shared/types/viewer.types'
 
 export type StitchPhase = 'idle' | 'uploading' | 'processing' | 'downloading' | 'done' | 'error'
 
@@ -15,30 +14,6 @@ export interface VolumeConfig {
 }
 
 const POLL_INTERVAL_MS = 2_000
-
-function normalizeInWorker(
-    raw: Float32Array,
-    shape: [number, number, number],
-): Promise<H5VolumeData> {
-    return new Promise((resolve, reject) => {
-        const worker = new Worker(new URL('../../shared/h5/h5.worker.ts', import.meta.url), {
-            type: 'module',
-        })
-        worker.onmessage = (e) => {
-            worker.terminate()
-            if (e.data.ok) resolve(e.data.result as H5VolumeData)
-            else reject(new Error(e.data.error))
-        }
-        worker.onerror = (err) => {
-            worker.terminate()
-            reject(new Error(err.message))
-        }
-        worker.postMessage(
-            { raw, dims: shape, threshold: PRE_FILTER_THRESHOLD, skipNormalizedVolume: true },
-            [raw.buffer],
-        )
-    })
-}
 
 export function useStitchSession() {
     const { loadH5 } = useViewerStore()
@@ -77,13 +52,15 @@ export function useStitchSession() {
                 throw new Error(status.error ?? 'Session failed')
             }
 
+            // fetchSessionMerged now returns H5VolumeData directly from the backend —
+            // no Web Worker or JS normalization step needed.
             setPhase('downloading')
-            const { data, shape } = await fetchSessionMerged(session_id)
-            const volumeData = await normalizeInWorker(data, shape)
+            const volumeData = await fetchSessionMerged(session_id)
 
             const entry: H5FileEntry = {
                 name: `Stitched (${new Date().toLocaleTimeString()})`,
                 data: volumeData,
+                backendVolumeId: session_id,
             }
             loadH5([entry])
             setPhase('done')

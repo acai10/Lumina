@@ -17,6 +17,7 @@ import {
     Typography,
 } from '@mui/material'
 import { palette } from '../../shared/theme/palette'
+import { cleanupUploads } from '../../shared/api'
 import type { RegistrationMethod } from '../../shared/api'
 import { useStitchSession, type VolumeConfig } from './useStitchSession'
 
@@ -45,6 +46,7 @@ const PHASE_LABELS: Record<string, string> = {
 
 export default function StitcherPanel() {
     const fileInputRef = useRef<HTMLInputElement>(null)
+    const folderInputRef = useRef<HTMLInputElement>(null)
     const [configs, setConfigs] = useState<VolumeConfig[]>([])
     const [method, setMethod] = useState<RegistrationMethod>('phase_correlation')
     const { phase, sessionStatus, error, run, reset } = useStitchSession()
@@ -71,6 +73,9 @@ export default function StitcherPanel() {
     const handleReset = () => {
         setConfigs([])
         reset()
+        cleanupUploads().catch(() => {
+            /* ignore cleanup errors — uploads folder may already be empty */
+        })
     }
 
     const isBusy = phase === 'uploading' || phase === 'processing' || phase === 'downloading'
@@ -123,18 +128,44 @@ export default function StitcherPanel() {
                     accept=".h5"
                     multiple
                     style={{ display: 'none' }}
-                    onChange={(e) => handleFiles(e.target.files)}
+                    onChange={(e) => {
+                        handleFiles(e.target.files)
+                        e.target.value = ''
+                    }}
                 />
-                <Button
-                    variant="outlined"
-                    size="small"
-                    fullWidth
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isBusy}
-                    sx={{ borderColor: palette.tealBorder, color: palette.tealLabel }}
-                >
-                    Add H5 Volumes
-                </Button>
+                <input
+                    ref={folderInputRef}
+                    type="file"
+                    accept=".h5"
+                    {...{ webkitdirectory: '' }}
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                        handleFiles(e.target.files)
+                        e.target.value = ''
+                    }}
+                />
+                <Stack direction="row" spacing={1}>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        fullWidth
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isBusy}
+                        sx={{ borderColor: palette.tealBorder, color: palette.tealLabel }}
+                    >
+                        Add Files
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        fullWidth
+                        onClick={() => folderInputRef.current?.click()}
+                        disabled={isBusy}
+                        sx={{ borderColor: palette.tealBorder, color: palette.tealLabel }}
+                    >
+                        Add Folder
+                    </Button>
+                </Stack>
             </Box>
 
             {/* Volume list */}

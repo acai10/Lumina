@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+import h5py
 import numpy as np
 
 from ..config import settings
@@ -16,6 +17,7 @@ from .multi_volume import (
     overlap_crop,
     register_pair,
 )
+from .normalizer import normalize_for_frontend, save_packed
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,7 @@ class SessionState:
     status: JobStatus = JobStatus.PENDING
     offsets: dict[str, list[float]] = field(default_factory=dict)
     metrics: dict[str, float] = field(default_factory=dict)
+    merged_volume_id: str | None = None
     error: str | None = None
 
 
@@ -104,16 +107,11 @@ async def run_session(
         global_offsets = compute_global_offsets(volume_ids, grid, pairwise_shifts)
         state.offsets = {vid: list(off) for vid, off in global_offsets.items()}
 
-        # ── Merge and save ────────────────────────────────────────────────────
-        vol_list = [volumes[vid] for vid in volume_ids]
-        off_list = [global_offsets[vid] for vid in volume_ids]
-        merged = merge_volumes(vol_list, off_list)
-        np.save(settings.uploads_dir / f"{session_id}_merged.npy", merged)
-
-        mip = compute_mip(merged)
-        np.save(settings.uploads_dir / f"{session_id}_mip.npy", mip)
-
         # ── Quality metrics over overlapping adjacent pairs ───────────────────
+        # Computed HERE — before the merge — so that the individual volumes
+        # (~800 MB for 25 inputs) can be freed immediately after, preventing
+        # them from overlapping in memory with the merged array and the
+        # normalization intermediates (which would push peak to 2.5+ GB).
         rmse_vals: list[float] = []
         hausdorff_vals: list[float] = []
 
@@ -133,8 +131,50 @@ async def run_session(
         state.metrics["rmse"] = float(np.mean(rmse_vals)) if rmse_vals else 0.0
         state.metrics["hausdorff"] = float(np.mean(hausdorff_vals)) if hausdorff_vals else 0.0
 
+        # ── Merge and save ────────────────────────────────────────────────────
+        # Build vol_list/off_list now that metrics are done; free volumes after merge.
+        vol_list = [volumes[vid] for vid in volume_ids]
+        off_list = [global_offsets[vid] for vid in volume_ids]
+        merged = merge_volumes(vol_list, off_list)
+        merged_shape = merged.shape
+        merged_npy_path = settings.uploads_dir / f"{session_id}_merged.npy"
+
+        mip = compute_mip(merged)
+        np.save(settings.uploads_dir / f"{session_id}_mip.npy", mip)
+        np.save(merged_npy_path, merged)
+
+        merged_h5_path = settings.uploads_dir / f"{session_id}_merged.h5"
+        with h5py.File(merged_h5_path, "w") as hf:
+            hf.create_dataset("OCT", data=merged, dtype=np.float32)
+        state.merged_volume_id = f"{session_id}_merged"
+
+        # Free individual volumes (~800 MB) and merged array (~1 GB) before
+        # normalization so they do not overlap with normalization intermediates.
+        # Without this, peak RAM for a 25-volume session exceeds 2.5 GB.
+        del vol_list, off_list, volumes, merged
+
+        # ── Pre-normalise for frontend ────────────────────────────────────────
+        # Reload via memory-map; the OS manages which pages stay in RAM so only
+        # ~50 MB of page cache is live at a time instead of the full 1 GB.
+        merged_mmap = np.load(str(merged_npy_path), mmap_mode="r")
+        v_idx, v_int, norm_u8 = normalize_for_frontend(merged_mmap)
+        del merged_mmap
+
+        save_packed(
+            v_idx,
+            v_int,
+            norm_u8,
+            merged_shape,
+            settings.uploads_dir / f"{session_id}_frontend",
+        )
+        logger.info(
+            "Session %s: pre-normalised frontend data saved (%d voxels above threshold)",
+            session_id,
+            len(v_idx),
+        )
+
         state.status = JobStatus.DONE
-        logger.info("Session %s completed — merged shape %s", session_id, merged.shape)
+        logger.info("Session %s completed — merged shape %s", session_id, merged_shape)
 
     except Exception as exc:
         logger.exception("Session %s failed", session_id)

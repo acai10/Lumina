@@ -5,7 +5,8 @@ import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5FileEntry } from '../../shared/types/viewer.types'
 
 export function useFileLoad() {
-    const { setMode, setStlFile, loadH5, setIsLoading, setNotification } = useViewerStore()
+    const { loadStlFiles, loadH5, setIsLoading, setNotification } = useViewerStore()
+    // loadStlFiles and loadH5 are stable store actions — no deps needed.
 
     const stlInputRef = useRef<HTMLInputElement>(null)
     const h5InputRef = useRef<HTMLInputElement>(null)
@@ -38,11 +39,10 @@ export function useFileLoad() {
     }
 
     const handleSTLLoad = (e: ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file) return
+        const files = Array.from(e.target.files ?? [])
         e.target.value = ''
-        setStlFile(file)
-        setMode('stl')
+        if (files.length === 0) return
+        loadStlFiles(files)
     }
 
     const handleH5Load = async (e: ChangeEvent<HTMLInputElement>) => {

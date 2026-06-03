@@ -7,6 +7,8 @@ export {
     pollSession,
     fetchSessionMip,
     fetchSessionMerged,
+    cleanupUploads,
+    filterSessionVolume,
 } from './client'
 export type {
     FilterType,
@@ -18,4 +20,5 @@ export type {
     VolumeEntry,
     SessionRequest,
     SessionStatus,
+    SessionFilterRequest,
 } from './types'

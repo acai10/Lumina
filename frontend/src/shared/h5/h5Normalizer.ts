@@ -10,8 +10,8 @@ export function normalizeVolume(
     const sliceSize = height * width
     const total = nSlices * sliceSize
 
-    // Pass 1 — per-slice min/max then count above-threshold voxels.
-    // Keeping min/max in small typed arrays avoids a second raw-data pass for stats.
+    // Pass 1 — per-slice min/max and exact above-threshold count.
+    // Keeping min/max in small typed arrays avoids a third pass over raw.
     const sliceMin = new Float32Array(nSlices)
     const sliceMax = new Float32Array(nSlices)
 
@@ -38,11 +38,10 @@ export function normalizeVolume(
         }
     }
 
-    // Pass 2 — allocate exact-size buffers and fill them.
-    // Peak JS heap = raw (total×4) + normalizedVolume (total×4, optional)
-    //              + tmpIndices (count×4) + tmpIntensities (count×4).
-    // Skipping normalizedVolume cuts ~128 MB for a standard 32 M-voxel volume.
-    const normalizedVolume = skipNormalizedVolume ? null : new Float32Array(total)
+    // Pass 2 — fill exact-sized buffers.
+    // normalizedVolume uses Uint8Array (0-255) instead of Float32Array to cut
+    // memory 4× — crucial for large merged volumes (64 MB vs 256 MB).
+    const normalizedVolume = skipNormalizedVolume ? null : new Uint8Array(total)
     const tmpIndices = new Float32Array(count)
     const tmpIntensities = new Float32Array(count)
     let idx = 0
@@ -53,7 +52,7 @@ export function normalizeVolume(
         const range = sliceMax[s] > mn ? sliceMax[s] - mn : 1
         for (let i = 0; i < sliceSize; i++) {
             const normalized = (raw[offset + i] - mn) / range
-            if (normalizedVolume) normalizedVolume[offset + i] = normalized
+            if (normalizedVolume) normalizedVolume[offset + i] = Math.round(normalized * 255)
             if (normalized >= threshold) {
                 tmpIndices[idx] = offset + i
                 tmpIntensities[idx] = normalized
@@ -62,8 +61,7 @@ export function normalizeVolume(
         }
     }
 
-    // Radix sort by intensity descending — O(n), 2 passes, 12-bit buckets.
-    // Higher intensity → smaller sort key so setDrawRange(0, N) shows N brightest.
+    // Radix sort by intensity descending — O(n), 2 passes.
     const BITS = 12
     const BUCKETS = 1 << BITS
     const MASK = BUCKETS - 1
@@ -78,12 +76,10 @@ export function normalizeVolume(
     const tempPerm = new Uint32Array(count)
     const hist = new Uint32Array(BUCKETS)
 
-    // Pass 1: bits 0–11
     for (let i = 0; i < count; i++) hist[sortKeys[i] & MASK]++
     for (let i = 1; i < BUCKETS; i++) hist[i] += hist[i - 1]
     for (let i = count - 1; i >= 0; i--) tempPerm[--hist[sortKeys[perm[i]] & MASK]] = perm[i]
 
-    // Pass 2: bits 12–23
     hist.fill(0)
     for (let i = 0; i < count; i++) hist[(sortKeys[tempPerm[i]] >> BITS) & MASK]++
     for (let i = 1; i < BUCKETS; i++) hist[i] += hist[i - 1]

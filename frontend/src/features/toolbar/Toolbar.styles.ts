@@ -10,6 +10,10 @@ export const ToolbarRoot = styled(Stack)({
     backdropFilter: 'blur(10px)',
     borderBottom: `1px solid ${palette.toolbarBorder}`,
     padding: '8px 24px',
+    overflowX: 'auto',
+    flexWrap: 'nowrap',
+    '&::-webkit-scrollbar': { height: 4 },
+    '&::-webkit-scrollbar-thumb': { background: 'rgba(255,255,255,0.15)', borderRadius: 2 },
 })
 
 export const FileNameText = styled(Typography)({

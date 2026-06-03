@@ -3,22 +3,27 @@ import type React from 'react'
 import { IconButton, Stack, Tab } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import { useViewerStore } from '../../app/store/viewerSlice'
+import { cleanupUploads } from '../../shared/api'
 import { H5Tabs, closeIconButtonSx } from './H5FileTabs.styles'
 
 export default function H5FileTabs() {
-    const { h5Files, activeH5Index, selectH5, closeH5, reorderH5 } = useViewerStore()
+    const { tabs, activeTabIndex, selectTab, closeTab, reorderTab } = useViewerStore()
+
+    // Single numeric sentinel — same pattern as the original H5-only implementation.
+    // All tabs use MUI's implicit position value (no explicit `value` prop) so the
+    // drag-and-drop index always matches the MUI position index exactly.
     const dragIndexRef = useRef(-1)
 
     return (
         <H5Tabs
-            value={activeH5Index}
-            onChange={(_, i) => selectH5(i)}
+            value={activeTabIndex}
+            onChange={(_, v) => selectTab(v as number)}
             variant="scrollable"
             scrollButtons="auto"
         >
-            {h5Files.map((f, i) => (
+            {tabs.map((t, i) => (
                 <Tab
-                    key={f.name}
+                    key={`${t.type}-${t.name}`}
                     draggable
                     onDragStart={() => {
                         dragIndexRef.current = i
@@ -26,19 +31,28 @@ export default function H5FileTabs() {
                     onDragOver={(e: React.DragEvent) => e.preventDefault()}
                     onDrop={() => {
                         const from = dragIndexRef.current
-                        if (from !== -1 && from !== i) reorderH5(from, i)
+                        if (from !== -1 && from !== i) reorderTab(from, i)
                         dragIndexRef.current = -1
                     }}
-                    sx={{ cursor: 'grab' }}
+                    sx={{
+                        cursor: 'grab',
+                        ...(t.type === 'stl'
+                            ? {
+                                  color: 'rgba(100,200,255,0.6)',
+                                  '&.Mui-selected': { color: 'rgba(100,200,255,0.9)' },
+                              }
+                            : {}),
+                    }}
                     label={
                         <Stack direction="row" alignItems="center" spacing={0.5}>
-                            {f.name}
+                            {t.name}
                             <IconButton
                                 size="small"
                                 component="span"
                                 onClick={(e) => {
                                     e.stopPropagation()
-                                    closeH5(i)
+                                    closeTab(i)
+                                    cleanupUploads().catch(() => {})
                                 }}
                                 sx={closeIconButtonSx}
                             >

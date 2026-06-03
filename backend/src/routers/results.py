@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from src.config import settings
+from src.processing.normalizer import pack_normalized_response
 from src.processing.runner import get_job
 from src.schemas.enums import JobStatus
 
@@ -11,10 +12,12 @@ router = APIRouter()
 
 @router.get(
     "/{job_id}/volume/{stitcher_name}",
-    summary="Download result volume",
+    summary="Download result volume (pre-normalised for frontend)",
     description=(
-        "Return the stitched result volume as raw float32 bytes. "
-        "Shape is in the `X-Shape` response header."
+        "Returns the stitched result volume as a packed binary blob that the frontend "
+        "can consume directly without any Web Worker normalization step. "
+        "Layout: ``[vIndices float32][vIntensities float32][normalizedVolume uint8]``. "
+        "Shape in ``X-Shape`` header; above-threshold voxel count in ``X-VCount``."
     ),
     responses={
         404: {"description": "Job or result not found"},
@@ -32,12 +35,6 @@ def get_result_volume(job_id: str, stitcher_name: str) -> Response:
     if not path.exists():
         raise HTTPException(status_code=404, detail="Result volume not found.")
 
-    arr: np.ndarray = np.load(path)
-    return Response(
-        content=arr.astype(np.float32).tobytes(),
-        media_type="application/octet-stream",
-        headers={
-            "X-Shape": ",".join(str(d) for d in arr.shape),
-            "X-Dtype": "float32",
-        },
-    )
+    arr: np.ndarray = np.load(path).astype(np.float32)
+    content, headers = pack_normalized_response(arr)
+    return Response(content=content, media_type="application/octet-stream", headers=headers)
