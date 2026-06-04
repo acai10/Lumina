@@ -8,6 +8,7 @@ import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
+import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import { RENDER_CONTROL_LIMITS } from './renderControlLimits'
 import { SliderRow } from './SliderRow'
@@ -35,7 +36,9 @@ const PHASE_LABEL: Partial<Record<FilterPhase, string>> = {
 }
 
 export function PreprocessingSection() {
-    const { tabs, activeTabIndex } = useViewerStore()
+    const { tabs, activeTabIndex } = useViewerStore(
+        useShallow((s) => ({ tabs: s.tabs, activeTabIndex: s.activeTabIndex })),
+    )
 
     const activeTab = tabs[activeTabIndex]
     const activeEntry = activeTab?.type === 'h5' ? activeTab : null

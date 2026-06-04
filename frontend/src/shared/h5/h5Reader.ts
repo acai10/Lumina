@@ -65,15 +65,18 @@ export async function loadH5File(
     }
 }
 
+/** Reply shape posted back by h5.worker — discriminated on `ok`. */
+type WorkerResponse = { ok: true; result: H5VolumeData } | { ok: false; error: string }
+
 export function loadH5FileInWorker(
     file: File,
     dims: [number, number, number] = VOLUME_DIMS,
 ): Promise<H5VolumeData> {
     return new Promise((resolve, reject) => {
         const worker = new Worker(new URL('./h5.worker.ts', import.meta.url), { type: 'module' })
-        worker.onmessage = (e) => {
+        worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
             worker.terminate()
-            if (e.data.ok) resolve(e.data.result as H5VolumeData)
+            if (e.data.ok) resolve(e.data.result)
             else reject(new Error(e.data.error))
         }
         worker.onerror = (err) => {

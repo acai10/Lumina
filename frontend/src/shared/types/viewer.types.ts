@@ -20,9 +20,22 @@ export interface H5FileEntry {
     backendVolumeId?: string
 }
 
-/** Full H5 tab as stored in the unified tabs array. */
-export interface H5TabEntry extends H5FileEntry {
+/**
+ * Full H5 tab as stored in the unified tabs array.
+ *
+ * `data` holds the heavy buffers only while the tab is *hydrated*. Inactive tabs
+ * are evicted to IndexedDB (see shared/h5/volumeCache) and carry `data: null` to
+ * keep the JS heap small; `meta` and `hasSlices` stay resident so the UI can render
+ * sliders, dimensions and the view toggle without the buffers present.
+ */
+export interface H5TabEntry {
     type: 'h5'
+    name: string
+    meta: H5Meta
+    data: H5VolumeData | null
+    hasSlices: boolean
+    sourceFile?: File
+    backendVolumeId?: string
 }
 
 /** STL tab stored in the unified tabs array. */

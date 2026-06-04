@@ -19,7 +19,6 @@ interface H5ViewerProps {
     meta: H5Meta
     fileKey: string
     stlOverlayFile?: File
-    onError?: (msg: string) => void
 }
 
 export default function H5Viewer({
@@ -37,6 +36,8 @@ export default function H5Viewer({
     const chunkGeosRef = useRef<THREE.BufferGeometry[]>([])
     const needsRenderRef = useRef(true)
     const sceneRef = useRef<THREE.Scene | null>(null)
+    // The green bounding box; its Y extent tracks the current volume spacing.
+    const boxHelperRef = useRef<THREE.Box3Helper | null>(null)
 
     const renderControls = useViewerStore(
         (s) => s.h5PerFileStates[fileKey]?.renderControls ?? defaultRenderControls,
@@ -98,6 +99,7 @@ export default function H5Viewer({
         )
         const boxHelper = new THREE.Box3Helper(boundingBox, new THREE.Color(palette.tealBorderHex))
         scene.add(boxHelper)
+        boxHelperRef.current = boxHelper
 
         chunkGeosRef.current = []
         for (let offset = 0; offset < vIndices.length; offset += MAX_VERTS_PER_DRAW) {
@@ -166,6 +168,7 @@ export default function H5Viewer({
             })
             materialRef.current = null
             chunkGeosRef.current = []
+            boxHelperRef.current = null
             sceneRef.current = null
             disposeSceneGeometry(scene)
             disposeBase()
@@ -179,10 +182,11 @@ export default function H5Viewer({
 
         const stlMeshGroup = new THREE.Group()
         const lights: THREE.Light[] = []
+        let reader: FileReader | null = null
 
         if (stlOverlayFile) {
             const loader = new STLLoader()
-            const reader = new FileReader()
+            reader = new FileReader()
             reader.onload = (e) => {
                 if (!(e.target?.result instanceof ArrayBuffer)) return
                 const geo = loader.parse(e.target.result)
@@ -213,6 +217,9 @@ export default function H5Viewer({
         }
 
         return () => {
+            // Abort an in-flight read so a stale onload can't add a mesh to a scene
+            // whose group was already removed (rapid overlay switching).
+            reader?.abort()
             stlMeshGroup.traverse((obj) => {
                 if (obj instanceof THREE.Mesh) {
                     obj.geometry.dispose()
@@ -225,7 +232,7 @@ export default function H5Viewer({
             })
             scene.remove(stlMeshGroup)
             lights.forEach((l) => scene.remove(l))
-            if (needsRenderRef.current !== undefined) needsRenderRef.current = true
+            needsRenderRef.current = true
         }
     }, [stlOverlayFile])
 
@@ -258,6 +265,13 @@ export default function H5Viewer({
         const mat = materialRef.current
         if (!mat) return
         mat.uniforms.uVolumeSpacing.value = volumeSpacing
+        // Keep the green bounding box in sync with the model's Y extent, which the
+        // vertex shader scales to ±volumeSpacing/2.
+        const boxHelper = boxHelperRef.current
+        if (boxHelper) {
+            boxHelper.box.min.y = -volumeSpacing / 2
+            boxHelper.box.max.y = volumeSpacing / 2
+        }
         mat.uniforms.uPointSize.value = h5PointSize
         mat.uniforms.uBrightness.value = h5Brightness
         mat.uniforms.uContrast.value = h5Contrast

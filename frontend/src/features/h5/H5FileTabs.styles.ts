@@ -25,3 +25,12 @@ export const closeIconButtonSx = {
     opacity: 0.6,
     '&:hover': { opacity: 1 },
 }
+
+export const dragTabSx = { cursor: 'grab' }
+
+// STL tabs are tinted cyan to distinguish them from H5 tabs; selected state brightens.
+export const stlTabSx = {
+    cursor: 'grab',
+    color: palette.cyanTabIdle,
+    '&.Mui-selected': { color: palette.cyanTabSelected },
+}

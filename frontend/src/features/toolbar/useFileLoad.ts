@@ -1,12 +1,19 @@
 import { useRef } from 'react'
 import type { ChangeEvent } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { loadH5FileInWorker, VOLUME_DIMS } from '../../shared/h5/h5Reader'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5FileEntry } from '../../shared/types/viewer.types'
 
 export function useFileLoad() {
-    const { loadStlFiles, loadH5, setIsLoading, setNotification } = useViewerStore()
-    // loadStlFiles and loadH5 are stable store actions — no deps needed.
+    const { loadStlFiles, loadH5, setIsLoading, setNotification } = useViewerStore(
+        useShallow((s) => ({
+            loadStlFiles: s.loadStlFiles,
+            loadH5: s.loadH5,
+            setIsLoading: s.setIsLoading,
+            setNotification: s.setNotification,
+        })),
+    )
 
     const stlInputRef = useRef<HTMLInputElement>(null)
     const h5InputRef = useRef<HTMLInputElement>(null)
@@ -19,7 +26,9 @@ export function useFileLoad() {
             try {
                 const data = await loadH5FileInWorker(f, VOLUME_DIMS)
                 const entry: H5FileEntry = { name: f.name, data, sourceFile: f }
-                loadH5([entry])
+                // Await so each file is persisted + evicted before the next is read,
+                // bounding peak heap to a few volumes during folder loads.
+                await loadH5([entry])
                 loaded++
             } catch (err) {
                 console.error(`Failed to load ${f.name}:`, err)

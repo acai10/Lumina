@@ -16,4 +16,20 @@ export default defineConfig({
   worker: {
     format: 'es',
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Split the heaviest dependencies into their own chunks so the browser can
+        // cache and parse them independently of the app code. Three.js in particular
+        // is large and rarely changes — keeping it separate means app edits don't
+        // bust its cache, and chunks load in parallel with the main bundle.
+        manualChunks: {
+          three: ['three'],
+          h5wasm: ['h5wasm'],
+          mui: ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
+          vendor: ['react', 'react-dom', 'zustand'],
+        },
+      },
+    },
+  },
 })

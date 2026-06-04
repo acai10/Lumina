@@ -8,6 +8,7 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
+import { useShallow } from 'zustand/react/shallow'
 import {
     useViewerStore,
     defaultRenderControls,
@@ -34,7 +35,20 @@ export default function ControlsPanel() {
         resetSlicePanelControls,
         stlOverlayIndex,
         setStlOverlayIndex,
-    } = useViewerStore()
+    } = useViewerStore(
+        useShallow((s) => ({
+            tabs: s.tabs,
+            activeTabIndex: s.activeTabIndex,
+            h5PerFileStates: s.h5PerFileStates,
+            updateActiveRenderState: s.updateActiveRenderState,
+            stlOpacity: s.stlOpacity,
+            setStlOpacity: s.setStlOpacity,
+            setH5ViewMode: s.setH5ViewMode,
+            resetSlicePanelControls: s.resetSlicePanelControls,
+            stlOverlayIndex: s.stlOverlayIndex,
+            setStlOverlayIndex: s.setStlOverlayIndex,
+        })),
+    )
 
     const activeTab = tabs[activeTabIndex]
     const activeH5 = activeTab?.type === 'h5' ? activeTab : null
@@ -45,8 +59,8 @@ export default function ControlsPanel() {
         (activeKey ? h5PerFileStates[activeKey]?.renderControls : undefined) ??
         defaultRenderControls
     const viewMode = (activeKey ? h5PerFileStates[activeKey]?.viewMode : undefined) ?? 'pointcloud'
-    const limits = getRenderControlLimits(activeH5?.data)
-    const hasSliceView = !!activeH5?.data.normalizedVolume
+    const limits = getRenderControlLimits(activeH5?.meta)
+    const hasSliceView = !!activeH5?.hasSlices
 
     const stlTabs = tabs.flatMap((t, i) => (t.type === 'stl' ? [{ tab: t, index: i }] : []))
 

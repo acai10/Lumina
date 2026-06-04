@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Slider, Stack, Typography } from '@mui/material'
 import { useViewerStore, DEFAULT_SLICE_PANEL_CONTROL } from '../../app/store/viewerSlice'
 import type { H5Meta } from '../../shared/types/viewer.types'
+import { palette } from '../../shared/theme/palette'
 import { slicePanelSliderSx } from './H5SliceViewer.styles'
 
 export interface SlicePanelProps {
@@ -22,6 +23,11 @@ function applyToneMap(value: number, brightness: number, contrast: number): numb
     return Math.round(c * 255)
 }
 
+// Zoom: each wheel tick multiplies/divides by ZOOM_STEP_FACTOR, clamped to [MIN, MAX].
+const ZOOM_STEP_FACTOR = 1.05
+const MIN_ZOOM = 1
+const MAX_ZOOM = 20
+
 export function SlicePanel({
     normalizedVolume,
     meta,
@@ -36,7 +42,7 @@ export function SlicePanel({
     const maxSlice = axis === 'z' ? nSlices - 1 : axis === 'y' ? height - 1 : width - 1
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
-    const zoomRef = useRef(1)
+    const zoomRef = useRef(MIN_ZOOM)
     const panRef = useRef({ x: 0, y: 0 })
     // cursor is the only piece of zoom/pan state that must trigger a re-render
     const [cursorStyle, setCursorStyle] = useState<'grab' | 'default'>('default')
@@ -119,7 +125,20 @@ export function SlicePanel({
         })
 
         return () => cancelAnimationFrame(rafId)
-    }, [normalizedVolume, axis, orient, sliceIndex, lut, height, width, meta.nSlices, origW, origH, canvasW, canvasH])
+    }, [
+        normalizedVolume,
+        axis,
+        orient,
+        sliceIndex,
+        lut,
+        height,
+        width,
+        meta.nSlices,
+        origW,
+        origH,
+        canvasW,
+        canvasH,
+    ])
 
     const applyTransform = useCallback(() => {
         if (!canvasRef.current) return
@@ -130,9 +149,9 @@ export function SlicePanel({
         (e: React.WheelEvent) => {
             e.preventDefault()
             const rect = containerRef.current!.getBoundingClientRect()
-            const factor = e.deltaY < 0 ? 1.05 : 1 / 1.05
+            const factor = e.deltaY < 0 ? ZOOM_STEP_FACTOR : 1 / ZOOM_STEP_FACTOR
             const prevZoom = zoomRef.current
-            const newZoom = Math.max(1, Math.min(20, prevZoom * factor))
+            const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prevZoom * factor))
             zoomRef.current = newZoom
             const mx = e.clientX - rect.left - rect.width / 2
             const my = e.clientY - rect.top - rect.height / 2
@@ -141,7 +160,7 @@ export function SlicePanel({
                 y: my - (my - panRef.current.y) * (newZoom / prevZoom),
             }
             applyTransform()
-            setCursorStyle(newZoom > 1 ? 'grab' : 'default')
+            setCursorStyle(newZoom > MIN_ZOOM ? 'grab' : 'default')
         },
         [applyTransform],
     )
@@ -169,7 +188,7 @@ export function SlicePanel({
     }, [])
 
     const resetView = useCallback(() => {
-        zoomRef.current = 1
+        zoomRef.current = MIN_ZOOM
         panRef.current = { x: 0, y: 0 }
         applyTransform()
         setCursorStyle('default')
@@ -185,7 +204,7 @@ export function SlicePanel({
                 position: 'relative',
                 cursor: cursorStyle,
                 userSelect: 'none',
-                border: '1px solid rgba(255,255,255,0.08)',
+                border: `1px solid ${palette.hairlineFaint}`,
                 borderRadius: 1,
                 display: 'flex',
                 flexDirection: 'column',
@@ -206,7 +225,7 @@ export function SlicePanel({
                     left: 4,
                     zIndex: 2,
                     px: 0.5,
-                    background: 'rgba(0,0,0,0.55)',
+                    background: palette.overlayScrim,
                     borderRadius: 0.5,
                     color: 'text.secondary',
                     pointerEvents: 'none',
@@ -244,11 +263,11 @@ export function SlicePanel({
                 sx={{
                     flexShrink: 0,
                     zIndex: 2,
-                    background: 'rgba(0,0,0,0.6)',
+                    background: palette.controlsScrim,
                     backdropFilter: 'blur(6px)',
                     px: 1.5,
                     py: 0.75,
-                    borderTop: '1px solid rgba(255,255,255,0.06)',
+                    borderTop: `1px solid ${palette.hairlineDim}`,
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
                 onWheel={(e) => e.stopPropagation()}
@@ -336,8 +355,8 @@ export function SlicePanel({
                             size="small"
                             value={contrast}
                             min={0}
-                            max={1}
-                            step={0.01}
+                            max={3}
+                            step={0.05}
                             onChange={(_, v) =>
                                 setSlicePanelControl(fileKey, axis, { contrast: v as number })
                             }

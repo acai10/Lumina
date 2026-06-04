@@ -20,23 +20,34 @@ export default function MipViewer({ data, shape, title = 'MIP — Top View' }: P
     useEffect(() => {
         const canvas = canvasRef.current
         if (!canvas) return
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
 
-        const imageData = ctx.createImageData(width, height)
-        const pixels = imageData.data
+        // Schedule the pixel loop on the next frame so rapid slider drags never queue
+        // more than one pending repaint.
+        const rafId = requestAnimationFrame(() => {
+            const ctx = canvas.getContext('2d')
+            if (!ctx) return
 
-        for (let i = 0; i < data.length; i++) {
-            // Apply brightness and contrast: clamp(contrast*(v - 0.5) + 0.5 + brightness - 1, 0, 1)
-            const v = Math.max(0, Math.min(1, contrast * (data[i] - 0.5) + 0.5 + (brightness - 1)))
-            const byte = Math.round(v * 255)
-            pixels[i * 4] = byte
-            pixels[i * 4 + 1] = byte
-            pixels[i * 4 + 2] = byte
-            pixels[i * 4 + 3] = 255
-        }
+            const imageData = ctx.createImageData(width, height)
+            const pixels = imageData.data
 
-        ctx.putImageData(imageData, 0, 0)
+            for (let i = 0; i < data.length; i++) {
+                // Apply brightness and contrast: clamp(contrast*(v-0.5) + 0.5 + brightness-1, 0, 1)
+                const v = Math.max(
+                    0,
+                    Math.min(1, contrast * (data[i] - 0.5) + 0.5 + (brightness - 1)),
+                )
+                const byte = Math.round(v * 255)
+                const pi = i * 4
+                pixels[pi] = byte
+                pixels[pi + 1] = byte
+                pixels[pi + 2] = byte
+                pixels[pi + 3] = 255
+            }
+
+            ctx.putImageData(imageData, 0, 0)
+        })
+
+        return () => cancelAnimationFrame(rafId)
     }, [data, width, height, brightness, contrast])
 
     // Scale canvas display size while keeping it square-ish and capped

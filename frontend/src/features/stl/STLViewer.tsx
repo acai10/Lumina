@@ -44,7 +44,7 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
     const meshRef = useRef<THREE.Mesh | null>(null)
     const materialRef = useRef<THREE.MeshStandardMaterial | null>(null)
 
-    const { stlOpacity } = useViewerStore()
+    const stlOpacity = useViewerStore((s) => s.stlOpacity)
 
     useEffect(() => {
         const container = containerRef.current

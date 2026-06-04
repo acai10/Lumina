@@ -13,7 +13,7 @@ export const ToolbarRoot = styled(Stack)({
     overflowX: 'auto',
     flexWrap: 'nowrap',
     '&::-webkit-scrollbar': { height: 4 },
-    '&::-webkit-scrollbar-thumb': { background: 'rgba(255,255,255,0.15)', borderRadius: 2 },
+    '&::-webkit-scrollbar-thumb': { background: palette.scrollbarThumb, borderRadius: 2 },
 })
 
 export const FileNameText = styled(Typography)({
@@ -31,9 +31,9 @@ export const stlButtonSx = { ...glowSx, borderColor: palette.cyanBorder, color: 
 export const h5ButtonSx = { ...glowSx, borderColor: palette.tealBorder, color: palette.tealLabel }
 export const stitchButtonSx = {
     ...glowSx,
-    borderColor: 'rgba(200,150,255,0.4)',
-    color: 'rgba(220,180,255,0.85)',
-    '&:hover': { boxShadow: '0 0 18px 3px rgba(180,100,255,0.3)' },
+    borderColor: palette.stitchBorder,
+    color: palette.stitchLabel,
+    '&:hover': { boxShadow: `0 0 18px 3px ${palette.stitchGlow}` },
 }
 export const clearButtonSx = {
     px: 3,
