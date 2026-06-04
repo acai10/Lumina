@@ -140,12 +140,21 @@ _FILTER_REGISTRY = {
 }
 
 
-def apply_filter_chain(volume: np.ndarray, chain: list[dict[str, Any]]) -> np.ndarray:
+def apply_filter_chain(
+    volume: np.ndarray,
+    chain: list[dict[str, Any]],
+    *,
+    copy_input: bool = True,
+) -> np.ndarray:
     """Apply a sequence of named filters to *volume* in order.
 
     Args:
         volume: Input float32 volume array.
         chain: Ordered list of ``{"type": str, "params": dict}`` dicts.
+        copy_input: When *True* (default) the input is copied before the first
+            filter so the original array is never modified.  Pass *False* when
+            the caller owns a temporary array and wants to skip the 1 GB copy —
+            e.g. when *volume* was just loaded from disk for this call only.
 
     Returns:
         Filtered volume (may differ in shape if anisotropy zoom is applied).
@@ -153,7 +162,7 @@ def apply_filter_chain(volume: np.ndarray, chain: list[dict[str, Any]]) -> np.nd
     Raises:
         ValueError: If any step references an unknown filter type.
     """
-    result = volume.copy()
+    result = volume.copy() if copy_input else volume
     for step in chain:
         filter_type = step.get("type", "")
         fn = _FILTER_REGISTRY.get(filter_type)

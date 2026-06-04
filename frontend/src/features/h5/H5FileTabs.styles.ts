@@ -14,7 +14,7 @@ export const H5Tabs = styled(Tabs)({
         textTransform: 'none',
         letterSpacing: '0.03em',
     },
-    '& .Mui-selected': { color: palette.tealLabel },
+    '& .MuiTab-root.Mui-selected': { color: palette.tealLabel },
     '& .MuiTabs-indicator': { backgroundColor: palette.tealBorder },
 })
 

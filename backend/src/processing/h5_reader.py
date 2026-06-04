@@ -6,6 +6,25 @@ import numpy as np
 OCT_DIMS = (512, 250, 250)  # nSlices, height, width — fixed for all files
 
 
+def load_volume_flexible(path: Path) -> np.ndarray:
+    """Load an OCT volume without shape constraints (for merged results).
+
+    Args:
+        path: Path to the ``.h5`` file containing an ``"OCT"`` dataset.
+
+    Returns:
+        Float32 array with the dataset's native shape.
+
+    Raises:
+        ValueError: If the ``"OCT"`` dataset is missing.
+    """
+    with h5py.File(path, "r") as f:
+        ds = f.get("OCT")
+        if ds is None:
+            raise ValueError('Dataset "OCT" not found in file')
+        return np.asarray(ds, dtype=np.float32)
+
+
 def load_volume(path: Path) -> np.ndarray:
     """Load an OCT volume from an HDF5 file.
 

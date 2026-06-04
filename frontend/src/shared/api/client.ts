@@ -1,6 +1,17 @@
-import type { JobRequest, JobStatus, UploadResponse } from './types'
+import type {
+    FilterStep,
+    JobRequest,
+    JobStatus,
+    SessionRequest,
+    SessionStatus,
+    UploadResponse,
+} from './types'
+import type { H5VolumeData } from '../types/viewer.types'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+const CONTENT_TYPE_JSON = 'application/json'
+const HEADER_X_SHAPE = 'X-Shape'
+const HEADER_X_VCOUNT = 'X-VCount'
 
 export async function uploadVolume(file: File): Promise<UploadResponse> {
     const form = new FormData()
@@ -13,7 +24,7 @@ export async function uploadVolume(file: File): Promise<UploadResponse> {
 export async function createJob(req: JobRequest): Promise<{ job_id: string }> {
     const res = await fetch(`${BASE_URL}/jobs/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': CONTENT_TYPE_JSON },
         body: JSON.stringify(req),
     })
     if (!res.ok) throw new Error(`Job creation failed: ${await res.text()}`)
@@ -26,15 +37,87 @@ export async function pollJob(jobId: string): Promise<JobStatus> {
     return res.json() as Promise<JobStatus>
 }
 
-export async function fetchResultVolume(
-    jobId: string,
-    stitcher: string,
-): Promise<{ data: Float32Array; shape: [number, number, number] }> {
-    const res = await fetch(`${BASE_URL}/jobs/${jobId}/volume/${stitcher}`)
-    if (!res.ok) throw new Error(`Fetch result failed: ${await res.text()}`)
-    const shapeHeader = res.headers.get('X-Shape')
-    if (!shapeHeader) throw new Error('Missing X-Shape header in result response')
-    const shape = shapeHeader.split(',').map(Number) as [number, number, number]
+// ── Multi-volume stitching sessions ──────────────────────────────────────────
+
+export async function createSession(req: SessionRequest): Promise<{ session_id: string }> {
+    const res = await fetch(`${BASE_URL}/sessions/`, {
+        method: 'POST',
+        headers: { 'Content-Type': CONTENT_TYPE_JSON },
+        body: JSON.stringify(req),
+    })
+    if (!res.ok) throw new Error(`Session creation failed: ${await res.text()}`)
+    return res.json() as Promise<{ session_id: string }>
+}
+
+export async function pollSession(sessionId: string): Promise<SessionStatus> {
+    const res = await fetch(`${BASE_URL}/sessions/${sessionId}`)
+    if (!res.ok) throw new Error(`Session poll failed: ${await res.text()}`)
+    return res.json() as Promise<SessionStatus>
+}
+
+export async function fetchSessionMip(
+    sessionId: string,
+): Promise<{ data: Float32Array; shape: [number, number] }> {
+    const res = await fetch(`${BASE_URL}/sessions/${sessionId}/mip`)
+    if (!res.ok) throw new Error(`MIP fetch failed: ${await res.text()}`)
+    const shapeHeader = res.headers.get(HEADER_X_SHAPE)
+    if (!shapeHeader) throw new Error('Missing X-Shape header in MIP response')
+    const parts = shapeHeader.split(',').map(Number)
+    if (parts.length !== 2 || parts.some(isNaN)) throw new Error('Invalid X-Shape header')
+    const shape = parts as [number, number]
     const buf = await res.arrayBuffer()
     return { data: new Float32Array(buf), shape }
+}
+
+export async function cleanupUploads(): Promise<void> {
+    const res = await fetch(`${BASE_URL}/cleanup`, { method: 'DELETE' })
+    if (!res.ok) throw new Error(`Cleanup failed: ${await res.text()}`)
+}
+
+// ── Normalised-binary endpoints ───────────────────────────────────────────────
+//
+// The backend now returns render-ready binary instead of raw float32.
+// Layout: [vIndices float32 × vCount][vIntensities float32 × vCount][normalizedVolume uint8 × total]
+// Headers: X-Shape (nSlices,height,width)  X-VCount (above-threshold voxel count)
+//
+// The frontend creates three typed-array views into the single response ArrayBuffer —
+// no copy, no Web Worker, no normalization computation needed.
+
+async function parseNormalizedVolume(res: Response): Promise<H5VolumeData> {
+    if (!res.ok) throw new Error(await res.text())
+    const shapeHeader = res.headers.get(HEADER_X_SHAPE)
+    const vCountHeader = res.headers.get(HEADER_X_VCOUNT)
+    if (!shapeHeader || !vCountHeader) throw new Error('Missing X-Shape or X-VCount header')
+    const [nSlices, height, width] = shapeHeader.split(',').map(Number)
+    const vCount = parseInt(vCountHeader, 10)
+    const total = nSlices * height * width
+
+    const buf = await res.arrayBuffer()
+    // Three views into the same buffer — zero copy.
+    const vIndices = new Float32Array(buf, 0, vCount)
+    const vIntensities = new Float32Array(buf, vCount * 4, vCount)
+    const normalizedVolume = new Uint8Array(buf, vCount * 8, total)
+    return { nSlices, height, width, vIndices, vIntensities, normalizedVolume }
+}
+
+export async function fetchResultVolume(jobId: string, stitcher: string): Promise<H5VolumeData> {
+    const res = await fetch(`${BASE_URL}/jobs/${jobId}/volume/${stitcher}`)
+    return parseNormalizedVolume(res)
+}
+
+export async function fetchSessionMerged(sessionId: string): Promise<H5VolumeData> {
+    const res = await fetch(`${BASE_URL}/sessions/${sessionId}/merged`)
+    return parseNormalizedVolume(res)
+}
+
+export async function filterSessionVolume(
+    sessionId: string,
+    filterChain: FilterStep[],
+): Promise<H5VolumeData> {
+    const res = await fetch(`${BASE_URL}/sessions/${sessionId}/filter`, {
+        method: 'POST',
+        headers: { 'Content-Type': CONTENT_TYPE_JSON },
+        body: JSON.stringify({ filter_chain: filterChain }),
+    })
+    return parseNormalizedVolume(res)
 }

@@ -1,4 +1,4 @@
-import { createTheme } from '@mui/material'
+import { createTheme } from '@mui/material/styles'
 import { palette } from './palette'
 
 export const darkTheme = createTheme({
@@ -12,13 +12,15 @@ export const darkTheme = createTheme({
     components: {
         MuiButton: {
             styleOverrides: {
-                root: {
+                root: ({ theme }) => ({
                     textTransform: 'none',
-                    borderRadius: '6px',
+                    borderRadius: `${theme.shape.borderRadius * 1.5}px`,
                     letterSpacing: '0.06em',
-                    fontSize: '0.9rem',
-                    transition: 'box-shadow 0.2s',
-                },
+                    fontSize: theme.typography.body2.fontSize,
+                    transition: theme.transitions.create('box-shadow', {
+                        duration: theme.transitions.duration.short,
+                    }),
+                }),
             },
         },
     },

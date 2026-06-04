@@ -4,7 +4,7 @@ import type { H5Meta } from '../../shared/types/viewer.types'
 import { SlicePanel } from './SlicePanel'
 
 interface H5SliceViewerProps {
-    normalizedVolume: Float32Array
+    normalizedVolume: Uint8Array
     meta: H5Meta
     fileKey: string
 }

@@ -1,11 +1,12 @@
 import { useRef } from 'react'
 import type { ChangeEvent } from 'react'
-import { loadH5FileInWorker } from '../../shared/h5/h5Reader'
+import { loadH5FileInWorker, VOLUME_DIMS } from '../../shared/h5/h5Reader'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5FileEntry } from '../../shared/types/viewer.types'
 
 export function useFileLoad() {
-    const { setMode, setStlFile, loadH5, setIsLoading, setNotification } = useViewerStore()
+    const { loadStlFiles, loadH5, setIsLoading, setNotification } = useViewerStore()
+    // loadStlFiles and loadH5 are stable store actions — no deps needed.
 
     const stlInputRef = useRef<HTMLInputElement>(null)
     const h5InputRef = useRef<HTMLInputElement>(null)
@@ -16,7 +17,7 @@ export function useFileLoad() {
         let loaded = 0
         for (const f of files) {
             try {
-                const data = await loadH5FileInWorker(f, [512, 250, 250])
+                const data = await loadH5FileInWorker(f, VOLUME_DIMS)
                 const entry: H5FileEntry = { name: f.name, data, sourceFile: f }
                 loadH5([entry])
                 loaded++
@@ -38,11 +39,10 @@ export function useFileLoad() {
     }
 
     const handleSTLLoad = (e: ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file) return
+        const files = Array.from(e.target.files ?? [])
         e.target.value = ''
-        setStlFile(file)
-        setMode('stl')
+        if (files.length === 0) return
+        loadStlFiles(files)
     }
 
     const handleH5Load = async (e: ChangeEvent<HTMLInputElement>) => {

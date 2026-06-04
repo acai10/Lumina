@@ -23,3 +23,31 @@ export interface UploadResponse {
     height: number
     width: number
 }
+
+// ── Multi-volume stitching sessions ──────────────────────────────────────────
+
+export type RegistrationMethod = 'phase_correlation' | 'cross_correlation' | 'icp'
+
+export interface VolumeEntry {
+    volume_id: string
+    row: number
+    col: number
+}
+
+export interface SessionRequest {
+    volumes: VolumeEntry[]
+    method: RegistrationMethod
+    method_params: Record<string, unknown>
+}
+
+export interface SessionStatus {
+    status: 'pending' | 'running' | 'done' | 'error'
+    offsets: Record<string, [number, number]>
+    metrics: Record<string, number>
+    merged_volume_id?: string
+    error?: string
+}
+
+export interface SessionFilterRequest {
+    filter_chain: FilterStep[]
+}

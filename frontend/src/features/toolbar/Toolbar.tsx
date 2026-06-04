@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button, CircularProgress, Menu, MenuItem, Stack } from '@mui/material'
 import { useViewerStore } from '../../app/store/viewerSlice'
+import { cleanupUploads } from '../../shared/api'
 import { useFileLoad } from './useFileLoad'
 import {
     ToolbarRoot,
@@ -9,13 +10,15 @@ import {
     stlButtonSx,
     h5ButtonSx,
     clearButtonSx,
+    stitchButtonSx,
     menuPaperSx,
     menuItemSx,
     loadingSpinnerSx,
 } from './Toolbar.styles'
 
 export default function Toolbar() {
-    const { mode, isLoading, stlFile, h5Files, activeH5Index, reset } = useViewerStore()
+    const { isLoading, tabs, activeTabIndex, reset, stitchPanelOpen, toggleStitchPanel } =
+        useViewerStore()
     const {
         stlInputRef,
         h5InputRef,
@@ -27,8 +30,8 @@ export default function Toolbar() {
 
     const [h5MenuAnchor, setH5MenuAnchor] = useState<HTMLElement | null>(null)
 
-    const activeFileName =
-        mode === 'stl' ? (stlFile?.name ?? '') : (h5Files[activeH5Index]?.name ?? '')
+    const activeFileName = tabs[activeTabIndex]?.name ?? ''
+    const hasFiles = tabs.length > 0
 
     const handleFileLoad = () => {
         setH5MenuAnchor(null)
@@ -45,6 +48,7 @@ export default function Toolbar() {
                 ref={stlInputRef}
                 type="file"
                 accept=".stl"
+                multiple
                 style={{ display: 'none' }}
                 onChange={handleSTLLoad}
             />
@@ -87,6 +91,17 @@ export default function Toolbar() {
                     >
                         Load H5
                     </Button>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        sx={{
+                            ...stitchButtonSx,
+                            ...(stitchPanelOpen ? { opacity: 1 } : { opacity: 0.7 }),
+                        }}
+                        onClick={toggleStitchPanel}
+                    >
+                        Stitch
+                    </Button>
                     <Menu
                         anchorEl={h5MenuAnchor}
                         open={Boolean(h5MenuAnchor)}
@@ -100,8 +115,16 @@ export default function Toolbar() {
                             Folder
                         </MenuItem>
                     </Menu>
-                    {mode !== 'none' && (
-                        <Button variant="outlined" size="small" sx={clearButtonSx} onClick={reset}>
+                    {hasFiles && (
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            sx={clearButtonSx}
+                            onClick={() => {
+                                reset()
+                                cleanupUploads().catch(() => {})
+                            }}
+                        >
                             Clear
                         </Button>
                     )}

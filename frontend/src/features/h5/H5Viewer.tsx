@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { Box } from '@mui/material'
 import { useViewerStore, defaultRenderControls } from '../../app/store/viewerSlice'
 import { createScene, disposeSceneGeometry } from '../../shared/three/sceneUtils'
@@ -7,50 +8,35 @@ import { palette } from '../../shared/theme/palette'
 import type { H5Meta } from '../../shared/types/viewer.types'
 import { createAxisLabels } from './createAxisLabels'
 import { vertexShader, fragmentShader } from './h5ViewerShaders'
+import { applyDrawRanges } from './h5DrawUtils'
 
 // Firefox caps drawArraysInstanced at 30 M vertices per draw call; leave headroom
 const MAX_VERTS_PER_DRAW = 28_000_000
-
-// vIntensities is sorted descending; returns count of elements >= threshold
-function countAboveThreshold(arr: Float32Array, threshold: number): number {
-    let lo = 0,
-        hi = arr.length
-    while (lo < hi) {
-        const mid = (lo + hi) >>> 1
-        if (arr[mid] >= threshold) lo = mid + 1
-        else hi = mid
-    }
-    return lo
-}
-
-function applyDrawRanges(
-    geos: THREE.BufferGeometry[],
-    vIntensities: Float32Array,
-    threshold: number,
-) {
-    const total = countAboveThreshold(vIntensities, threshold)
-    let remaining = total
-    for (const geo of geos) {
-        const chunkSize = (geo.attributes['vIntensity'] as THREE.BufferAttribute).count
-        const draw = Math.min(chunkSize, remaining)
-        geo.setDrawRange(0, draw)
-        remaining = Math.max(0, remaining - draw)
-    }
-}
 
 interface H5ViewerProps {
     vIndices: Float32Array
     vIntensities: Float32Array
     meta: H5Meta
     fileKey: string
+    stlOverlayFile?: File
     onError?: (msg: string) => void
 }
 
-export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5ViewerProps) {
+export default function H5Viewer({
+    vIndices,
+    vIntensities,
+    meta,
+    fileKey,
+    stlOverlayFile,
+}: H5ViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
+    // Persistent canvas survives StrictMode cleanup so the same WebGL context is
+    // reused on remount — prevents "too many active WebGL contexts" browser errors.
+    const canvasRef = useRef<HTMLCanvasElement | null>(null)
     const materialRef = useRef<THREE.ShaderMaterial | null>(null)
     const chunkGeosRef = useRef<THREE.BufferGeometry[]>([])
     const needsRenderRef = useRef(true)
+    const sceneRef = useRef<THREE.Scene | null>(null)
 
     const renderControls = useViewerStore(
         (s) => s.h5PerFileStates[fileKey]?.renderControls ?? defaultRenderControls,
@@ -60,7 +46,13 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
         const container = containerRef.current
         if (!container) return
 
-        const { scene, camera, renderer, controls, disposeBase } = createScene(container)
+        const { scene, camera, renderer, controls, disposeBase } = createScene(
+            container,
+            {},
+            canvasRef.current,
+        )
+        canvasRef.current = renderer.domElement
+        sceneRef.current = scene
 
         const { nSlices, height, width } = meta
         const initialRc =
@@ -128,10 +120,10 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
         materialRef.current = material
 
         const saved = useViewerStore.getState().h5PerFileStates[fileKey]
-        if (saved?.cameraPosition) {
+        if (saved?.cameraPosition && saved.cameraQuaternion && saved.controlsTarget) {
             camera.position.fromArray(saved.cameraPosition)
-            camera.quaternion.fromArray(saved.cameraQuaternion!)
-            controls.target.fromArray(saved.controlsTarget!)
+            camera.quaternion.fromArray(saved.cameraQuaternion)
+            controls.target.fromArray(saved.controlsTarget)
         } else {
             camera.position.set(maxDim * 0.5, maxDim * 1.5, maxDim * 1.2)
             camera.lookAt(0, 0, 0)
@@ -174,10 +166,68 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
             })
             materialRef.current = null
             chunkGeosRef.current = []
+            sceneRef.current = null
             disposeSceneGeometry(scene)
             disposeBase()
         }
     }, [vIndices, vIntensities, meta, fileKey])
+
+    // STL overlay — loads the mesh into the existing H5 scene whenever the file changes.
+    useEffect(() => {
+        const scene = sceneRef.current
+        if (!scene) return
+
+        const stlMeshGroup = new THREE.Group()
+        const lights: THREE.Light[] = []
+
+        if (stlOverlayFile) {
+            const loader = new STLLoader()
+            const reader = new FileReader()
+            reader.onload = (e) => {
+                if (!(e.target?.result instanceof ArrayBuffer)) return
+                const geo = loader.parse(e.target.result)
+                geo.computeVertexNormals()
+                geo.computeBoundingBox()
+                const center = new THREE.Vector3()
+                geo.boundingBox!.getCenter(center)
+                geo.translate(-center.x, -center.y, -center.z)
+
+                const mat = new THREE.MeshStandardMaterial({
+                    color: 0x88aaff,
+                    transparent: true,
+                    opacity: 0.4,
+                    side: THREE.DoubleSide,
+                    depthWrite: false,
+                })
+                stlMeshGroup.add(new THREE.Mesh(geo, mat))
+                scene.add(stlMeshGroup)
+
+                const ambient = new THREE.AmbientLight(0xffffff, 0.6)
+                const dir = new THREE.DirectionalLight(0xffffff, 1.2)
+                dir.position.set(1, 2, 3)
+                lights.push(ambient, dir)
+                lights.forEach((l) => scene.add(l))
+                needsRenderRef.current = true
+            }
+            reader.readAsArrayBuffer(stlOverlayFile)
+        }
+
+        return () => {
+            stlMeshGroup.traverse((obj) => {
+                if (obj instanceof THREE.Mesh) {
+                    obj.geometry.dispose()
+                    if (Array.isArray(obj.material)) {
+                        obj.material.forEach((m) => m.dispose())
+                    } else {
+                        obj.material.dispose()
+                    }
+                }
+            })
+            scene.remove(stlMeshGroup)
+            lights.forEach((l) => scene.remove(l))
+            if (needsRenderRef.current !== undefined) needsRenderRef.current = true
+        }
+    }, [stlOverlayFile])
 
     const {
         volumeSpacing,
@@ -194,13 +244,21 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
     const [widthMin, widthMax] = h5WidthRange
     const [heightMin, heightMax] = h5HeightRange
 
+    // Threshold update runs applyDrawRanges (O(n) binary search) — keep isolated so
+    // adjusting other uniforms does not trigger the expensive draw-range recalculation.
+    useEffect(() => {
+        const mat = materialRef.current
+        if (!mat) return
+        mat.uniforms.uThreshold.value = h5Threshold
+        applyDrawRanges(chunkGeosRef.current, vIntensities, h5Threshold)
+        needsRenderRef.current = true
+    }, [h5Threshold, vIntensities])
+
     useEffect(() => {
         const mat = materialRef.current
         if (!mat) return
         mat.uniforms.uVolumeSpacing.value = volumeSpacing
         mat.uniforms.uPointSize.value = h5PointSize
-        mat.uniforms.uThreshold.value = h5Threshold
-        applyDrawRanges(chunkGeosRef.current, vIntensities, h5Threshold)
         mat.uniforms.uBrightness.value = h5Brightness
         mat.uniforms.uContrast.value = h5Contrast
         mat.uniforms.uOpacity.value = h5Opacity
@@ -214,7 +272,6 @@ export default function H5Viewer({ vIndices, vIntensities, meta, fileKey }: H5Vi
     }, [
         volumeSpacing,
         h5PointSize,
-        h5Threshold,
         h5Brightness,
         h5Contrast,
         h5Opacity,

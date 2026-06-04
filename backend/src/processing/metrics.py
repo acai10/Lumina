@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial.distance import directed_hausdorff
 from skimage.metrics import normalized_mutual_information
 
 _NCC_EPSILON = 1e-10
@@ -69,6 +70,34 @@ def compute_dice(mask_a: np.ndarray, mask_b: np.ndarray) -> float:
     return float(2 * intersection / total)
 
 
+def compute_rmse(a: np.ndarray, b: np.ndarray) -> float:
+    """Compute Root Mean Squared Error between two arrays.
+
+    Args:
+        a: First input array.
+        b: Second input array (same shape as *a*).
+
+    Returns:
+        RMSE value (≥ 0.0; lower means more similar).
+    """
+    return float(np.sqrt(np.mean((a.astype(np.float64) - b.astype(np.float64)) ** 2)))
+
+
+def compute_hausdorff(pts_a: np.ndarray, pts_b: np.ndarray) -> float:
+    """Compute symmetric Hausdorff distance between two point clouds.
+
+    Args:
+        pts_a: Float array of shape (N, D).
+        pts_b: Float array of shape (M, D).
+
+    Returns:
+        Symmetric Hausdorff distance (maximum of both directed distances).
+    """
+    d_ab = directed_hausdorff(pts_a, pts_b)[0]
+    d_ba = directed_hausdorff(pts_b, pts_a)[0]
+    return float(max(d_ab, d_ba))
+
+
 def compute_all(
     a: np.ndarray,
     b: np.ndarray,
@@ -90,6 +119,7 @@ def compute_all(
         "ncc": compute_ncc(a, b),
         "mi": compute_mi(a, b),
         "mse": compute_mse(a, b),
+        "rmse": compute_rmse(a, b),
     }
     if mask_a is not None and mask_b is not None:
         result["dice"] = compute_dice(mask_a, mask_b)

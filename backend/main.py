@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from src.config import settings
 from src.processing.runner import shutdown_executor
-from src.routers import jobs, results, volumes
+from src.routers import cleanup, jobs, results, sessions, volumes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,14 +29,16 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
-    expose_headers=["X-Shape", "X-Dtype"],
+    expose_headers=["X-Shape", "X-Dtype", "X-VCount"],
 )
 
 app.include_router(volumes.router, prefix="/volumes", tags=["volumes"])
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 app.include_router(results.router, prefix="/jobs", tags=["results"])
+app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
+app.include_router(cleanup.router, prefix="/cleanup", tags=["cleanup"])
 
 
 @app.get("/", summary="Health check")

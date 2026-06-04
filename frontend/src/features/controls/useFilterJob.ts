@@ -1,36 +1,21 @@
 import { useState } from 'react'
-import { uploadVolume, createJob, pollJob, fetchResultVolume } from '../../shared/api/client'
-import { loadH5FileInWorker, PRE_FILTER_THRESHOLD } from '../../shared/h5/h5Reader'
+import {
+    uploadVolume,
+    createJob,
+    pollJob,
+    fetchResultVolume,
+    filterSessionVolume,
+    fetchSessionMerged,
+} from '../../shared/api/client'
+import { loadH5FileInWorker } from '../../shared/h5/h5Reader'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { FilterStep } from '../../shared/api/types'
-import type { H5VolumeData } from '../../shared/types/viewer.types'
-
-function normalizeInWorker(
-    raw: Float32Array,
-    shape: [number, number, number],
-): Promise<H5VolumeData> {
-    return new Promise((resolve, reject) => {
-        const worker = new Worker(new URL('../../shared/h5/h5.worker.ts', import.meta.url), {
-            type: 'module',
-        })
-        worker.onmessage = (e) => {
-            worker.terminate()
-            if (e.data.ok) resolve(e.data.result as H5VolumeData)
-            else reject(new Error(e.data.error))
-        }
-        worker.onerror = (err) => {
-            worker.terminate()
-            reject(new Error(err.message))
-        }
-        worker.postMessage({ raw, dims: shape, threshold: PRE_FILTER_THRESHOLD }, [raw.buffer])
-    })
-}
 
 export type FilterPhase = 'idle' | 'uploading' | 'processing' | 'downloading' | 'reverting'
 
 const POLL_INTERVAL_MS = 2_000
 
-export function useFilterJob(fileKey: string, sourceFile: File) {
+export function useFilterJob(fileKey: string, sourceFile?: File, backendVolumeId?: string) {
     const { setFilteringState, applyBackendFilter, setNotification } = useViewerStore()
 
     const [phase, setPhase] = useState<FilterPhase>('idle')
@@ -43,6 +28,18 @@ export function useFilterJob(fileKey: string, sourceFile: File) {
         setFilteringState(fileKey, true)
 
         try {
+            // ── Merged-result path: backend normalises, no worker needed ──────
+            if (backendVolumeId) {
+                setPhase('downloading')
+                const newData = await filterSessionVolume(backendVolumeId, filterChain)
+                applyBackendFilter(fileKey, newData)
+                setNotification({ message: 'Filter applied', severity: 'success' })
+                return
+            }
+
+            // ── Normal path: upload → job → poll → fetch pre-normalised result ─
+            if (!sourceFile) return
+
             setPhase('uploading')
             const { volume_id } = await uploadVolume(sourceFile)
 
@@ -62,9 +59,9 @@ export function useFilterJob(fileKey: string, sourceFile: File) {
                 throw new Error(jobStatus.error ?? 'Job failed')
             }
 
+            // fetchResultVolume now returns H5VolumeData directly — no worker.
             setPhase('downloading')
-            const { data, shape } = await fetchResultVolume(job_id, 'phase_correlation')
-            const newData = await normalizeInWorker(data, shape)
+            const newData = await fetchResultVolume(job_id, 'phase_correlation')
             applyBackendFilter(fileKey, newData)
             setNotification({ message: 'Filter applied', severity: 'success' })
         } catch (err) {
@@ -80,8 +77,17 @@ export function useFilterJob(fileKey: string, sourceFile: File) {
         setFilteringState(fileKey, true)
         try {
             setPhase('reverting')
-            const originalData = await loadH5FileInWorker(sourceFile)
-            applyBackendFilter(fileKey, originalData)
+
+            if (backendVolumeId) {
+                // Reload the original merged volume — backend normalises, no worker.
+                const originalData = await fetchSessionMerged(backendVolumeId)
+                applyBackendFilter(fileKey, originalData)
+            } else if (sourceFile) {
+                // Local files still go through h5wasm → worker (no upload path).
+                const originalData = await loadH5FileInWorker(sourceFile)
+                applyBackendFilter(fileKey, originalData)
+            }
+
             setNotification({ message: 'Filter reverted', severity: 'info' })
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
