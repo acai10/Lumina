@@ -2,6 +2,8 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { palette } from '../theme/palette'
 
+const MAX_DEVICE_PIXEL_RATIO = 1.5
+
 export interface SceneOptions {
     fov?: number
     near?: number
@@ -69,10 +71,10 @@ export function createScene(
 
     const renderer = new THREE.WebGLRenderer({
         canvas: existingCanvas ?? undefined,
-        antialias: window.devicePixelRatio < 1.5,
+        antialias: window.devicePixelRatio < MAX_DEVICE_PIXEL_RATIO,
         powerPreference: 'high-performance',
     })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_DEVICE_PIXEL_RATIO))
     renderer.setSize(w, h)
     renderer.setClearColor(palette.bgDeepHex)
     if (toneMapping !== undefined) renderer.toneMapping = toneMapping
@@ -120,9 +122,9 @@ export function disposeSceneGeometry(scene: THREE.Scene): void {
         ) {
             obj.geometry.dispose()
             if (Array.isArray(obj.material)) {
-                obj.material.forEach((m: THREE.Material) => m.dispose())
+                obj.material.forEach((m) => m.dispose())
             } else {
-                ;(obj.material as THREE.Material).dispose()
+                obj.material.dispose()
             }
         }
     })

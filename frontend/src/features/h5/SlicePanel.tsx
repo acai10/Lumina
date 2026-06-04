@@ -36,8 +36,10 @@ export function SlicePanel({
     const maxSlice = axis === 'z' ? nSlices - 1 : axis === 'y' ? height - 1 : width - 1
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
-    const [zoom, setZoom] = useState(1)
-    const [pan, setPan] = useState({ x: 0, y: 0 })
+    const zoomRef = useRef(1)
+    const panRef = useRef({ x: 0, y: 0 })
+    // cursor is the only piece of zoom/pan state that must trigger a re-render
+    const [cursorStyle, setCursorStyle] = useState<'grab' | 'default'>('default')
     const isDragging = useRef(false)
     const lastPos = useRef({ x: 0, y: 0 })
 
@@ -117,35 +119,32 @@ export function SlicePanel({
         })
 
         return () => cancelAnimationFrame(rafId)
-    }, [
-        normalizedVolume,
-        axis,
-        orient,
-        sliceIndex,
-        lut,
-        origW,
-        origH,
-        canvasW,
-        canvasH,
-        height,
-        width,
-    ])
+    }, [normalizedVolume, axis, orient, sliceIndex, lut, height, width, meta.nSlices, origW, origH, canvasW, canvasH])
 
-    const handleWheel = useCallback((e: React.WheelEvent) => {
-        e.preventDefault()
-        const rect = containerRef.current!.getBoundingClientRect()
-        const factor = e.deltaY < 0 ? 1.05 : 1 / 1.05
-        setZoom((prev) => {
-            const newZoom = Math.max(1, Math.min(20, prev * factor))
+    const applyTransform = useCallback(() => {
+        if (!canvasRef.current) return
+        canvasRef.current.style.transform = `translate(${panRef.current.x}px, ${panRef.current.y}px) scale(${zoomRef.current})`
+    }, [])
+
+    const handleWheel = useCallback(
+        (e: React.WheelEvent) => {
+            e.preventDefault()
+            const rect = containerRef.current!.getBoundingClientRect()
+            const factor = e.deltaY < 0 ? 1.05 : 1 / 1.05
+            const prevZoom = zoomRef.current
+            const newZoom = Math.max(1, Math.min(20, prevZoom * factor))
+            zoomRef.current = newZoom
             const mx = e.clientX - rect.left - rect.width / 2
             const my = e.clientY - rect.top - rect.height / 2
-            setPan((p) => ({
-                x: mx - (mx - p.x) * (newZoom / prev),
-                y: my - (my - p.y) * (newZoom / prev),
-            }))
-            return newZoom
-        })
-    }, [])
+            panRef.current = {
+                x: mx - (mx - panRef.current.x) * (newZoom / prevZoom),
+                y: my - (my - panRef.current.y) * (newZoom / prevZoom),
+            }
+            applyTransform()
+            setCursorStyle(newZoom > 1 ? 'grab' : 'default')
+        },
+        [applyTransform],
+    )
 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         isDragging.current = true
@@ -153,22 +152,28 @@ export function SlicePanel({
         e.preventDefault()
     }, [])
 
-    const handleMouseMove = useCallback((e: React.MouseEvent) => {
-        if (!isDragging.current) return
-        const dx = e.clientX - lastPos.current.x
-        const dy = e.clientY - lastPos.current.y
-        lastPos.current = { x: e.clientX, y: e.clientY }
-        setPan((p) => ({ x: p.x + dx, y: p.y + dy }))
-    }, [])
+    const handleMouseMove = useCallback(
+        (e: React.MouseEvent) => {
+            if (!isDragging.current) return
+            const dx = e.clientX - lastPos.current.x
+            const dy = e.clientY - lastPos.current.y
+            lastPos.current = { x: e.clientX, y: e.clientY }
+            panRef.current = { x: panRef.current.x + dx, y: panRef.current.y + dy }
+            applyTransform()
+        },
+        [applyTransform],
+    )
 
     const handleMouseUp = useCallback(() => {
         isDragging.current = false
     }, [])
 
     const resetView = useCallback(() => {
-        setZoom(1)
-        setPan({ x: 0, y: 0 })
-    }, [])
+        zoomRef.current = 1
+        panRef.current = { x: 0, y: 0 }
+        applyTransform()
+        setCursorStyle('default')
+    }, [applyTransform])
 
     return (
         <Box
@@ -178,7 +183,7 @@ export function SlicePanel({
                 height: '100%',
                 overflow: 'hidden',
                 position: 'relative',
-                cursor: zoom > 1 ? 'grab' : 'default',
+                cursor: cursorStyle,
                 userSelect: 'none',
                 border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: 1,
@@ -224,7 +229,7 @@ export function SlicePanel({
                 <canvas
                     ref={canvasRef}
                     style={{
-                        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                        transform: 'translate(0px, 0px) scale(1)',
                         transformOrigin: 'center center',
                         imageRendering: 'pixelated',
                         maxWidth: '100%',

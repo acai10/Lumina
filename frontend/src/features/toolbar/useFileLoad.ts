@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import type { ChangeEvent } from 'react'
-import { loadH5FileInWorker } from '../../shared/h5/h5Reader'
+import { loadH5FileInWorker, VOLUME_DIMS } from '../../shared/h5/h5Reader'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5FileEntry } from '../../shared/types/viewer.types'
 
@@ -17,7 +17,7 @@ export function useFileLoad() {
         let loaded = 0
         for (const f of files) {
             try {
-                const data = await loadH5FileInWorker(f, [512, 250, 250])
+                const data = await loadH5FileInWorker(f, VOLUME_DIMS)
                 const entry: H5FileEntry = { name: f.name, data, sourceFile: f }
                 loadH5([entry])
                 loaded++

@@ -1,27 +1,39 @@
 import { useRef, useState } from 'react'
-import {
-    Box,
-    Button,
-    CircularProgress,
-    Divider,
-    IconButton,
-    MenuItem,
-    Select,
-    Stack,
-    Table,
-    TableBody,
-    TableCell,
-    TableRow,
-    TextField,
-    Tooltip,
-    Typography,
-} from '@mui/material'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import CircularProgress from '@mui/material/CircularProgress'
+import Divider from '@mui/material/Divider'
+import IconButton from '@mui/material/IconButton'
+import MenuItem from '@mui/material/MenuItem'
+import Select from '@mui/material/Select'
+import Stack from '@mui/material/Stack'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableRow from '@mui/material/TableRow'
+import TextField from '@mui/material/TextField'
+import Tooltip from '@mui/material/Tooltip'
+import Typography from '@mui/material/Typography'
 import { palette } from '../../shared/theme/palette'
 import { cleanupUploads } from '../../shared/api'
 import type { RegistrationMethod } from '../../shared/api'
-import { useStitchSession, type VolumeConfig } from './useStitchSession'
+import { useStitchSession, type VolumeConfig, type StitchPhase } from './useStitchSession'
 
 const PANEL_WIDTH = 420
+const GRID_INPUT_WIDTH_PX = 68
+const MIN_STITCH_VOLUMES = 2
+
+const gridTextFieldSx = {
+    width: GRID_INPUT_WIDTH_PX,
+    '& .MuiInputBase-input': {
+        color: palette.textPrimary,
+        fontSize: '0.78rem',
+    },
+    '& .MuiInputLabel-root': {
+        color: palette.textMuted,
+        fontSize: '0.72rem',
+    },
+}
 
 function inferGridPos(filename: string): { row: number; col: number } {
     const m = filename.match(/_(\d+)_(\d+)(?:\.\w+)?$/)
@@ -35,7 +47,7 @@ const METHOD_LABELS: Record<RegistrationMethod, string> = {
     icp: 'ICP (Point Cloud)',
 }
 
-const PHASE_LABELS: Record<string, string> = {
+const PHASE_LABELS: Record<StitchPhase, string> = {
     idle: '',
     uploading: 'Uploading volumes…',
     processing: 'Registering & stitching…',
@@ -79,7 +91,7 @@ export default function StitcherPanel() {
     }
 
     const isBusy = phase === 'uploading' || phase === 'processing' || phase === 'downloading'
-    const canRun = configs.length >= 2 && !isBusy
+    const canRun = configs.length >= MIN_STITCH_VOLUMES && !isBusy
 
     return (
         <Box
@@ -210,17 +222,7 @@ export default function StitcherPanel() {
                                     }
                                     disabled={isBusy}
                                     inputProps={{ min: 0 }}
-                                    sx={{
-                                        width: 68,
-                                        '& .MuiInputBase-input': {
-                                            color: palette.textPrimary,
-                                            fontSize: '0.78rem',
-                                        },
-                                        '& .MuiInputLabel-root': {
-                                            color: palette.textMuted,
-                                            fontSize: '0.72rem',
-                                        },
-                                    }}
+                                    sx={gridTextFieldSx}
                                 />
                                 <TextField
                                     size="small"
@@ -232,17 +234,7 @@ export default function StitcherPanel() {
                                     }
                                     disabled={isBusy}
                                     inputProps={{ min: 0 }}
-                                    sx={{
-                                        width: 68,
-                                        '& .MuiInputBase-input': {
-                                            color: palette.textPrimary,
-                                            fontSize: '0.78rem',
-                                        },
-                                        '& .MuiInputLabel-root': {
-                                            color: palette.textMuted,
-                                            fontSize: '0.72rem',
-                                        },
-                                    }}
+                                    sx={gridTextFieldSx}
                                 />
                                 <IconButton
                                     size="small"

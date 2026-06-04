@@ -8,36 +8,10 @@ import { palette } from '../../shared/theme/palette'
 import type { H5Meta } from '../../shared/types/viewer.types'
 import { createAxisLabels } from './createAxisLabels'
 import { vertexShader, fragmentShader } from './h5ViewerShaders'
+import { applyDrawRanges } from './h5DrawUtils'
 
 // Firefox caps drawArraysInstanced at 30 M vertices per draw call; leave headroom
 const MAX_VERTS_PER_DRAW = 28_000_000
-
-// vIntensities is sorted descending; returns count of elements >= threshold
-function countAboveThreshold(arr: Float32Array, threshold: number): number {
-    let lo = 0,
-        hi = arr.length
-    while (lo < hi) {
-        const mid = (lo + hi) >>> 1
-        if (arr[mid] >= threshold) lo = mid + 1
-        else hi = mid
-    }
-    return lo
-}
-
-function applyDrawRanges(
-    geos: THREE.BufferGeometry[],
-    vIntensities: Float32Array,
-    threshold: number,
-) {
-    const total = countAboveThreshold(vIntensities, threshold)
-    let remaining = total
-    for (const geo of geos) {
-        const chunkSize = (geo.attributes['vIntensity'] as THREE.BufferAttribute).count
-        const draw = Math.min(chunkSize, remaining)
-        geo.setDrawRange(0, draw)
-        remaining = Math.max(0, remaining - draw)
-    }
-}
 
 interface H5ViewerProps {
     vIndices: Float32Array
@@ -146,10 +120,10 @@ export default function H5Viewer({
         materialRef.current = material
 
         const saved = useViewerStore.getState().h5PerFileStates[fileKey]
-        if (saved?.cameraPosition) {
+        if (saved?.cameraPosition && saved.cameraQuaternion && saved.controlsTarget) {
             camera.position.fromArray(saved.cameraPosition)
-            camera.quaternion.fromArray(saved.cameraQuaternion!)
-            controls.target.fromArray(saved.controlsTarget!)
+            camera.quaternion.fromArray(saved.cameraQuaternion)
+            controls.target.fromArray(saved.controlsTarget)
         } else {
             camera.position.set(maxDim * 0.5, maxDim * 1.5, maxDim * 1.2)
             camera.lookAt(0, 0, 0)
@@ -242,7 +216,11 @@ export default function H5Viewer({
             stlMeshGroup.traverse((obj) => {
                 if (obj instanceof THREE.Mesh) {
                     obj.geometry.dispose()
-                    ;(obj.material as THREE.Material).dispose()
+                    if (Array.isArray(obj.material)) {
+                        obj.material.forEach((m) => m.dispose())
+                    } else {
+                        obj.material.dispose()
+                    }
                 }
             })
             scene.remove(stlMeshGroup)
@@ -266,13 +244,21 @@ export default function H5Viewer({
     const [widthMin, widthMax] = h5WidthRange
     const [heightMin, heightMax] = h5HeightRange
 
+    // Threshold update runs applyDrawRanges (O(n) binary search) — keep isolated so
+    // adjusting other uniforms does not trigger the expensive draw-range recalculation.
+    useEffect(() => {
+        const mat = materialRef.current
+        if (!mat) return
+        mat.uniforms.uThreshold.value = h5Threshold
+        applyDrawRanges(chunkGeosRef.current, vIntensities, h5Threshold)
+        needsRenderRef.current = true
+    }, [h5Threshold, vIntensities])
+
     useEffect(() => {
         const mat = materialRef.current
         if (!mat) return
         mat.uniforms.uVolumeSpacing.value = volumeSpacing
         mat.uniforms.uPointSize.value = h5PointSize
-        mat.uniforms.uThreshold.value = h5Threshold
-        applyDrawRanges(chunkGeosRef.current, vIntensities, h5Threshold)
         mat.uniforms.uBrightness.value = h5Brightness
         mat.uniforms.uContrast.value = h5Contrast
         mat.uniforms.uOpacity.value = h5Opacity
@@ -286,7 +272,6 @@ export default function H5Viewer({
     }, [
         volumeSpacing,
         h5PointSize,
-        h5Threshold,
         h5Brightness,
         h5Contrast,
         h5Opacity,

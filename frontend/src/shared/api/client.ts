@@ -9,6 +9,9 @@ import type {
 import type { H5VolumeData } from '../types/viewer.types'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+const CONTENT_TYPE_JSON = 'application/json'
+const HEADER_X_SHAPE = 'X-Shape'
+const HEADER_X_VCOUNT = 'X-VCount'
 
 export async function uploadVolume(file: File): Promise<UploadResponse> {
     const form = new FormData()
@@ -21,7 +24,7 @@ export async function uploadVolume(file: File): Promise<UploadResponse> {
 export async function createJob(req: JobRequest): Promise<{ job_id: string }> {
     const res = await fetch(`${BASE_URL}/jobs/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': CONTENT_TYPE_JSON },
         body: JSON.stringify(req),
     })
     if (!res.ok) throw new Error(`Job creation failed: ${await res.text()}`)
@@ -39,7 +42,7 @@ export async function pollJob(jobId: string): Promise<JobStatus> {
 export async function createSession(req: SessionRequest): Promise<{ session_id: string }> {
     const res = await fetch(`${BASE_URL}/sessions/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': CONTENT_TYPE_JSON },
         body: JSON.stringify(req),
     })
     if (!res.ok) throw new Error(`Session creation failed: ${await res.text()}`)
@@ -57,9 +60,11 @@ export async function fetchSessionMip(
 ): Promise<{ data: Float32Array; shape: [number, number] }> {
     const res = await fetch(`${BASE_URL}/sessions/${sessionId}/mip`)
     if (!res.ok) throw new Error(`MIP fetch failed: ${await res.text()}`)
-    const shapeHeader = res.headers.get('X-Shape')
+    const shapeHeader = res.headers.get(HEADER_X_SHAPE)
     if (!shapeHeader) throw new Error('Missing X-Shape header in MIP response')
-    const shape = shapeHeader.split(',').map(Number) as [number, number]
+    const parts = shapeHeader.split(',').map(Number)
+    if (parts.length !== 2 || parts.some(isNaN)) throw new Error('Invalid X-Shape header')
+    const shape = parts as [number, number]
     const buf = await res.arrayBuffer()
     return { data: new Float32Array(buf), shape }
 }
@@ -80,8 +85,8 @@ export async function cleanupUploads(): Promise<void> {
 
 async function parseNormalizedVolume(res: Response): Promise<H5VolumeData> {
     if (!res.ok) throw new Error(await res.text())
-    const shapeHeader = res.headers.get('X-Shape')
-    const vCountHeader = res.headers.get('X-VCount')
+    const shapeHeader = res.headers.get(HEADER_X_SHAPE)
+    const vCountHeader = res.headers.get(HEADER_X_VCOUNT)
     if (!shapeHeader || !vCountHeader) throw new Error('Missing X-Shape or X-VCount header')
     const [nSlices, height, width] = shapeHeader.split(',').map(Number)
     const vCount = parseInt(vCountHeader, 10)
@@ -111,7 +116,7 @@ export async function filterSessionVolume(
 ): Promise<H5VolumeData> {
     const res = await fetch(`${BASE_URL}/sessions/${sessionId}/filter`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': CONTENT_TYPE_JSON },
         body: JSON.stringify({ filter_chain: filterChain }),
     })
     return parseNormalizedVolume(res)

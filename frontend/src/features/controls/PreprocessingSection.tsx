@@ -1,19 +1,18 @@
-import {
-    Alert,
-    Box,
-    Button,
-    CircularProgress,
-    FormControl,
-    InputLabel,
-    MenuItem,
-    Select,
-    Stack,
-    Typography,
-} from '@mui/material'
+import Alert from '@mui/material/Alert'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import CircularProgress from '@mui/material/CircularProgress'
+import FormControl from '@mui/material/FormControl'
+import InputLabel from '@mui/material/InputLabel'
+import MenuItem from '@mui/material/MenuItem'
+import Select from '@mui/material/Select'
+import Stack from '@mui/material/Stack'
+import Typography from '@mui/material/Typography'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import { RENDER_CONTROL_LIMITS } from './renderControlLimits'
 import { SliderRow } from './SliderRow'
 import { useFilterJob } from './useFilterJob'
+import type { FilterPhase } from './useFilterJob'
 import { useFilterParams } from './useFilterParams'
 import type { FilterTypeOrNone } from './useFilterParams'
 import { labelSx } from './ControlsPanel.styles'
@@ -28,7 +27,7 @@ const FILTER_LABELS: Record<FilterTypeOrNone, string> = {
     anisotropy: 'Anisotropy',
 }
 
-const PHASE_LABEL: Record<string, string> = {
+const PHASE_LABEL: Partial<Record<FilterPhase, string>> = {
     uploading: 'Uploading…',
     processing: 'Processing…',
     downloading: 'Loading result…',
@@ -40,13 +39,13 @@ export function PreprocessingSection() {
 
     const activeTab = tabs[activeTabIndex]
     const activeEntry = activeTab?.type === 'h5' ? activeTab : null
-    if (!activeEntry || (!activeEntry.sourceFile && !activeEntry.backendVolumeId)) return null
+    const fileKey = activeEntry?.name ?? ''
 
-    const fileKey = activeEntry.name
+    // Hooks must be called unconditionally — derive args defensively above the early return
     const { phase, error, isBusy, run, revert, clearError } = useFilterJob(
         fileKey,
-        activeEntry.sourceFile,
-        activeEntry.backendVolumeId,
+        activeEntry?.sourceFile,
+        activeEntry?.backendVolumeId,
     )
     const {
         filterType,
@@ -65,6 +64,8 @@ export function PreprocessingSection() {
         setNormalizeHigh,
         buildFilterStep,
     } = useFilterParams()
+
+    if (!activeEntry || (!activeEntry.sourceFile && !activeEntry.backendVolumeId)) return null
 
     const handleApply = () => (filterType === 'none' ? revert() : run(buildFilterStep()))
 

@@ -1,14 +1,12 @@
-import {
-    Divider,
-    IconButton,
-    MenuItem,
-    Select,
-    Stack,
-    ToggleButton,
-    ToggleButtonGroup,
-    Tooltip,
-    Typography,
-} from '@mui/material'
+import Divider from '@mui/material/Divider'
+import IconButton from '@mui/material/IconButton'
+import MenuItem from '@mui/material/MenuItem'
+import Select from '@mui/material/Select'
+import Stack from '@mui/material/Stack'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
+import Tooltip from '@mui/material/Tooltip'
+import Typography from '@mui/material/Typography'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import {
     useViewerStore,
@@ -20,6 +18,9 @@ import { RENDER_CONTROL_LIMITS, getRenderControlLimits } from './renderControlLi
 import { PreprocessingSection } from './PreprocessingSection'
 import { SliderRow, RangeSliderRow } from './SliderRow'
 import type { H5RenderControls } from '../../shared/types/viewer.types'
+
+// MUI Select cannot hold null as a value, so -1 is the sentinel for "no overlay selected"
+const NO_OVERLAY_SENTINEL = -1
 
 export default function ControlsPanel() {
     const {
@@ -47,9 +48,7 @@ export default function ControlsPanel() {
     const limits = getRenderControlLimits(activeH5?.data)
     const hasSliceView = !!activeH5?.data.normalizedVolume
 
-    const stlTabs = tabs
-        .map((t, i) => ({ tab: t, index: i }))
-        .filter(({ tab }) => tab.type === 'stl')
+    const stlTabs = tabs.flatMap((t, i) => (t.type === 'stl' ? [{ tab: t, index: i }] : []))
 
     const updateControls = (patch: Partial<H5RenderControls>) => updateActiveRenderState(patch)
 
@@ -137,14 +136,17 @@ export default function ControlsPanel() {
                                     </Typography>
                                     <Select
                                         size="small"
-                                        value={stlOverlayIndex ?? -1}
+                                        value={stlOverlayIndex ?? NO_OVERLAY_SENTINEL}
                                         onChange={(e) => {
-                                            const v = e.target.value as number
-                                            setStlOverlayIndex(v === -1 ? null : v)
+                                            const v = Number(e.target.value)
+                                            setStlOverlayIndex(v === NO_OVERLAY_SENTINEL ? null : v)
                                         }}
                                         sx={{ fontSize: '0.7rem' }}
                                     >
-                                        <MenuItem value={-1} sx={{ fontSize: '0.7rem' }}>
+                                        <MenuItem
+                                            value={NO_OVERLAY_SENTINEL}
+                                            sx={{ fontSize: '0.7rem' }}
+                                        >
                                             None
                                         </MenuItem>
                                         {stlTabs.map(({ tab, index }) => (
