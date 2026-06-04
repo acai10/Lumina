@@ -132,15 +132,17 @@ Stitcher names: `"phase_correlation"`, `"simpleitk_affine"`, `"elastix_bspline"`
 
 ## Frontend Architecture
 
-View switching is state-based (`mode: 'none' | 'stl' | 'h5'` in Zustand) — no URL routing. MUI is the sole styling system; no CSS files. All colour tokens are in `frontend/src/shared/theme/palette.ts`.
+Loaded files (H5 and STL, mixed freely) live in a single unified `tabs: TabEntry[]` array in Zustand with an `activeTabIndex`; view switching is state-based off the active tab's `type` (`'h5' | 'stl'`) and, for H5, its per-file `viewMode` (`'pointcloud' | 'slice'`) — no URL routing. MUI is the sole styling system; no CSS files. All colour tokens are in `frontend/src/shared/theme/palette.ts`.
 
 Complex component styles with pseudo-selectors go in co-located `.styles.ts` files; simple 1–3 property overrides stay as inline `sx` props.
 
 **H5 viewer flow** (local): user selects `.h5` → Web Worker runs h5wasm off main thread → per-slice normalisation → zero-copy `Float32Array` transfer → Three.js point-cloud rendering with custom GLSL3 shaders. Files are loaded sequentially (not via `Promise.all`) to avoid OOM on batch/folder uploads.
 
+**Off-heap volume eviction** (memory): each volume's heavy buffers (`vIndices`, `vIntensities`, `normalizedVolume`, ~150–210 MB) are mirrored to IndexedDB via `shared/h5/volumeCache.ts`. The store keeps at most `MAX_HYDRATED_FILES` (2) hydrated on the JS heap (LRU); inactive tabs carry `data: null` and are rehydrated on activation (`ensureHydrated`). This bounds heap growth so loading many files / whole folders no longer crashes the tab. `H5TabEntry` therefore always carries lightweight `meta` + `hasSlices`, and `data` only when hydrated. Backend filter results are re-persisted on `applyBackendFilter`, so eviction never loses a filtered volume.
+
 **Backend filter flow**: `PreprocessingSection` → `useFilterJob(fileKey, sourceFile)` → upload via `/volumes/upload` → POST `/jobs/` → poll `/jobs/{id}` every 2 s → GET `/jobs/{id}/volume/{stitcher}` → `normalizeVolume` → `applyBackendFilter` in Zustand.
 
-New stitcher-comparison UI will live in `frontend/src/features/stitcher/`.
+Stitcher-comparison UI lives in `frontend/src/features/stitcher/`.
 
 ### Frontend structure
 
@@ -149,7 +151,7 @@ frontend/src/
 ├── main.tsx
 ├── App.tsx
 ├── app/
-│   └── store/viewerSlice.ts          # Zustand: per-file H5 state, camera, notifications
+│   └── store/viewerSlice.ts          # Zustand: unified tabs[], per-file H5 state, camera, LRU hydration, notifications
 ├── shared/
 │   ├── api/
 │   │   ├── index.ts                  # barrel — public API surface
@@ -159,6 +161,7 @@ frontend/src/
 │   │   ├── index.ts                  # barrel
 │   │   ├── h5Reader.ts               # loadH5FileInWorker; exports VOLUME_DIMS, PRE_FILTER_THRESHOLD
 │   │   ├── h5Normalizer.ts           # normalizeVolume(raw, dims, threshold) → H5VolumeData
+│   │   ├── volumeCache.ts            # IndexedDB off-heap store: putVolume/getVolume/deleteVolume/clearVolumes
 │   │   └── h5.worker.ts              # Web Worker entry point
 │   ├── three/
 │   │   ├── index.ts                  # barrel
@@ -205,6 +208,8 @@ frontend/src/
 - **Custom hooks**: extract side-effectful logic from components into `use*.ts` files. Hooks own state and async operations; components own only layout and event wiring.
 - **Three.js cleanup**: call `disposeSceneGeometry(scene)` from `shared/three/sceneUtils.ts` before `disposeBase()`. Sprite materials with canvas textures need explicit disposal before that call.
 - **VOLUME_DIMS** from `shared/h5/h5Reader.ts` is the single source of truth for `[512, 250, 250]` — derive all slider maxima from it, never hardcode.
+- **Volume memory**: never assume `H5TabEntry.data` is present — it is `null` for evicted (inactive) tabs. Read dimensions from `meta` / slice availability from `hasSlices`, and only touch `data` after hydration. Keep `MAX_HYDRATED_FILES` small; do not retain every loaded volume's buffers on the heap.
+- **Bundle**: heavy deps are split into separate chunks via `manualChunks` in `vite.config.ts` (`three`, `h5wasm`, `mui`, `vendor`) — keep that split so app-code edits don't bust their cache.
 
 ---
 

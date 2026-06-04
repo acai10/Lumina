@@ -19,7 +19,6 @@ interface H5ViewerProps {
     meta: H5Meta
     fileKey: string
     stlOverlayFile?: File
-    onError?: (msg: string) => void
 }
 
 export default function H5Viewer({
@@ -183,10 +182,11 @@ export default function H5Viewer({
 
         const stlMeshGroup = new THREE.Group()
         const lights: THREE.Light[] = []
+        let reader: FileReader | null = null
 
         if (stlOverlayFile) {
             const loader = new STLLoader()
-            const reader = new FileReader()
+            reader = new FileReader()
             reader.onload = (e) => {
                 if (!(e.target?.result instanceof ArrayBuffer)) return
                 const geo = loader.parse(e.target.result)
@@ -217,6 +217,9 @@ export default function H5Viewer({
         }
 
         return () => {
+            // Abort an in-flight read so a stale onload can't add a mesh to a scene
+            // whose group was already removed (rapid overlay switching).
+            reader?.abort()
             stlMeshGroup.traverse((obj) => {
                 if (obj instanceof THREE.Mesh) {
                     obj.geometry.dispose()
@@ -229,7 +232,7 @@ export default function H5Viewer({
             })
             scene.remove(stlMeshGroup)
             lights.forEach((l) => scene.remove(l))
-            if (needsRenderRef.current !== undefined) needsRenderRef.current = true
+            needsRenderRef.current = true
         }
     }, [stlOverlayFile])
 

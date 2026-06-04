@@ -13,12 +13,20 @@ const CONTENT_TYPE_JSON = 'application/json'
 const HEADER_X_SHAPE = 'X-Shape'
 const HEADER_X_VCOUNT = 'X-VCount'
 
+/**
+ * Parse a JSON response body as `T`. This is the single place where unvalidated
+ * network JSON is asserted into a typed shape; callers must `res.ok`-check first.
+ */
+function getJson<T>(res: Response): Promise<T> {
+    return res.json() as Promise<T>
+}
+
 export async function uploadVolume(file: File): Promise<UploadResponse> {
     const form = new FormData()
     form.append('file', file)
     const res = await fetch(`${BASE_URL}/volumes/upload`, { method: 'POST', body: form })
     if (!res.ok) throw new Error(`Upload failed: ${await res.text()}`)
-    return res.json() as Promise<UploadResponse>
+    return getJson<UploadResponse>(res)
 }
 
 export async function createJob(req: JobRequest): Promise<{ job_id: string }> {
@@ -28,13 +36,13 @@ export async function createJob(req: JobRequest): Promise<{ job_id: string }> {
         body: JSON.stringify(req),
     })
     if (!res.ok) throw new Error(`Job creation failed: ${await res.text()}`)
-    return res.json() as Promise<{ job_id: string }>
+    return getJson<{ job_id: string }>(res)
 }
 
 export async function pollJob(jobId: string): Promise<JobStatus> {
     const res = await fetch(`${BASE_URL}/jobs/${jobId}`)
     if (!res.ok) throw new Error(`Poll failed: ${await res.text()}`)
-    return res.json() as Promise<JobStatus>
+    return getJson<JobStatus>(res)
 }
 
 // ── Multi-volume stitching sessions ──────────────────────────────────────────
@@ -46,13 +54,13 @@ export async function createSession(req: SessionRequest): Promise<{ session_id: 
         body: JSON.stringify(req),
     })
     if (!res.ok) throw new Error(`Session creation failed: ${await res.text()}`)
-    return res.json() as Promise<{ session_id: string }>
+    return getJson<{ session_id: string }>(res)
 }
 
 export async function pollSession(sessionId: string): Promise<SessionStatus> {
     const res = await fetch(`${BASE_URL}/sessions/${sessionId}`)
     if (!res.ok) throw new Error(`Session poll failed: ${await res.text()}`)
-    return res.json() as Promise<SessionStatus>
+    return getJson<SessionStatus>(res)
 }
 
 export async function fetchSessionMip(
@@ -64,7 +72,7 @@ export async function fetchSessionMip(
     if (!shapeHeader) throw new Error('Missing X-Shape header in MIP response')
     const parts = shapeHeader.split(',').map(Number)
     if (parts.length !== 2 || parts.some(isNaN)) throw new Error('Invalid X-Shape header')
-    const shape = parts as [number, number]
+    const shape: [number, number] = [parts[0], parts[1]]
     const buf = await res.arrayBuffer()
     return { data: new Float32Array(buf), shape }
 }

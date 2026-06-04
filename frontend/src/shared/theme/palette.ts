@@ -8,19 +8,23 @@ export const palette = {
     cyan: '#64c8ff', // full opacity
     cyanBorder: 'rgba(100,200,255,0.4)',
     cyanGlow: 'rgba(100,200,255,0.3)',
-    cyanHoverRing: 'rgba(100,200,255,0.16)',
-    cyanSubtle: 'rgba(100,200,255,0.12)', // disabled / inactive cyan border
     cyanLabel: '#a0d8ff', // STL button label (lighter cyan)
+    cyanTabIdle: 'rgba(100,200,255,0.6)', // STL tab label, unselected
+    cyanTabSelected: 'rgba(100,200,255,0.9)', // STL tab label, selected
 
     // Secondary teal — H5 button
     tealBorder: 'rgba(100,255,200,0.4)',
     tealLabel: '#a0ffdc',
 
+    // Stitch (purple) action button
+    stitchBorder: 'rgba(200,150,255,0.4)',
+    stitchLabel: 'rgba(220,180,255,0.85)',
+    stitchGlow: 'rgba(180,100,255,0.3)',
+
     // Text — light blue-white at various opacities
     textPrimary: 'rgba(200,220,255,0.7)',
     textSecondary: 'rgba(200,220,255,0.55)',
     textMuted: 'rgba(200,220,255,0.4)',
-    textFaint: 'rgba(200,220,255,0.35)',
     textDim: 'rgba(200,220,255,0.5)',
 
     // Error
@@ -35,6 +39,13 @@ export const palette = {
     toolbarBg: 'rgba(10,15,30,0.92)',
     toolbarBorder: 'rgba(100,200,255,0.1)',
     panelBg: 'rgba(10,15,30,0.75)',
+
+    // Neutral overlays / hairlines (slice-panel scrims, scrollbar)
+    scrollbarThumb: 'rgba(255,255,255,0.15)',
+    overlayScrim: 'rgba(0,0,0,0.55)', // axis-label chip background
+    controlsScrim: 'rgba(0,0,0,0.6)', // slice-panel controls bar
+    hairlineFaint: 'rgba(255,255,255,0.08)', // panel border
+    hairlineDim: 'rgba(255,255,255,0.06)', // controls bar top border
 
     // Three.js mesh colors
     meshColorHex: 0x4477bb as const,

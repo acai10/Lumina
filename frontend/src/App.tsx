@@ -11,7 +11,6 @@ import AppSnackbar from './features/notifications/AppSnackbar'
 import ControlsPanel from './features/controls/ControlsPanel'
 import { StitcherPanel } from './features/stitcher'
 import { palette } from './shared/theme/palette'
-import type { StlTabEntry } from './shared/types/viewer.types'
 
 export default function App() {
     const { tabs, activeTabIndex, h5PerFileStates, stlOverlayIndex, stitchPanelOpen } =
@@ -39,10 +38,9 @@ export default function App() {
         if (activeH5Name && !activeH5Hydrated) void ensureHydrated(activeH5Name)
     }, [activeH5Name, activeH5Hydrated, ensureHydrated])
 
-    const stlOverlayTab =
-        stlOverlayIndex !== null && tabs[stlOverlayIndex]?.type === 'stl'
-            ? (tabs[stlOverlayIndex] as StlTabEntry)
-            : null
+    // Bind once so the `type` discriminant narrows the union — no cast needed.
+    const overlayTab = stlOverlayIndex !== null ? tabs[stlOverlayIndex] : undefined
+    const stlOverlayTab = overlayTab?.type === 'stl' ? overlayTab : null
 
     const activeViewMode = activeH5
         ? (h5PerFileStates[activeH5.name]?.viewMode ?? 'pointcloud')
@@ -87,7 +85,6 @@ export default function App() {
                             meta={activeH5.meta}
                             fileKey={activeH5.name}
                             stlOverlayFile={stlOverlayTab?.file}
-                            onError={handleViewerError}
                         />
                     )}
 
