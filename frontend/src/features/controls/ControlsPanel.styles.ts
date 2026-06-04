@@ -30,8 +30,11 @@ export const inputStyle: CSSProperties = {
 
 export const panelSx = {
     position: 'absolute',
+    overflow: 'hidden',
+    overflowY: 'scroll',
     left: 20,
     top: 8,
+    bottom: 20,
     zIndex: 20,
     background: palette.panelBg,
     backdropFilter: 'blur(8px)',
