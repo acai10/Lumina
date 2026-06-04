@@ -119,7 +119,20 @@ export function SlicePanel({
         })
 
         return () => cancelAnimationFrame(rafId)
-    }, [normalizedVolume, axis, orient, sliceIndex, lut, height, width, meta.nSlices, origW, origH, canvasW, canvasH])
+    }, [
+        normalizedVolume,
+        axis,
+        orient,
+        sliceIndex,
+        lut,
+        height,
+        width,
+        meta.nSlices,
+        origW,
+        origH,
+        canvasW,
+        canvasH,
+    ])
 
     const applyTransform = useCallback(() => {
         if (!canvasRef.current) return

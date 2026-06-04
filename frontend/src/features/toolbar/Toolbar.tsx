@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Button, CircularProgress, Menu, MenuItem, Stack } from '@mui/material'
+import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import { cleanupUploads } from '../../shared/api'
 import { useFileLoad } from './useFileLoad'
@@ -18,7 +19,16 @@ import {
 
 export default function Toolbar() {
     const { isLoading, tabs, activeTabIndex, reset, stitchPanelOpen, toggleStitchPanel } =
-        useViewerStore()
+        useViewerStore(
+            useShallow((s) => ({
+                isLoading: s.isLoading,
+                tabs: s.tabs,
+                activeTabIndex: s.activeTabIndex,
+                reset: s.reset,
+                stitchPanelOpen: s.stitchPanelOpen,
+                toggleStitchPanel: s.toggleStitchPanel,
+            })),
+        )
     const {
         stlInputRef,
         h5InputRef,

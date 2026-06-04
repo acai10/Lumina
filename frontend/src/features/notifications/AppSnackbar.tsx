@@ -1,10 +1,16 @@
 import { Alert, Snackbar } from '@mui/material'
+import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from '../../app/store/viewerSlice'
 
 const SNACKBAR_DURATION_MS = 4_000
 
 export default function AppSnackbar() {
-    const { notification, clearNotification } = useViewerStore()
+    const { notification, clearNotification } = useViewerStore(
+        useShallow((s) => ({
+            notification: s.notification,
+            clearNotification: s.clearNotification,
+        })),
+    )
 
     return (
         <Snackbar

@@ -7,6 +7,7 @@ import {
     filterSessionVolume,
     fetchSessionMerged,
 } from '../../shared/api/client'
+import { useShallow } from 'zustand/react/shallow'
 import { loadH5FileInWorker } from '../../shared/h5/h5Reader'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { FilterStep } from '../../shared/api/types'
@@ -16,7 +17,13 @@ export type FilterPhase = 'idle' | 'uploading' | 'processing' | 'downloading' | 
 const POLL_INTERVAL_MS = 2_000
 
 export function useFilterJob(fileKey: string, sourceFile?: File, backendVolumeId?: string) {
-    const { setFilteringState, applyBackendFilter, setNotification } = useViewerStore()
+    const { setFilteringState, applyBackendFilter, setNotification } = useViewerStore(
+        useShallow((s) => ({
+            setFilteringState: s.setFilteringState,
+            applyBackendFilter: s.applyBackendFilter,
+            setNotification: s.setNotification,
+        })),
+    )
 
     const [phase, setPhase] = useState<FilterPhase>('idle')
     const [error, setError] = useState<string | null>(null)

@@ -16,7 +16,7 @@ export interface VolumeConfig {
 const POLL_INTERVAL_MS = 2_000
 
 export function useStitchSession() {
-    const { loadH5 } = useViewerStore()
+    const loadH5 = useViewerStore((s) => s.loadH5)
     const [phase, setPhase] = useState<StitchPhase>('idle')
     const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null)
     const [error, setError] = useState<string | null>(null)
@@ -62,7 +62,7 @@ export function useStitchSession() {
                 data: volumeData,
                 backendVolumeId: session_id,
             }
-            loadH5([entry])
+            await loadH5([entry])
             setPhase('done')
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))
