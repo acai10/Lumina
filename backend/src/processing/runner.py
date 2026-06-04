@@ -106,7 +106,12 @@ async def run_job(
 
     try:
         volume = load_volume(settings.uploads_dir / f"{volume_id}.h5")
-        preprocessed = apply_filter_chain(volume, filter_chain) if filter_chain else volume
+        # `volume` was just loaded for this job and the filters never mutate their
+        # input in place, so skip the defensive ~128 MB copy apply_filter_chain
+        # would otherwise make.
+        preprocessed = (
+            apply_filter_chain(volume, filter_chain, copy_input=False) if filter_chain else volume
+        )
 
         loop = asyncio.get_running_loop()
         s_params = stitcher_params or {}

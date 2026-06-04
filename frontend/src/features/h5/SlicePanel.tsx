@@ -349,8 +349,8 @@ export function SlicePanel({
                             size="small"
                             value={contrast}
                             min={0}
-                            max={1}
-                            step={0.01}
+                            max={3}
+                            step={0.05}
                             onChange={(_, v) =>
                                 setSlicePanelControl(fileKey, axis, { contrast: v as number })
                             }

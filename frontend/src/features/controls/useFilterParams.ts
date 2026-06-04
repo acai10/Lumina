@@ -6,7 +6,8 @@ export type FilterTypeOrNone = FilterType | 'none'
 export function useFilterParams() {
     const [filterType, setFilterType] = useState<FilterTypeOrNone>('none')
     const [gaussianSigma, setGaussianSigma] = useState(1.5)
-    const [medianRadius, setMedianRadius] = useState(1)
+    // Median filter size — must be >= the slider minimum (3); smaller is a no-op.
+    const [medianRadius, setMedianRadius] = useState(3)
     const [leeWindow, setLeeWindow] = useState(3)
     const [bm3dSigma, setBm3dSigma] = useState(0.1)
     const [normalizeLow, setNormalizeLow] = useState(2.0)

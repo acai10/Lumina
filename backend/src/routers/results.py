@@ -35,6 +35,9 @@ def get_result_volume(job_id: str, stitcher_name: str) -> Response:
     if not path.exists():
         raise HTTPException(status_code=404, detail="Result volume not found.")
 
-    arr: np.ndarray = np.load(path).astype(np.float32)
+    # Memory-map instead of loading the full volume into RAM: normalize_for_frontend
+    # reads it slice by slice, so the OS only keeps a few pages live. Stitcher results
+    # are already saved as float32, so no dtype conversion (which would copy) is needed.
+    arr: np.ndarray = np.load(path, mmap_mode="r")
     content, headers = pack_normalized_response(arr)
     return Response(content=content, media_type="application/octet-stream", headers=headers)

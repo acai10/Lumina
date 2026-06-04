@@ -37,6 +37,8 @@ export default function H5Viewer({
     const chunkGeosRef = useRef<THREE.BufferGeometry[]>([])
     const needsRenderRef = useRef(true)
     const sceneRef = useRef<THREE.Scene | null>(null)
+    // The green bounding box; its Y extent tracks the current volume spacing.
+    const boxHelperRef = useRef<THREE.Box3Helper | null>(null)
 
     const renderControls = useViewerStore(
         (s) => s.h5PerFileStates[fileKey]?.renderControls ?? defaultRenderControls,
@@ -98,6 +100,7 @@ export default function H5Viewer({
         )
         const boxHelper = new THREE.Box3Helper(boundingBox, new THREE.Color(palette.tealBorderHex))
         scene.add(boxHelper)
+        boxHelperRef.current = boxHelper
 
         chunkGeosRef.current = []
         for (let offset = 0; offset < vIndices.length; offset += MAX_VERTS_PER_DRAW) {
@@ -166,6 +169,7 @@ export default function H5Viewer({
             })
             materialRef.current = null
             chunkGeosRef.current = []
+            boxHelperRef.current = null
             sceneRef.current = null
             disposeSceneGeometry(scene)
             disposeBase()
@@ -258,6 +262,13 @@ export default function H5Viewer({
         const mat = materialRef.current
         if (!mat) return
         mat.uniforms.uVolumeSpacing.value = volumeSpacing
+        // Keep the green bounding box in sync with the model's Y extent, which the
+        // vertex shader scales to ±volumeSpacing/2.
+        const boxHelper = boxHelperRef.current
+        if (boxHelper) {
+            boxHelper.box.min.y = -volumeSpacing / 2
+            boxHelper.box.max.y = volumeSpacing / 2
+        }
         mat.uniforms.uPointSize.value = h5PointSize
         mat.uniforms.uBrightness.value = h5Brightness
         mat.uniforms.uContrast.value = h5Contrast
