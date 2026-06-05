@@ -201,7 +201,9 @@ export default function H5Viewer({
                 geo.computeVertexNormals()
                 geo.computeBoundingBox()
                 const center = new THREE.Vector3()
-                geo.boundingBox!.getCenter(center)
+                const bb = geo.boundingBox
+                if (!bb) return
+                bb.getCenter(center)
                 geo.translate(-center.x, -center.y, -center.z)
 
                 const mat = new THREE.MeshStandardMaterial({
@@ -275,6 +277,7 @@ export default function H5Viewer({
         needsRenderRef.current = true
     }, [h5Threshold, vIntensities])
 
+    // volumeSpacing also mutates bounding-box geometry — keep isolated from pure uniform updates.
     useEffect(() => {
         const mat = materialRef.current
         if (!mat) return
@@ -286,6 +289,12 @@ export default function H5Viewer({
             boxHelper.box.min.y = -volumeSpacing / 2
             boxHelper.box.max.y = volumeSpacing / 2
         }
+        needsRenderRef.current = true
+    }, [volumeSpacing])
+
+    useEffect(() => {
+        const mat = materialRef.current
+        if (!mat) return
         mat.uniforms.uPointSize.value = h5PointSize
         mat.uniforms.uBrightness.value = h5Brightness
         mat.uniforms.uContrast.value = h5Contrast
@@ -298,7 +307,6 @@ export default function H5Viewer({
         mat.uniforms.uHeightMax.value = heightMax
         needsRenderRef.current = true
     }, [
-        volumeSpacing,
         h5PointSize,
         h5Brightness,
         h5Contrast,

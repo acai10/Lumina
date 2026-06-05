@@ -11,13 +11,14 @@ import {
 import { useShallow } from 'zustand/react/shallow'
 import { loadH5FileInWorker } from '../../shared/h5/h5Reader'
 import { useViewerStore } from '../../app/store/viewerSlice'
+import { JOB_STATUS, REGISTRATION_METHOD } from '../../shared/api/types'
 import type { FilterStep } from '../../shared/api/types'
 
 export type FilterPhase = 'idle' | 'uploading' | 'processing' | 'downloading' | 'reverting'
 
 const POLL_INTERVAL_MS = 2_000
 /** Stitcher used for the single-volume filter pipeline (no real stitching happens). */
-const DEFAULT_STITCHER = 'phase_correlation'
+const DEFAULT_STITCHER = REGISTRATION_METHOD.PHASE_CORRELATION
 
 export function useFilterJob(
     fileKey: string,
@@ -38,7 +39,7 @@ export function useFilterJob(
 
     const isBusy = phase !== 'idle'
 
-    const run = async (filterChain: FilterStep[]) => {
+    const run = async (filterChain: FilterStep[]): Promise<void> => {
         setError(null)
         setFilteringState(fileKey, true)
 
@@ -72,11 +73,14 @@ export function useFilterJob(
 
             setPhase('processing')
             let jobStatus = await pollJob(job_id)
-            while (jobStatus.status === 'pending' || jobStatus.status === 'running') {
+            while (
+                jobStatus.status === JOB_STATUS.PENDING ||
+                jobStatus.status === JOB_STATUS.RUNNING
+            ) {
                 await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
                 jobStatus = await pollJob(job_id)
             }
-            if (jobStatus.status === 'error') {
+            if (jobStatus.status === JOB_STATUS.ERROR) {
                 throw new Error(jobStatus.error ?? 'Job failed')
             }
 
@@ -93,7 +97,7 @@ export function useFilterJob(
         }
     }
 
-    const revert = async () => {
+    const revert = async (): Promise<void> => {
         setError(null)
         setFilteringState(fileKey, true)
         try {

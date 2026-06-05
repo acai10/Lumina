@@ -18,6 +18,13 @@ export interface JobRequest {
     stitchers: string[]
 }
 
+export const JOB_STATUS = {
+    PENDING: 'pending',
+    RUNNING: 'running',
+    DONE: 'done',
+    ERROR: 'error',
+} as const
+
 export interface JobStatus {
     status: 'pending' | 'running' | 'done' | 'error'
     results: Record<string, Record<string, number>>
@@ -38,6 +45,12 @@ export interface LocalVolume {
 }
 
 // ── Multi-volume stitching sessions ──────────────────────────────────────────
+
+export const REGISTRATION_METHOD = {
+    PHASE_CORRELATION: 'phase_correlation',
+    CROSS_CORRELATION: 'cross_correlation',
+    ICP: 'icp',
+} as const
 
 export type RegistrationMethod = 'phase_correlation' | 'cross_correlation' | 'icp'
 

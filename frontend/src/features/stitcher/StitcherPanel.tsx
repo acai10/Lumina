@@ -11,6 +11,7 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import { palette } from '../../shared/theme/palette'
 import { cleanupUploads, registerLocalVolume } from '../../shared/api'
+import { REGISTRATION_METHOD } from '../../shared/api/types'
 import type { LocalVolume, RegistrationMethod } from '../../shared/api'
 import { ServerVolumeDialog, useServerVolumes } from '../../shared/components'
 import { useViewerStore } from '../../app/store/viewerSlice'
@@ -33,6 +34,9 @@ const METHOD_LABELS: Record<RegistrationMethod, string> = {
     icp: 'ICP (Point Cloud)',
 }
 
+const isRegistrationMethod = (v: unknown): v is RegistrationMethod =>
+    typeof v === 'string' && v in METHOD_LABELS
+
 const PHASE_LABELS: Record<StitchPhase, string> = {
     idle: '',
     uploading: 'Uploading volumes…',
@@ -46,7 +50,7 @@ export default function StitcherPanel() {
     const fileInputRef = useRef<HTMLInputElement>(null)
     const folderInputRef = useRef<HTMLInputElement>(null)
     const [configs, setConfigs] = useState<VolumeConfig[]>([])
-    const [method, setMethod] = useState<RegistrationMethod>('phase_correlation')
+    const [method, setMethod] = useState<RegistrationMethod>(REGISTRATION_METHOD.PHASE_CORRELATION)
     const [serverDialogOpen, setServerDialogOpen] = useState(false)
     const { phase, sessionStatus, error, run, reset } = useStitchSession()
     const {
@@ -279,7 +283,10 @@ export default function StitcherPanel() {
                 <Select
                     size="small"
                     value={method}
-                    onChange={(e) => setMethod(e.target.value as RegistrationMethod)}
+                    onChange={(e) => {
+                        const v = e.target.value
+                        if (isRegistrationMethod(v)) setMethod(v)
+                    }}
                     disabled={isBusy}
                     fullWidth
                     sx={{

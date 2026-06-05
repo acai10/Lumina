@@ -4,6 +4,7 @@ import { useViewerStore, DEFAULT_SLICE_PANEL_CONTROL } from '../../app/store/vie
 import type { H5Meta } from '../../shared/types/viewer.types'
 import { palette } from '../../shared/theme/palette'
 import { slicePanelSliderSx, sliceRowLabelSx, sliceRowValueSx } from './H5SliceViewer.styles'
+import { RENDER_CONTROL_LIMITS } from '../controls/renderControlLimits'
 
 export interface SlicePanelProps {
     normalizedVolume: Uint8Array
@@ -130,20 +131,7 @@ export const SlicePanel = memo(function SlicePanel({
         })
 
         return () => cancelAnimationFrame(rafId)
-    }, [
-        normalizedVolume,
-        axis,
-        orient,
-        sliceIndex,
-        lut,
-        height,
-        width,
-        meta.nSlices,
-        origW,
-        origH,
-        canvasW,
-        canvasH,
-    ])
+    }, [normalizedVolume, axis, orient, sliceIndex, lut, height, width, meta.nSlices, origW, origH, canvasW, canvasH])
 
     const applyTransform = useCallback(() => {
         if (!canvasRef.current) return
@@ -153,7 +141,9 @@ export const SlicePanel = memo(function SlicePanel({
     const handleWheel = useCallback(
         (e: React.WheelEvent) => {
             e.preventDefault()
-            const rect = containerRef.current!.getBoundingClientRect()
+            const container = containerRef.current
+            if (!container) return
+            const rect = container.getBoundingClientRect()
             const factor = e.deltaY < 0 ? ZOOM_STEP_FACTOR : 1 / ZOOM_STEP_FACTOR
             const prevZoom = zoomRef.current
             const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prevZoom * factor))
@@ -287,7 +277,7 @@ export const SlicePanel = memo(function SlicePanel({
                             min={0}
                             max={maxSlice}
                             step={1}
-                            onChange={(_, v) => onSliceChange(v as number)}
+                            onChange={(_, v) => onSliceChange(typeof v === 'number' ? v : v[0])}
                             sx={slicePanelSliderSx}
                         />
                         <Typography sx={sliceRowValueSx}>{sliceIndex}</Typography>
@@ -297,11 +287,11 @@ export const SlicePanel = memo(function SlicePanel({
                         <Slider
                             size="small"
                             value={brightness}
-                            min={0}
-                            max={10}
-                            step={0.1}
+                            {...RENDER_CONTROL_LIMITS.h5Brightness}
                             onChange={(_, v) =>
-                                setSlicePanelControl(fileKey, axis, { brightness: v as number })
+                                setSlicePanelControl(fileKey, axis, {
+                                    brightness: typeof v === 'number' ? v : v[0],
+                                })
                             }
                             sx={slicePanelSliderSx}
                         />
@@ -312,11 +302,11 @@ export const SlicePanel = memo(function SlicePanel({
                         <Slider
                             size="small"
                             value={contrast}
-                            min={0}
-                            max={3}
-                            step={0.05}
+                            {...RENDER_CONTROL_LIMITS.h5Contrast}
                             onChange={(_, v) =>
-                                setSlicePanelControl(fileKey, axis, { contrast: v as number })
+                                setSlicePanelControl(fileKey, axis, {
+                                    contrast: typeof v === 'number' ? v : v[0],
+                                })
                             }
                             sx={slicePanelSliderSx}
                         />

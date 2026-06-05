@@ -3,7 +3,7 @@ import { palette } from '../../shared/theme/palette'
 export const slicePanelSliderSx = {
     color: palette.tealBorder,
     py: 0,
-    '& .MuiSlider-thumb': { width: 10, height: 10 },
+    '& .MuiSlider-thumb': { width: '10px', height: '10px' },
     '& .MuiSlider-track': { opacity: 0.8 },
     '& .MuiSlider-rail': { opacity: 0.3 },
 }
@@ -12,7 +12,7 @@ export const slicePanelSliderSx = {
 export const sliceRowLabelSx = {
     fontSize: '0.62rem',
     color: 'text.secondary',
-    width: 16,
+    width: '16px',
     flexShrink: 0,
 }
 
@@ -20,7 +20,7 @@ export const sliceRowLabelSx = {
 export const sliceRowValueSx = {
     fontSize: '0.62rem',
     color: 'text.secondary',
-    width: 24,
+    width: '24px',
     textAlign: 'right',
     flexShrink: 0,
 } as const

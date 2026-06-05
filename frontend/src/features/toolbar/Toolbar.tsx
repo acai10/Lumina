@@ -118,10 +118,7 @@ export default function Toolbar() {
                     <Button
                         variant="outlined"
                         size="small"
-                        sx={{
-                            ...stitchButtonSx,
-                            ...(stitchPanelOpen ? { opacity: 1 } : { opacity: 0.7 }),
-                        }}
+                        sx={[stitchButtonSx, { opacity: stitchPanelOpen ? 1 : 0.7 }]}
                         onClick={toggleStitchPanel}
                     >
                         Stitch

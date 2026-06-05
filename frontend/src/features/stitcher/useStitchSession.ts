@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { createSession, pollSession, fetchSessionMerged, uploadVolume } from '../../shared/api'
+import { JOB_STATUS } from '../../shared/api/types'
 import type { RegistrationMethod, SessionStatus } from '../../shared/api'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5FileEntry } from '../../shared/types/viewer.types'
@@ -24,7 +25,7 @@ export function useStitchSession() {
     const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null)
     const [error, setError] = useState<string | null>(null)
 
-    const run = async (configs: VolumeConfig[], method: RegistrationMethod) => {
+    const run = async (configs: VolumeConfig[], method: RegistrationMethod): Promise<void> => {
         setError(null)
         setSessionStatus(null)
 
@@ -54,13 +55,13 @@ export function useStitchSession() {
             })
 
             let status = await pollSession(session_id)
-            while (status.status === 'pending' || status.status === 'running') {
+            while (status.status === JOB_STATUS.PENDING || status.status === JOB_STATUS.RUNNING) {
                 await new Promise<void>((res) => setTimeout(res, POLL_INTERVAL_MS))
                 status = await pollSession(session_id)
             }
             setSessionStatus(status)
 
-            if (status.status === 'error') {
+            if (status.status === JOB_STATUS.ERROR) {
                 throw new Error(status.error ?? 'Session failed')
             }
 

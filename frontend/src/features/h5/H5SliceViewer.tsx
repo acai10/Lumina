@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { Box } from '@mui/material'
+import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5Meta } from '../../shared/types/viewer.types'
 import { SlicePanel } from './SlicePanel'
@@ -11,18 +12,16 @@ interface H5SliceViewerProps {
 }
 
 export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5SliceViewerProps) {
-    const sliceZ = useViewerStore(
-        (s) => s.h5PerFileStates[fileKey]?.sliceIndex ?? Math.floor(meta.nSlices / 2),
+    const { sliceZ, sliceY, sliceX, setH5SliceIndex, setH5SliceY, setH5SliceX } = useViewerStore(
+        useShallow((s) => ({
+            sliceZ: s.h5PerFileStates[fileKey]?.sliceIndex ?? Math.floor(meta.nSlices / 2),
+            sliceY: s.h5PerFileStates[fileKey]?.sliceY ?? Math.floor(meta.height / 2),
+            sliceX: s.h5PerFileStates[fileKey]?.sliceX ?? Math.floor(meta.width / 2),
+            setH5SliceIndex: s.setH5SliceIndex,
+            setH5SliceY: s.setH5SliceY,
+            setH5SliceX: s.setH5SliceX,
+        })),
     )
-    const sliceY = useViewerStore(
-        (s) => s.h5PerFileStates[fileKey]?.sliceY ?? Math.floor(meta.height / 2),
-    )
-    const sliceX = useViewerStore(
-        (s) => s.h5PerFileStates[fileKey]?.sliceX ?? Math.floor(meta.width / 2),
-    )
-    const setH5SliceIndex = useViewerStore((s) => s.setH5SliceIndex)
-    const setH5SliceY = useViewerStore((s) => s.setH5SliceY)
-    const setH5SliceX = useViewerStore((s) => s.setH5SliceX)
 
     // Stable per-axis callbacks so the memoized SlicePanels don't re-render (and
     // re-run their ~500k-pixel repaint) when a sibling panel's slider fires.

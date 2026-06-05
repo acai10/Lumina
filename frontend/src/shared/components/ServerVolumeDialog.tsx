@@ -76,12 +76,16 @@ export function ServerVolumeDialog({
     onPick,
     multiple = false,
 }: ServerVolumeDialogProps) {
-    const [selected, setSelected] = useState<Set<string>>(new Set())
-    const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+    const [selected, setSelected] = useState<Set<string>>(() => new Set())
+    const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
 
-    const groups = useMemo(() => groupByFolder(volumes), [volumes])
+    const { groups, folderMap } = useMemo(() => {
+        const g = groupByFolder(volumes)
+        const m = new Map(g.map((group) => [group.folder, group.files]))
+        return { groups: g, folderMap: m }
+    }, [volumes])
 
-    const filesInFolder = (folder: string) => groups.find((g) => g.folder === folder)?.files ?? []
+    const filesInFolder = (folder: string) => folderMap.get(folder) ?? []
 
     const allFolderPaths = (folder: string) => filesInFolder(folder).map((f) => f.path)
 
@@ -191,7 +195,9 @@ export function ServerVolumeDialog({
                                             </ListItemIcon>
                                             <ListItemText
                                                 primary={v.name}
-                                                slotProps={{ primary: { fontSize: '0.75rem' } }}
+                                                slotProps={{
+                                                    primary: { sx: { fontSize: '0.75rem' } },
+                                                }}
                                             />
                                         </ListItemButton>
                                     ) : (
@@ -205,7 +211,9 @@ export function ServerVolumeDialog({
                                             </ListItemIcon>
                                             <ListItemText
                                                 primary={v.name}
-                                                slotProps={{ primary: { fontSize: '0.75rem' } }}
+                                                slotProps={{
+                                                    primary: { sx: { fontSize: '0.75rem' } },
+                                                }}
                                             />
                                         </ListItemButton>
                                     ),
@@ -245,8 +253,10 @@ export function ServerVolumeDialog({
                                             primary={folder}
                                             secondary={`${files.length} file${files.length !== 1 ? 's' : ''}`}
                                             slotProps={{
-                                                primary: { fontSize: '0.75rem', fontWeight: 500 },
-                                                secondary: { fontSize: '0.65rem' },
+                                                primary: {
+                                                    sx: { fontSize: '0.75rem', fontWeight: 500 },
+                                                },
+                                                secondary: { sx: { fontSize: '0.65rem' } },
                                             }}
                                         />
                                         {multiple &&
@@ -288,7 +298,9 @@ export function ServerVolumeDialog({
                                                         <ListItemText
                                                             primary={v.name}
                                                             slotProps={{
-                                                                primary: { fontSize: '0.72rem' },
+                                                                primary: {
+                                                                    sx: { fontSize: '0.72rem' },
+                                                                },
                                                             }}
                                                         />
                                                     </ListItemButton>
@@ -306,7 +318,9 @@ export function ServerVolumeDialog({
                                                         <ListItemText
                                                             primary={v.name}
                                                             slotProps={{
-                                                                primary: { fontSize: '0.72rem' },
+                                                                primary: {
+                                                                    sx: { fontSize: '0.72rem' },
+                                                                },
                                                             }}
                                                         />
                                                     </ListItemButton>

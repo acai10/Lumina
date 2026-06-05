@@ -59,5 +59,7 @@ export function useFilterParams() {
         }
     }
 
-    return { type, setType, params, updateParam, buildFilterStep }
+    const selectType = (value: FilterTypeOrNone) => setType(value)
+
+    return { type, setType: selectType, params, updateParam, buildFilterStep }
 }

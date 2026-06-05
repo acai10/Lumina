@@ -8,6 +8,12 @@ export const darkTheme = createTheme({
             default: palette.bgDeep,
             paper: palette.bgPaper,
         },
+        primary: {
+            main: palette.cyan,
+        },
+        error: {
+            main: '#ff7878',
+        },
     },
     components: {
         MuiButton: {

@@ -18,6 +18,18 @@ import { useFilterParams } from './useFilterParams'
 import type { FilterTypeOrNone } from './useFilterParams'
 import { labelSx, controlFontSx } from './ControlsPanel.styles'
 
+const FILTER_KEYS = new Set<string>([
+    'none',
+    'gaussian',
+    'median',
+    'lee',
+    'bm3d',
+    'normalize',
+    'anisotropy',
+])
+const isFilterType = (v: unknown): v is FilterTypeOrNone =>
+    typeof v === 'string' && FILTER_KEYS.has(v)
+
 const FILTER_LABELS: Record<FilterTypeOrNone, string> = {
     none: 'None',
     gaussian: 'Gaussian',
@@ -78,7 +90,10 @@ export function PreprocessingSection() {
                 <Select
                     value={filterType}
                     label="Filter"
-                    onChange={(e) => setFilterType(e.target.value as FilterTypeOrNone)}
+                    onChange={(e) => {
+                        const v = e.target.value
+                        if (isFilterType(v)) setFilterType(v)
+                    }}
                     disabled={isBusy}
                     sx={controlFontSx}
                 >

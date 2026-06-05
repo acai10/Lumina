@@ -9,6 +9,7 @@ interface Props {
 }
 
 const CANVAS_MAX_PX = 512
+const UINT8_MAX = 255
 
 export default function MipViewer({ data, shape, title = 'MIP — Top View' }: Props) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -36,12 +37,12 @@ export default function MipViewer({ data, shape, title = 'MIP — Top View' }: P
                     0,
                     Math.min(1, contrast * (data[i] - 0.5) + 0.5 + (brightness - 1)),
                 )
-                const byte = Math.round(v * 255)
+                const byte = Math.round(v * UINT8_MAX)
                 const pi = i * 4
                 pixels[pi] = byte
                 pixels[pi + 1] = byte
                 pixels[pi + 2] = byte
-                pixels[pi + 3] = 255
+                pixels[pi + 3] = UINT8_MAX
             }
 
             ctx.putImageData(imageData, 0, 0)
@@ -82,7 +83,7 @@ export default function MipViewer({ data, shape, title = 'MIP — Top View' }: P
             />
             <Stack spacing={0.5} sx={{ mt: 1.5, maxWidth: displayW }}>
                 <Stack direction="row" alignItems="center" spacing={1}>
-                    <Typography variant="caption" sx={{ color: palette.textMuted, width: 72 }}>
+                    <Typography variant="caption" sx={{ color: palette.textMuted, width: '72px' }}>
                         Brightness
                     </Typography>
                     <Slider
@@ -91,12 +92,12 @@ export default function MipViewer({ data, shape, title = 'MIP — Top View' }: P
                         max={2}
                         step={0.05}
                         value={brightness}
-                        onChange={(_, v) => setBrightness(v as number)}
+                        onChange={(_, v) => setBrightness(typeof v === 'number' ? v : v[0])}
                         sx={{ color: palette.cyan }}
                     />
                 </Stack>
                 <Stack direction="row" alignItems="center" spacing={1}>
-                    <Typography variant="caption" sx={{ color: palette.textMuted, width: 72 }}>
+                    <Typography variant="caption" sx={{ color: palette.textMuted, width: '72px' }}>
                         Contrast
                     </Typography>
                     <Slider
@@ -105,7 +106,7 @@ export default function MipViewer({ data, shape, title = 'MIP — Top View' }: P
                         max={3}
                         step={0.05}
                         value={contrast}
-                        onChange={(_, v) => setContrast(v as number)}
+                        onChange={(_, v) => setContrast(typeof v === 'number' ? v : v[0])}
                         sx={{ color: palette.cyan }}
                     />
                 </Stack>
