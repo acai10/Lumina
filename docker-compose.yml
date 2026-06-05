@@ -6,9 +6,15 @@ services:
     volumes:
       - ./backend:/app
       - /app/.venv
+      # Host directory with source .h5 files, mounted read-only so originals can
+      # never be modified. Set LUMINA_DATA_DIR to the absolute host path (e.g. in a
+      # .env file next to this compose file); defaults to ./data so `up` still works.
+      - ${LUMINA_DATA_DIR:-./data}:/data:ro
     environment:
       - PYTHONUNBUFFERED=1
       - CORS_ORIGINS=http://localhost:5173
+      # Backend reads registerable source volumes from here (see GET /volumes/local).
+      - DATA_DIR=/data
 
   frontend:
     build: ./frontend

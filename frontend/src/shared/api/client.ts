@@ -2,6 +2,7 @@ import type {
     FilterStep,
     JobRequest,
     JobStatus,
+    LocalVolume,
     SessionRequest,
     SessionStatus,
     UploadResponse,
@@ -26,6 +27,27 @@ export async function uploadVolume(file: File): Promise<UploadResponse> {
     form.append('file', file)
     const res = await fetch(`${BASE_URL}/volumes/upload`, { method: 'POST', body: form })
     if (!res.ok) throw new Error(`Upload failed: ${await res.text()}`)
+    return getJson<UploadResponse>(res)
+}
+
+/** List `.h5` source files available on the server under its `data_dir`. */
+export async function listLocalVolumes(): Promise<LocalVolume[]> {
+    const res = await fetch(`${BASE_URL}/volumes/local`)
+    if (!res.ok) throw new Error(`Listing local volumes failed: ${await res.text()}`)
+    return getJson<LocalVolume[]>(res)
+}
+
+/**
+ * Register a server-side `.h5` by path instead of uploading its bytes. The
+ * backend symlinks the file (zero-copy) and returns the same shape as upload.
+ */
+export async function registerLocalVolume(path: string): Promise<UploadResponse> {
+    const res = await fetch(`${BASE_URL}/volumes/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': CONTENT_TYPE_JSON },
+        body: JSON.stringify({ path }),
+    })
+    if (!res.ok) throw new Error(`Register failed: ${await res.text()}`)
     return getJson<UploadResponse>(res)
 }
 
@@ -110,6 +132,15 @@ async function parseNormalizedVolume(res: Response): Promise<H5VolumeData> {
 
 export async function fetchResultVolume(jobId: string, stitcher: string): Promise<H5VolumeData> {
     const res = await fetch(`${BASE_URL}/jobs/${jobId}/volume/${stitcher}`)
+    return parseNormalizedVolume(res)
+}
+
+/**
+ * Fetch a stored/registered volume pre-normalised by the backend — render-ready,
+ * no upload and no h5wasm worker needed (used for server-side file selection).
+ */
+export async function fetchNormalizedVolume(volumeId: string): Promise<H5VolumeData> {
+    const res = await fetch(`${BASE_URL}/volumes/${volumeId}/normalized`)
     return parseNormalizedVolume(res)
 }
 

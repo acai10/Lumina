@@ -25,6 +25,10 @@ class _CommaSepEnvSource(EnvSettingsSource):
 
 class Settings(BaseSettings):
     uploads_dir: Path = Path("uploads")
+    #: Root directory of locally-available source ``.h5`` files. When the backend
+    #: shares a filesystem with the data (same-machine setup), volumes can be
+    #: registered by path instead of uploaded — see ``POST /volumes/register``.
+    data_dir: Path = Path("data")
     cors_origins: list[str] = ["http://localhost:5173"]
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}

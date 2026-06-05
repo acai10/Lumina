@@ -16,6 +16,9 @@ export const labelSx = {
     userSelect: 'none' as const,
 }
 
+/** Shared small-control font for Select / MenuItem / InputLabel slots in the panel. */
+export const controlFontSx = { fontSize: '0.7rem' }
+
 export const inputStyle: CSSProperties = {
     width: 48,
     background: 'transparent',

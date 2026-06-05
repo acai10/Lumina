@@ -188,6 +188,7 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 hasSlices: e.data.normalizedVolume !== null,
                 sourceFile: e.sourceFile,
                 backendVolumeId: e.backendVolumeId,
+                registeredVolumeId: e.registeredVolumeId,
             }))
             const newActiveIndex = tabs.length // first new entry position
 

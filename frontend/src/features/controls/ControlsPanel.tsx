@@ -14,7 +14,7 @@ import {
     defaultRenderControls,
     DEFAULT_STL_OPACITY,
 } from '../../app/store/viewerSlice'
-import { panelSx, resetButtonSx, labelSx } from './ControlsPanel.styles'
+import { panelSx, resetButtonSx, labelSx, controlFontSx } from './ControlsPanel.styles'
 import { RENDER_CONTROL_LIMITS, getRenderControlLimits } from './renderControlLimits'
 import { PreprocessingSection } from './PreprocessingSection'
 import { SliderRow, RangeSliderRow } from './SliderRow'
@@ -155,19 +155,16 @@ export default function ControlsPanel() {
                                             const v = Number(e.target.value)
                                             setStlOverlayIndex(v === NO_OVERLAY_SENTINEL ? null : v)
                                         }}
-                                        sx={{ fontSize: '0.7rem' }}
+                                        sx={controlFontSx}
                                     >
-                                        <MenuItem
-                                            value={NO_OVERLAY_SENTINEL}
-                                            sx={{ fontSize: '0.7rem' }}
-                                        >
+                                        <MenuItem value={NO_OVERLAY_SENTINEL} sx={controlFontSx}>
                                             None
                                         </MenuItem>
                                         {stlTabs.map(({ tab, index }) => (
                                             <MenuItem
                                                 key={tab.name}
                                                 value={index}
-                                                sx={{ fontSize: '0.7rem' }}
+                                                sx={controlFontSx}
                                             >
                                                 {tab.name}
                                             </MenuItem>

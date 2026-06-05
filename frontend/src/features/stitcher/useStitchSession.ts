@@ -7,9 +7,12 @@ import type { H5FileEntry } from '../../shared/types/viewer.types'
 export type StitchPhase = 'idle' | 'uploading' | 'processing' | 'downloading' | 'done' | 'error'
 
 export interface VolumeConfig {
-    file: File
+    name: string
     row: number
     col: number
+    // Exactly one source is set: a local `file` to upload, or an already-registered
+    // server-side `volumeId` (path-based, no upload).
+    file?: File
     volumeId?: string
 }
 
@@ -29,7 +32,16 @@ export function useStitchSession() {
             setPhase('uploading')
             const entries = await Promise.all(
                 configs.map(async (cfg) => {
-                    const { volume_id } = await uploadVolume(cfg.file)
+                    // Server-registered volumes already live on the backend by path —
+                    // skip the upload; only local files are uploaded.
+                    let volume_id: string
+                    if (cfg.volumeId) {
+                        volume_id = cfg.volumeId
+                    } else if (cfg.file) {
+                        volume_id = (await uploadVolume(cfg.file)).volume_id
+                    } else {
+                        throw new Error(`Volume "${cfg.name}" has neither a file nor an id`)
+                    }
                     return { volume_id, row: cfg.row, col: cfg.col }
                 }),
             )

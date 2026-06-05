@@ -1,4 +1,5 @@
 import { loadH5File } from './h5Reader'
+import type { WorkerResponse } from './h5Reader'
 import { normalizeVolume } from './h5Normalizer'
 
 type WorkerInput =
@@ -26,8 +27,10 @@ self.onmessage = async (e: MessageEvent<WorkerInput>) => {
             // normalizedVolume is Uint8Array — transfer its underlying ArrayBuffer.
             transferables.push(result.normalizedVolume.buffer as ArrayBuffer)
         }
-        self.postMessage({ ok: true, result }, { transfer: transferables })
+        const response: WorkerResponse = { ok: true, result }
+        self.postMessage(response, { transfer: transferables })
     } catch (err) {
-        self.postMessage({ ok: false, error: String(err) })
+        const response: WorkerResponse = { ok: false, error: String(err) }
+        self.postMessage(response)
     }
 }

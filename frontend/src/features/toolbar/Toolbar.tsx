@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import { cleanupUploads } from '../../shared/api'
 import { useFileLoad } from './useFileLoad'
+import { ServerVolumeDialog, useServerVolumes } from '../../shared/components'
 import {
     ToolbarRoot,
     FileNameText,
@@ -36,9 +37,17 @@ export default function Toolbar() {
         handleSTLLoad,
         handleH5Load,
         handleH5FolderLoad,
+        loadServerVolume,
     } = useFileLoad()
+    const {
+        volumes: serverVolumes,
+        loading: serverVolumesLoading,
+        error: serverVolumesError,
+        refresh: refreshServerVolumes,
+    } = useServerVolumes()
 
     const [h5MenuAnchor, setH5MenuAnchor] = useState<HTMLElement | null>(null)
+    const [serverDialogOpen, setServerDialogOpen] = useState(false)
 
     const activeFileName = tabs[activeTabIndex]?.name ?? ''
     const hasFiles = tabs.length > 0
@@ -50,6 +59,11 @@ export default function Toolbar() {
     const handleFolderLoad = () => {
         setH5MenuAnchor(null)
         h5FolderInputRef.current?.click()
+    }
+    const handleServerLoad = () => {
+        setH5MenuAnchor(null)
+        setServerDialogOpen(true)
+        refreshServerVolumes()
     }
 
     return (
@@ -124,6 +138,9 @@ export default function Toolbar() {
                         <MenuItem onClick={handleFolderLoad} sx={menuItemSx}>
                             Folder
                         </MenuItem>
+                        <MenuItem onClick={handleServerLoad} sx={menuItemSx}>
+                            From server…
+                        </MenuItem>
                     </Menu>
                     {hasFiles && (
                         <Button
@@ -142,6 +159,15 @@ export default function Toolbar() {
             )}
 
             {activeFileName && <FileNameText>{activeFileName}</FileNameText>}
+
+            <ServerVolumeDialog
+                open={serverDialogOpen}
+                volumes={serverVolumes}
+                loading={serverVolumesLoading}
+                error={serverVolumesError}
+                onClose={() => setServerDialogOpen(false)}
+                onPick={loadServerVolume}
+            />
         </ToolbarRoot>
     )
 }

@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Slider, Stack, Typography } from '@mui/material'
 import { useViewerStore, DEFAULT_SLICE_PANEL_CONTROL } from '../../app/store/viewerSlice'
 import type { H5Meta } from '../../shared/types/viewer.types'
 import { palette } from '../../shared/theme/palette'
-import { slicePanelSliderSx } from './H5SliceViewer.styles'
+import { slicePanelSliderSx, sliceRowLabelSx, sliceRowValueSx } from './H5SliceViewer.styles'
 
 export interface SlicePanelProps {
     normalizedVolume: Uint8Array
@@ -16,11 +16,16 @@ export interface SlicePanelProps {
     onSliceChange: (v: number) => void
 }
 
+// Uint8 channel range — the normalised volume and tone-map output are 0..255.
+const UINT8_MAX = 255
+// Tone-map LUT covers every possible Uint8 input value.
+const LUT_SIZE = 256
+
 function applyToneMap(value: number, brightness: number, contrast: number): number {
     let c = Math.min(value * brightness, 1.0)
     if (c < 0.5) c = 0.5 * Math.pow(2.0 * c, contrast)
     else c = 1.0 - 0.5 * Math.pow(2.0 * (1.0 - c), contrast)
-    return Math.round(c * 255)
+    return Math.round(c * UINT8_MAX)
 }
 
 // Zoom: each wheel tick multiplies/divides by ZOOM_STEP_FACTOR, clamped to [MIN, MAX].
@@ -28,7 +33,7 @@ const ZOOM_STEP_FACTOR = 1.05
 const MIN_ZOOM = 1
 const MAX_ZOOM = 20
 
-export function SlicePanel({
+export const SlicePanel = memo(function SlicePanel({
     normalizedVolume,
     meta,
     axis,
@@ -66,9 +71,9 @@ export function SlicePanel({
     // This replaces ~500 000 Math.pow() calls per frame (for a 697×694 canvas)
     // with ~500 000 O(1) array lookups — roughly 5–10× faster canvas redraws.
     const lut = useMemo(() => {
-        const table = new Uint8Array(256)
-        for (let i = 0; i < 256; i++) {
-            table[i] = applyToneMap(i / 255, brightness, contrast)
+        const table = new Uint8Array(LUT_SIZE)
+        for (let i = 0; i < LUT_SIZE; i++) {
+            table[i] = applyToneMap(i / UINT8_MAX, brightness, contrast)
         }
         return table
     }, [brightness, contrast])
@@ -118,7 +123,7 @@ export function SlicePanel({
                     pixels[pi] = byte
                     pixels[pi + 1] = byte
                     pixels[pi + 2] = byte
-                    pixels[pi + 3] = 255
+                    pixels[pi + 3] = UINT8_MAX
                 }
             }
             ctx.putImageData(imageData, 0, 0)
@@ -275,16 +280,7 @@ export function SlicePanel({
             >
                 <Stack spacing={0.25}>
                     <Stack direction="row" alignItems="center" spacing={1}>
-                        <Typography
-                            sx={{
-                                fontSize: '0.62rem',
-                                color: 'text.secondary',
-                                width: 16,
-                                flexShrink: 0,
-                            }}
-                        >
-                            {label}
-                        </Typography>
+                        <Typography sx={sliceRowLabelSx}>{label}</Typography>
                         <Slider
                             size="small"
                             value={sliceIndex}
@@ -294,29 +290,10 @@ export function SlicePanel({
                             onChange={(_, v) => onSliceChange(v as number)}
                             sx={slicePanelSliderSx}
                         />
-                        <Typography
-                            sx={{
-                                fontSize: '0.62rem',
-                                color: 'text.secondary',
-                                width: 24,
-                                textAlign: 'right',
-                                flexShrink: 0,
-                            }}
-                        >
-                            {sliceIndex}
-                        </Typography>
+                        <Typography sx={sliceRowValueSx}>{sliceIndex}</Typography>
                     </Stack>
                     <Stack direction="row" alignItems="center" spacing={1}>
-                        <Typography
-                            sx={{
-                                fontSize: '0.62rem',
-                                color: 'text.secondary',
-                                width: 16,
-                                flexShrink: 0,
-                            }}
-                        >
-                            ☀
-                        </Typography>
+                        <Typography sx={sliceRowLabelSx}>☀</Typography>
                         <Slider
                             size="small"
                             value={brightness}
@@ -328,29 +305,10 @@ export function SlicePanel({
                             }
                             sx={slicePanelSliderSx}
                         />
-                        <Typography
-                            sx={{
-                                fontSize: '0.62rem',
-                                color: 'text.secondary',
-                                width: 24,
-                                textAlign: 'right',
-                                flexShrink: 0,
-                            }}
-                        >
-                            {brightness.toFixed(1)}
-                        </Typography>
+                        <Typography sx={sliceRowValueSx}>{brightness.toFixed(1)}</Typography>
                     </Stack>
                     <Stack direction="row" alignItems="center" spacing={1}>
-                        <Typography
-                            sx={{
-                                fontSize: '0.62rem',
-                                color: 'text.secondary',
-                                width: 16,
-                                flexShrink: 0,
-                            }}
-                        >
-                            ◑
-                        </Typography>
+                        <Typography sx={sliceRowLabelSx}>◑</Typography>
                         <Slider
                             size="small"
                             value={contrast}
@@ -362,20 +320,10 @@ export function SlicePanel({
                             }
                             sx={slicePanelSliderSx}
                         />
-                        <Typography
-                            sx={{
-                                fontSize: '0.62rem',
-                                color: 'text.secondary',
-                                width: 24,
-                                textAlign: 'right',
-                                flexShrink: 0,
-                            }}
-                        >
-                            {contrast.toFixed(2)}
-                        </Typography>
+                        <Typography sx={sliceRowValueSx}>{contrast.toFixed(2)}</Typography>
                     </Stack>
                 </Stack>
             </Box>
         </Box>
     )
-}
+})

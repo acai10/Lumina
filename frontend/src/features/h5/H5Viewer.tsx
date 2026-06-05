@@ -13,6 +13,14 @@ import { applyDrawRanges } from './h5DrawUtils'
 // Firefox caps drawArraysInstanced at 30 M vertices per draw call; leave headroom
 const MAX_VERTS_PER_DRAW = 28_000_000
 
+// STL overlay appearance: a semi-transparent blue mesh lit by its own ambient + key light.
+const STL_OVERLAY_COLOR = 0x88aaff
+const STL_OVERLAY_OPACITY = 0.4
+const STL_OVERLAY_LIGHT_COLOR = 0xffffff
+const STL_OVERLAY_AMBIENT_INTENSITY = 0.6
+const STL_OVERLAY_DIR_INTENSITY = 1.2
+const STL_OVERLAY_DIR_POSITION: [number, number, number] = [1, 2, 3]
+
 interface H5ViewerProps {
     vIndices: Float32Array
     vIntensities: Float32Array
@@ -197,18 +205,24 @@ export default function H5Viewer({
                 geo.translate(-center.x, -center.y, -center.z)
 
                 const mat = new THREE.MeshStandardMaterial({
-                    color: 0x88aaff,
+                    color: STL_OVERLAY_COLOR,
                     transparent: true,
-                    opacity: 0.4,
+                    opacity: STL_OVERLAY_OPACITY,
                     side: THREE.DoubleSide,
                     depthWrite: false,
                 })
                 stlMeshGroup.add(new THREE.Mesh(geo, mat))
                 scene.add(stlMeshGroup)
 
-                const ambient = new THREE.AmbientLight(0xffffff, 0.6)
-                const dir = new THREE.DirectionalLight(0xffffff, 1.2)
-                dir.position.set(1, 2, 3)
+                const ambient = new THREE.AmbientLight(
+                    STL_OVERLAY_LIGHT_COLOR,
+                    STL_OVERLAY_AMBIENT_INTENSITY,
+                )
+                const dir = new THREE.DirectionalLight(
+                    STL_OVERLAY_LIGHT_COLOR,
+                    STL_OVERLAY_DIR_INTENSITY,
+                )
+                dir.position.set(...STL_OVERLAY_DIR_POSITION)
                 lights.push(ambient, dir)
                 lights.forEach((l) => scene.add(l))
                 needsRenderRef.current = true

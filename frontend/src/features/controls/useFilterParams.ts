@@ -3,52 +3,61 @@ import type { FilterStep, FilterType } from '../../shared/api/types'
 
 export type FilterTypeOrNone = FilterType | 'none'
 
+export interface FilterParams {
+    gaussianSigma: number
+    medianRadius: number
+    leeWindow: number
+    bm3dSigma: number
+    normalizeLow: number
+    normalizeHigh: number
+}
+
+// Default filter parameters. Sizes align with the slider minima in
+// RENDER_CONTROL_LIMITS (median/lee size must be >= 3 or the filter is a no-op).
+const DEFAULT_PARAMS: FilterParams = {
+    gaussianSigma: 1.5,
+    medianRadius: 3,
+    leeWindow: 3,
+    bm3dSigma: 0.1,
+    normalizeLow: 2.0,
+    normalizeHigh: 98.0,
+}
+
 export function useFilterParams() {
-    const [filterType, setFilterType] = useState<FilterTypeOrNone>('none')
-    const [gaussianSigma, setGaussianSigma] = useState(1.5)
-    // Median filter size — must be >= the slider minimum (3); smaller is a no-op.
-    const [medianRadius, setMedianRadius] = useState(3)
-    const [leeWindow, setLeeWindow] = useState(3)
-    const [bm3dSigma, setBm3dSigma] = useState(0.1)
-    const [normalizeLow, setNormalizeLow] = useState(2.0)
-    const [normalizeHigh, setNormalizeHigh] = useState(98.0)
+    const [type, setType] = useState<FilterTypeOrNone>('none')
+    // One object holding every param value: switching `type` keeps previously
+    // entered values for the other filters (they are simply not read).
+    const [params, setParams] = useState<FilterParams>(DEFAULT_PARAMS)
+
+    const updateParam = <K extends keyof FilterParams>(key: K, value: number) =>
+        setParams((prev) => ({ ...prev, [key]: value }))
 
     const buildFilterStep = (): FilterStep[] => {
-        if (filterType === 'none') return []
-        const params: Record<string, unknown> = (() => {
-            switch (filterType) {
-                case 'gaussian':
-                    return { sigma: gaussianSigma }
-                case 'median':
-                    return { size: medianRadius }
-                case 'lee':
-                    return { window: leeWindow }
-                case 'bm3d':
-                    return { sigma_psd: bm3dSigma }
-                case 'normalize':
-                    return { low_percentile: normalizeLow, high_percentile: normalizeHigh }
-                default:
-                    return {}
-            }
-        })()
-        return [{ type: filterType, params }]
+        switch (type) {
+            case 'gaussian':
+                return [{ type: 'gaussian', params: { sigma: params.gaussianSigma } }]
+            case 'median':
+                return [{ type: 'median', params: { size: params.medianRadius } }]
+            case 'lee':
+                return [{ type: 'lee', params: { window: params.leeWindow } }]
+            case 'bm3d':
+                return [{ type: 'bm3d', params: { sigma_psd: params.bm3dSigma } }]
+            case 'normalize':
+                return [
+                    {
+                        type: 'normalize',
+                        params: {
+                            low_percentile: params.normalizeLow,
+                            high_percentile: params.normalizeHigh,
+                        },
+                    },
+                ]
+            case 'anisotropy':
+                return [{ type: 'anisotropy', params: {} }]
+            default:
+                return []
+        }
     }
 
-    return {
-        filterType,
-        setFilterType,
-        gaussianSigma,
-        setGaussianSigma,
-        medianRadius,
-        setMedianRadius,
-        leeWindow,
-        setLeeWindow,
-        bm3dSigma,
-        setBm3dSigma,
-        normalizeLow,
-        setNormalizeLow,
-        normalizeHigh,
-        setNormalizeHigh,
-        buildFilterStep,
-    }
+    return { type, setType, params, updateParam, buildFilterStep }
 }

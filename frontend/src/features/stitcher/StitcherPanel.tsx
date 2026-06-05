@@ -2,38 +2,24 @@ import { useRef, useState } from 'react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
-import Divider from '@mui/material/Divider'
 import IconButton from '@mui/material/IconButton'
 import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
-import Table from '@mui/material/Table'
-import TableBody from '@mui/material/TableBody'
-import TableCell from '@mui/material/TableCell'
-import TableRow from '@mui/material/TableRow'
 import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import { palette } from '../../shared/theme/palette'
-import { cleanupUploads } from '../../shared/api'
-import type { RegistrationMethod } from '../../shared/api'
+import { cleanupUploads, registerLocalVolume } from '../../shared/api'
+import type { LocalVolume, RegistrationMethod } from '../../shared/api'
+import { ServerVolumeDialog, useServerVolumes } from '../../shared/components'
+import { useViewerStore } from '../../app/store/viewerSlice'
 import { useStitchSession, type VolumeConfig, type StitchPhase } from './useStitchSession'
+import { StitchResults } from './StitchResults'
+import { gridTextFieldSx, subLabelSx, tealOutlineButtonSx } from './StitcherPanel.styles'
 
 const PANEL_WIDTH = 420
-const GRID_INPUT_WIDTH_PX = 68
 const MIN_STITCH_VOLUMES = 2
-
-const gridTextFieldSx = {
-    width: GRID_INPUT_WIDTH_PX,
-    '& .MuiInputBase-input': {
-        color: palette.textPrimary,
-        fontSize: '0.78rem',
-    },
-    '& .MuiInputLabel-root': {
-        color: palette.textMuted,
-        fontSize: '0.72rem',
-    },
-}
 
 function inferGridPos(filename: string): { row: number; col: number } {
     const m = filename.match(/_(\d+)_(\d+)(?:\.\w+)?$/)
@@ -61,17 +47,47 @@ export default function StitcherPanel() {
     const folderInputRef = useRef<HTMLInputElement>(null)
     const [configs, setConfigs] = useState<VolumeConfig[]>([])
     const [method, setMethod] = useState<RegistrationMethod>('phase_correlation')
+    const [serverDialogOpen, setServerDialogOpen] = useState(false)
     const { phase, sessionStatus, error, run, reset } = useStitchSession()
+    const {
+        volumes: serverVolumes,
+        loading: serverVolumesLoading,
+        error: serverVolumesError,
+        refresh: refreshServerVolumes,
+    } = useServerVolumes()
+    const setNotification = useViewerStore((s) => s.setNotification)
+
+    const addConfigs = (entries: VolumeConfig[]) => {
+        setConfigs((prev) => {
+            const existing = new Set(prev.map((c) => c.name))
+            return [...prev, ...entries.filter((e) => !existing.has(e.name))]
+        })
+    }
 
     const handleFiles = (files: FileList | null) => {
         if (!files) return
         const newEntries: VolumeConfig[] = Array.from(files)
             .filter((f) => f.name.toLowerCase().endsWith('.h5'))
-            .map((f) => ({ file: f, ...inferGridPos(f.name) }))
-        setConfigs((prev) => {
-            const existing = new Set(prev.map((c) => c.file.name))
-            return [...prev, ...newEntries.filter((e) => !existing.has(e.file.name))]
-        })
+            .map((f) => ({ name: f.name, file: f, ...inferGridPos(f.name) }))
+        addConfigs(newEntries)
+    }
+
+    const handleServerOpen = () => {
+        setServerDialogOpen(true)
+        refreshServerVolumes()
+    }
+
+    const handleServerPick = async (local: LocalVolume) => {
+        try {
+            // Register by path (zero-copy symlink) — no upload — and add to the grid.
+            const { volume_id } = await registerLocalVolume(local.path)
+            addConfigs([{ name: local.name, volumeId: volume_id, ...inferGridPos(local.name) }])
+        } catch (err) {
+            setNotification({
+                message: `Failed to add "${local.name}": ${err instanceof Error ? err.message : String(err)}`,
+                severity: 'error',
+            })
+        }
     }
 
     const updateConfig = (idx: number, patch: Partial<VolumeConfig>) => {
@@ -163,7 +179,7 @@ export default function StitcherPanel() {
                         fullWidth
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isBusy}
-                        sx={{ borderColor: palette.tealBorder, color: palette.tealLabel }}
+                        sx={tealOutlineButtonSx}
                     >
                         Add Files
                     </Button>
@@ -173,9 +189,19 @@ export default function StitcherPanel() {
                         fullWidth
                         onClick={() => folderInputRef.current?.click()}
                         disabled={isBusy}
-                        sx={{ borderColor: palette.tealBorder, color: palette.tealLabel }}
+                        sx={tealOutlineButtonSx}
                     >
                         Add Folder
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        fullWidth
+                        onClick={handleServerOpen}
+                        disabled={isBusy}
+                        sx={tealOutlineButtonSx}
+                    >
+                        From Server
                     </Button>
                 </Stack>
             </Box>
@@ -183,21 +209,13 @@ export default function StitcherPanel() {
             {/* Volume list */}
             {configs.length > 0 && (
                 <Box>
-                    <Typography
-                        variant="caption"
-                        sx={{ color: palette.textMuted, mb: 0.5, display: 'block' }}
-                    >
+                    <Typography variant="caption" sx={subLabelSx}>
                         Volumes — set grid position (row, col)
                     </Typography>
                     <Stack spacing={0.75}>
                         {configs.map((cfg, i) => (
-                            <Stack
-                                key={cfg.file.name}
-                                direction="row"
-                                alignItems="center"
-                                spacing={1}
-                            >
-                                <Tooltip title={cfg.file.name} placement="top">
+                            <Stack key={cfg.name} direction="row" alignItems="center" spacing={1}>
+                                <Tooltip title={cfg.name} placement="top">
                                     <Typography
                                         variant="caption"
                                         sx={{
@@ -209,7 +227,7 @@ export default function StitcherPanel() {
                                             fontSize: '0.72rem',
                                         }}
                                     >
-                                        {cfg.file.name}
+                                        {cfg.name}
                                     </Typography>
                                 </Tooltip>
                                 <TextField
@@ -306,117 +324,17 @@ export default function StitcherPanel() {
             )}
 
             {/* Results */}
-            {sessionStatus?.status === 'done' && (
-                <>
-                    <Divider sx={{ borderColor: palette.toolbarBorder }} />
+            {sessionStatus?.status === 'done' && <StitchResults status={sessionStatus} />}
 
-                    {/* Metrics table */}
-                    <Box>
-                        <Typography
-                            variant="caption"
-                            sx={{
-                                color: palette.textSecondary,
-                                letterSpacing: '0.06em',
-                                mb: 0.75,
-                                display: 'block',
-                            }}
-                        >
-                            Quality Metrics
-                        </Typography>
-                        <Table size="small">
-                            <TableBody>
-                                {Object.entries(sessionStatus.metrics).map(([k, v]) => (
-                                    <TableRow key={k}>
-                                        <TableCell
-                                            sx={{
-                                                color: palette.textMuted,
-                                                fontSize: '0.75rem',
-                                                border: 'none',
-                                                py: 0.25,
-                                                px: 0,
-                                            }}
-                                        >
-                                            {k.toUpperCase()}
-                                        </TableCell>
-                                        <TableCell
-                                            sx={{
-                                                color: palette.textPrimary,
-                                                fontSize: '0.75rem',
-                                                border: 'none',
-                                                py: 0.25,
-                                                textAlign: 'right',
-                                            }}
-                                        >
-                                            {v.toFixed(4)}
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </Box>
-
-                    {/* Detected offsets */}
-                    {Object.keys(sessionStatus.offsets).length > 0 && (
-                        <Box>
-                            <Typography
-                                variant="caption"
-                                sx={{
-                                    color: palette.textSecondary,
-                                    letterSpacing: '0.06em',
-                                    mb: 0.75,
-                                    display: 'block',
-                                }}
-                            >
-                                Detected Offsets (dy, dx)
-                            </Typography>
-                            <Table size="small">
-                                <TableBody>
-                                    {Object.entries(sessionStatus.offsets).map(
-                                        ([vid, [dy, dx]]) => (
-                                            <TableRow key={vid}>
-                                                <TableCell
-                                                    sx={{
-                                                        color: palette.textMuted,
-                                                        fontSize: '0.72rem',
-                                                        border: 'none',
-                                                        py: 0.25,
-                                                        px: 0,
-                                                        maxWidth: 160,
-                                                        overflow: 'hidden',
-                                                        textOverflow: 'ellipsis',
-                                                        whiteSpace: 'nowrap',
-                                                    }}
-                                                >
-                                                    {vid}
-                                                </TableCell>
-                                                <TableCell
-                                                    sx={{
-                                                        color: palette.textPrimary,
-                                                        fontSize: '0.72rem',
-                                                        border: 'none',
-                                                        py: 0.25,
-                                                        textAlign: 'right',
-                                                    }}
-                                                >
-                                                    ({dy.toFixed(1)}, {dx.toFixed(1)})
-                                                </TableCell>
-                                            </TableRow>
-                                        ),
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </Box>
-                    )}
-
-                    <Divider sx={{ borderColor: palette.toolbarBorder }} />
-                    <Typography
-                        variant="caption"
-                        sx={{ color: palette.textSecondary, fontStyle: 'italic' }}
-                    >
-                        Result loaded into viewer
-                    </Typography>
-                </>
-            )}
+            <ServerVolumeDialog
+                open={serverDialogOpen}
+                volumes={serverVolumes}
+                loading={serverVolumesLoading}
+                error={serverVolumesError}
+                onClose={() => setServerDialogOpen(false)}
+                onPick={handleServerPick}
+                multiple
+            />
         </Box>
     )
 }

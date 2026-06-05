@@ -25,6 +25,30 @@ def load_volume_flexible(path: Path) -> np.ndarray:
         return np.asarray(ds, dtype=np.float32)
 
 
+def validate_volume_file(path: Path) -> None:
+    """Validate an OCT ``.h5`` file using metadata only — no bulk read.
+
+    Opens *path* and checks that the ``"OCT"`` dataset exists and its element
+    count matches :data:`OCT_DIMS`, inspecting only ``ds.shape`` / ``ds.size``.
+    Unlike :func:`load_volume` this never materialises the ~128 MB array, so it
+    is cheap enough to run on every upload/registration.
+
+    Args:
+        path: Path to the ``.h5`` file.
+
+    Raises:
+        ValueError: If the ``"OCT"`` dataset is missing or its element count
+            does not match the expected :data:`OCT_DIMS` size.
+    """
+    expected = OCT_DIMS[0] * OCT_DIMS[1] * OCT_DIMS[2]
+    with h5py.File(path, "r") as f:
+        ds = f.get("OCT")
+        if ds is None:
+            raise ValueError('Dataset "OCT" not found in file')
+        if ds.shape != OCT_DIMS and ds.size != expected:
+            raise ValueError(f"Expected {expected} elements {OCT_DIMS}, got shape {ds.shape}")
+
+
 def load_volume(path: Path) -> np.ndarray:
     """Load an OCT volume from an HDF5 file.
 

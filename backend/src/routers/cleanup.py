@@ -19,7 +19,9 @@ def cleanup_uploads() -> JSONResponse:
     deleted = 0
     errors = 0
     for p in settings.uploads_dir.iterdir():
-        if p.is_file():
+        # `is_symlink()` also covers dangling links (registered source removed); for a
+        # symlink, `unlink()` only removes the link, never the target under data_dir.
+        if p.is_file() or p.is_symlink():
             try:
                 p.unlink()
                 deleted += 1
