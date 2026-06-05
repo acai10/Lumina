@@ -25,14 +25,17 @@ docker compose up --build
 ### Single-volume workflow
 
 1. **Load H5** — pick individual files or an entire folder; volumes are read
-   locally via h5wasm (no upload needed for viewing).
+   locally via h5wasm (no upload needed for viewing). Memory-safe: only the
+   active tab's buffers (~150–210 MB) stay on the JS heap; inactive tabs are
+   automatically evicted to IndexedDB and reloaded on demand.
 2. **3-D point-cloud view** — Three.js WebGL renderer with threshold, opacity,
-   brightness, contrast, point-size, and spatial range sliders.
+   brightness, contrast, point-size, and spatial range sliders. The green bounding
+   box scales with the volume-spacing slider.
 3. **2-D slice viewer** — three orthogonal panels (X/Y/Z) with per-panel
    brightness/contrast and zoom/pan.
 4. **Preprocessing filters** — apply a filter chain on the backend and stream
-   back a render-ready result:
-   - Gaussian · Median · Lee speckle · BM3D · Percentile-normalize · Anisotropy zoom
+   back a render-ready result. Filtered results survive tab eviction and
+   are restored correctly on reactivation.
 
 ### Multi-volume stitching
 
@@ -40,29 +43,146 @@ docker compose up --build
    each volume's grid position (row, col).
 2. Choose a registration method: **Phase Correlation**, **Cross-Correlation**,
    or **ICP (point-cloud)**.
-3. Backend registers adjacent pairs with zero-padded phase correlation
-   (avoids the aliasing problem of standard `phase_cross_correlation` for
-   large lateral offsets), computes global offsets via BFS, and merges with
-   max-intensity blending.
-4. After processing the merged result loads directly into the H5 viewer as a
-   new tab — full 3-D and 2-D slice views, correct slider extents.
-5. Apply filters or revert to original on the merged result.
+3. Backend registers adjacent pairs, computes global offsets via BFS, and merges
+   with max-intensity blending.
+4. The merged result loads as a new tab — full 3-D and 2-D slice views,
+   correct slider extents.
+5. Apply filters or revert on the merged result.
 6. **Clear** empties the uploads folder on the server.
 
 ### STL overlay
 
-- Load one or more STL files — they appear as separate tabs in the unified
-  tab bar (blue tint) alongside H5 tabs.
-- While viewing an H5 tab, select an STL overlay from the **STL Overlay**
-  dropdown; the mesh is rendered inside the same Three.js scene sharing the
-  same camera and OrbitControls.
-- Per-file STL opacity slider.
+- Load STL files — they appear as separate tabs (blue tint) alongside H5 tabs.
+- While viewing an H5 tab, select an STL overlay from the **STL Overlay** dropdown;
+  the mesh is rendered in the same Three.js scene with shared camera and OrbitControls.
+- Per-file opacity slider.
 
 ### Tab management
 
 - All H5 and STL files share a single scrollable tab bar.
 - Tabs can be freely dragged to any position regardless of file type.
-- Closing a tab also cleans up the corresponding server-side uploads.
+- Closing a tab cleans up the corresponding server-side uploads and the IndexedDB entry.
+
+---
+
+## Algorithms
+
+### Preprocessing filters
+
+All filters run on the backend per-slice (or globally for normalize/anisotropy),
+then return a render-ready binary to the frontend.
+
+#### Gaussian blur
+
+Convolves each 2-D slice with a Gaussian kernel of standard deviation σ:
+
+$$G(x,y) = \frac{1}{2\pi\sigma^2}\,\exp\!\left(-\frac{x^2+y^2}{2\sigma^2}\right)$$
+
+Smooth, isotropic noise reduction. Larger σ → more blur.
+**Parameter:** `sigma` (default 1.5, range 0.5–5.0)
+
+#### Median filter
+
+Replaces each pixel with the median of its n×n neighbourhood.
+Non-linear — excellent at removing salt-and-pepper noise without blurring edges.
+**Parameter:** `size` (odd integer: 3, 5, or 7)
+
+#### Lee speckle filter
+
+Adaptive variance-based filter designed for coherent (speckle) noise.
+Computes local mean μ and local variance σ²_local in a sliding window,
+estimates noise variance σ²_noise as the global mean of local variances,
+then blends:
+
+$$\hat{I} = \mu + \underbrace{\frac{\sigma^2_\text{local}}{\sigma^2_\text{local}+\sigma^2_\text{noise}}}_{w}\,(I - \mu)$$
+
+w → 1 in textured regions (preserves detail); w → 0 in flat regions (smooths noise).
+**Parameter:** `window` (odd integer: 3, 5, 7, or 9)
+
+#### BM3D (Block-Matching 3D)
+
+State-of-the-art patch-based denoiser. Groups similar 2-D patches from a slice
+into a 3-D stack, applies a collaborative transform (e.g. Wiener filter in the
+transform domain), then aggregates back. Achieves the best PSNR among classical
+methods at the cost of runtime.
+Requires optional `bm3d` dependency: `uv sync --extra bm3d`.
+**Parameter:** `sigma_psd` — estimated noise power spectral density (default 0.1)
+
+#### Percentile normalise
+
+Clips intensities to the [p_low, p_high] percentile range, then scales to [0, 1]:
+
+$$x_\text{norm} = \text{clip}\!\left(\frac{x - p_\text{low}}{p_\text{high} - p_\text{low}},\ 0,\ 1\right)$$
+
+Removes outlier intensities that would otherwise dominate the display range.
+**Parameters:** `low_percentile` (default 2), `high_percentile` (default 98)
+
+#### Anisotropy correction
+
+Resamples the 3-D volume with `scipy.ndimage.zoom` using per-axis zoom factors
+to correct physical voxel anisotropy (e.g. when z-spacing differs from x/y-spacing).
+**Parameter:** `zoom_factors` — list of three floats, one per axis (default [1, 1, 1])
+
+---
+
+### Registration & stitching
+
+#### Phase correlation (and cross-correlation)
+
+Finds the translational shift (dy, dx) between two 2-D MIP images in the
+frequency domain. The cross-power spectrum is:
+
+$$S = \frac{F_A \cdot \overline{F_B}}{|F_A \cdot \overline{F_B}|}$$
+
+The shift is the location of the peak in `IFFT(S)`.
+Lumina zero-pads both images to size ≥ 2N−1 before the FFT so the correlation
+is *linear* (not circular). Without padding, the standard approach aliases shifts
+larger than N/2 pixels to the wrong direction — a common bug in large-field stitching.
+Cross-correlation omits the magnitude normalisation in the denominator, making it
+more sensitive to intensity differences between tiles.
+
+#### ICP — Iterative Closest Point (translation only)
+
+Uses surface point clouds instead of MIP images.
+Each iteration:
+
+1. For every point **p** in the source cloud find its nearest neighbour in the target.
+2. Compute the mean offset: `Δt = mean(target[nn] − source)`.
+3. Shift all source points by Δt; accumulate into total translation T.
+4. Stop when `‖Δt‖ < tolerance` (default 1e-4 px).
+
+Well-suited when lateral intensity profiles are similar (same brightness) but the
+MIP-based methods struggle.
+
+#### Global offset computation
+
+After pairwise registration of all adjacent grid pairs, global offsets are
+computed by Breadth-First Search (BFS) starting from the top-left volume.
+Each volume's absolute (dy, dx) is accumulated along the BFS path, so the
+result is consistent even if any individual pair registration is noisy.
+
+#### Merging
+
+The merged volume is assembled in a zero-initialised output array sized to fit
+all tiles at their computed offsets, using max-intensity blending in overlapping
+regions:
+
+$$\text{merged}[s,y,x] = \max_i\ V_i[s,\ y-\Delta y_i,\ x-\Delta x_i]$$
+
+Max-blending preserves bright features from every tile and is appropriate for
+OCT data where high intensity = signal.
+
+#### Quality metrics
+
+After stitching, two metrics are computed on each pair's overlapping region
+and averaged across all pairs:
+
+| Metric       | Formula                       | Meaning                          |
+|--------------|-------------------------------|----------------------------------|
+| **RMSE**     | √(mean((A−B)²))               | Intensity agreement in overlap   |
+| **Hausdorff**| max(d(A→B), d(B→A))           | Surface alignment accuracy       |
+
+Lower is better for both.
 
 ---
 
@@ -103,7 +223,7 @@ sliders and slice indices adapt automatically.
 |--------|------|-------------|
 | `POST` | `/sessions/` | Create multi-volume session → `{ session_id }` |
 | `GET`  | `/sessions/{id}` | Poll status, offsets, metrics, `merged_volume_id` |
-| `GET`  | `/sessions/{id}/merged` | Merged volume — render-ready binary (pre-computed, fast) |
+| `GET`  | `/sessions/{id}/merged` | Merged volume — render-ready binary (pre-computed) |
 | `GET`  | `/sessions/{id}/mip` | Maximum Intensity Projection (2-D, float32) |
 | `POST` | `/sessions/{id}/filter` | Apply filter chain to merged volume |
 
@@ -174,7 +294,7 @@ Lumina/
 │       ├── schemas/
 │       │   ├── enums.py          # JobStatus
 │       │   ├── jobs.py           # FilterStep, JobRequest, …
-│       │   ├── sessions.py       # VolumeEntry, SessionRequest, SessionFilterRequest, …
+│       │   ├── sessions.py       # VolumeEntry, SessionRequest, …
 │       │   └── volumes.py        # UploadResponse, VolumeInfo
 │       ├── routers/
 │       │   ├── volumes.py        # POST /volumes/upload, GET /volumes/{id}/info
@@ -187,27 +307,29 @@ Lumina/
 │           ├── filters.py        # apply_filter_chain() — Gaussian/Median/Lee/BM3D/…
 │           ├── normalizer.py     # normalize_for_frontend(); save/load_packed
 │           ├── multi_volume.py   # MIP, surface seg, ICP, phase correlation, merge
-│           ├── metrics.py        # NCC, MI, MSE, RMSE, Hausdorff
+│           ├── metrics.py        # RMSE, Hausdorff
 │           ├── runner.py         # JobStore, async run_job
 │           └── session_runner.py # SessionStore, async run_session
 │
 └── frontend/
     └── src/
-        ├── App.tsx               # top-level layout, unified tab routing
+        ├── App.tsx               # top-level layout; dispatches on active tab type + viewMode
         ├── app/store/
-        │   └── viewerSlice.ts    # Zustand: unified tabs[], activeTabIndex, stlOverlay
+        │   └── viewerSlice.ts    # Zustand: unified tabs[], LRU hydration, per-file state
         ├── shared/
-        │   ├── api/              # client.ts — fetch + parseNormalizedVolume helper
-        │   ├── h5/               # h5wasm worker, normalizeVolume (Uint8, two-pass)
-        │   ├── three/            # createScene() — persistent canvas ref
+        │   ├── api/              # client.ts — typed fetch helpers, parseNormalizedVolume
+        │   ├── h5/               # h5wasm worker, normalizeVolume (Uint8, two-pass),
+        │   │                     #   volumeCache.ts (IndexedDB off-heap eviction)
+        │   ├── three/            # createScene() — persistent canvas ref (avoids ctx limit)
         │   └── types/
-        │       └── viewer.types.ts  # TabEntry (H5TabEntry | StlTabEntry), Uint8 normalizedVolume
+        │       └── viewer.types.ts  # TabEntry (H5TabEntry | StlTabEntry); H5TabEntry.data
+        │                            #   is null when evicted, meta/hasSlices always present
         └── features/
             ├── h5/               # H5Viewer (3-D), H5SliceViewer (2-D), H5FileTabs
             ├── stl/              # STLViewer
-            ├── controls/         # ControlsPanel, PreprocessingSection, SlicePanel (LUT)
-            ├── stitcher/         # StitcherPanel, useStitchSession
-            ├── toolbar/          # Toolbar (scrollable), useFileLoad
+            ├── controls/         # ControlsPanel, PreprocessingSection, SliderRow (LUT)
+            ├── stitcher/         # StitcherPanel, useStitchSession, MipViewer
+            ├── toolbar/          # Toolbar, useFileLoad
             └── notifications/    # AppSnackbar
 ```
 
@@ -219,22 +341,29 @@ Lumina/
 |-------|-----------|
 | Backend | Python 3.11 · FastAPI · h5py · NumPy · SciPy · scikit-image · SimpleITK |
 | Backend (optional) | BM3D · itk-elastix |
-| Frontend | React 18 · TypeScript · Three.js · MUI v5 · Zustand · Vite |
+| Frontend | React 18 · TypeScript · Three.js · MUI v6 · Zustand · Vite |
 | Infra | Docker Compose · uv · Node 20 |
 
 ### Performance notes
 
-- **Backend normalisation** uses a two-pass Uint8-first approach (peak ~260 MB
-  for a standard 512×250×250 volume). Large merged volumes are processed in
-  32-slice chunks to avoid a full-volume boolean mask in RAM.
+- **Browser memory**: inactive tabs are evicted from the JS heap to IndexedDB
+  (`shared/h5/volumeCache.ts`); at most 2 volumes (~400 MB) reside in RAM at once,
+  regardless of how many files are open. Filtered results are re-persisted so
+  eviction never loses a processed volume.
+- **Backend normalisation** uses a Uint8-first two-pass approach (peak ~260 MB
+  for 512×250×250). Large merged volumes are processed in 32-slice chunks to
+  avoid a full-volume boolean mask in RAM.
 - **Stitching memory**: individual volumes are freed before normalisation;
   the merged array is freed and reloaded via `mmap_mode='r'` so only OS page
   cache stays in RAM during the normalisation step.
 - **Render-ready binary**: volume data from all backend endpoints arrives
   pre-normalised — no Web Worker, no JS sorting, near-instant parse via
   typed-array views into the response `ArrayBuffer`.
+- **Bundle splitting**: Three.js, h5wasm, and MUI are in separate Vite chunks
+  (`manualChunks`), so browser-cached library builds are not invalidated by
+  app-code changes. App-code chunk is ~75 KB gzipped.
 - **Slice rendering**: 256-entry LUT replaces per-pixel `Math.pow()` calls;
-  canvas updates are scheduled with `requestAnimationFrame`.
+  canvas updates are coalesced with `requestAnimationFrame`.
 - **WebGL contexts**: each viewer keeps a persistent canvas `useRef` so React
   StrictMode's double-mount reuses the same WebGL context instead of allocating
-  a second one.
+  a second one (browsers cap active contexts at ~16).
