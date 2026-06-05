@@ -13,10 +13,32 @@ docker compose up --build
 ```
 
 | URL | Description |
-|-----|-------------|
+| --- | ----------- |
 | <http://localhost:5173> | Frontend |
 | <http://localhost:8000> | Backend API |
 | <http://localhost:8000/docs> | Swagger / OpenAPI |
+
+### Loading source files by path (no upload)
+
+If your `.h5` files live on the same machine as the backend, you can skip the
+~128 MB upload entirely: the backend registers a file by **symlink** (zero-copy,
+instant) and serves it pre-normalised.
+
+Set `LUMINA_DATA_DIR` to the absolute host path containing your source files,
+then restart:
+
+```bash
+LUMINA_DATA_DIR=/abs/path/to/h5 docker compose up --build
+# or add it to a .env file next to docker-compose.yml:
+# LUMINA_DATA_DIR=/abs/path/to/h5
+```
+
+The directory is bind-mounted **read-only** at `/data` inside the backend
+container — original files are never modified.
+Once running, use **Load H5 → From server…** in the toolbar or
+**From Server** in the Stitch panel to browse and pick files or whole folders
+without any upload. The classic browser-based file picker continues to work as a
+fallback regardless of this setting.
 
 ---
 
@@ -24,31 +46,41 @@ docker compose up --build
 
 ### Single-volume workflow
 
-1. **Load H5** — pick individual files or an entire folder; volumes are read
-   locally via h5wasm (no upload needed for viewing). Memory-safe: only the
-   active tab's buffers (~150–210 MB) stay on the JS heap; inactive tabs are
-   automatically evicted to IndexedDB and reloaded on demand.
+1. **Load H5** — three ways to load volumes:
+   - **File / Folder** (browser picker) — picks local files; volumes are read
+     in-browser via h5wasm, no upload needed for viewing.
+   - **From server…** — when `LUMINA_DATA_DIR` is set (see above), browse
+     server-side files and folders without uploading. Clicking a folder loads
+     all `.h5` files inside it at once.
+   Memory-safe: only the active tab's buffers (~150–210 MB) stay on the JS heap;
+   inactive tabs are automatically evicted to IndexedDB and reloaded on demand.
 2. **3-D point-cloud view** — Three.js WebGL renderer with threshold, opacity,
    brightness, contrast, point-size, and spatial range sliders. The green bounding
    box scales with the volume-spacing slider.
 3. **2-D slice viewer** — three orthogonal panels (X/Y/Z) with per-panel
    brightness/contrast and zoom/pan.
 4. **Preprocessing filters** — apply a filter chain on the backend and stream
-   back a render-ready result. Filtered results survive tab eviction and
-   are restored correctly on reactivation.
+   back a render-ready result. When a volume was loaded via **From server…**, the
+   filter job skips the upload step entirely. Filtered results survive tab eviction
+   and are restored correctly on reactivation.
 
 ### Multi-volume stitching
 
-1. Open the **Stitch** panel → add H5 files (individual or folder) and set
-   each volume's grid position (row, col).
-2. Choose a registration method: **Phase Correlation**, **Cross-Correlation**,
+1. Open the **Stitch** panel → add H5 files using any combination of:
+   - **Add Files** / **Add Folder** — browser file picker
+   - **From Server** — server-side folder browser (no upload); select individual
+     files or tick an entire folder to add all volumes inside it at once.
+2. Set each volume's grid position (row, col). Grid positions are auto-detected
+   from filenames ending in `_row_col.h5`.
+3. Choose a registration method: **Phase Correlation**, **Cross-Correlation**,
    or **ICP (point-cloud)**.
-3. Backend registers adjacent pairs, computes global offsets via BFS, and merges
+4. Backend registers adjacent pairs, computes global offsets via BFS, and merges
    with max-intensity blending.
-4. The merged result loads as a new tab — full 3-D and 2-D slice views,
+5. The merged result loads as a new tab — full 3-D and 2-D slice views,
    correct slider extents.
-5. Apply filters or revert on the merged result.
-6. **Clear** empties the uploads folder on the server.
+6. Apply filters or revert on the merged result.
+7. **Clear** empties the uploads folder on the server (symlinks to `DATA_DIR`
+   source files are removed; the originals are never touched).
 
 ### STL overlay
 
@@ -178,7 +210,7 @@ After stitching, two metrics are computed on each pair's overlapping region
 and averaged across all pairs:
 
 | Metric       | Formula                       | Meaning                          |
-|--------------|-------------------------------|----------------------------------|
+| ------------ | ----------------------------- | -------------------------------- |
 | **RMSE**     | √(mean((A−B)²))               | Intensity agreement in overlap   |
 | **Hausdorff**| max(d(A→B), d(B→A))           | Surface alignment accuracy       |
 
@@ -189,7 +221,7 @@ Lower is better for both.
 ## Data format
 
 | Property | Value |
-|----------|-------|
+| -------- | ----- |
 | Dataset name | `"OCT"` (fixed) |
 | Standard shape | `(512, 250, 250)` — nSlices × height × width |
 | Accepted dtypes | float32, float64, int16/32, uint8/16/32 (auto-converted) |
@@ -205,39 +237,42 @@ sliders and slice indices adapt automatically.
 ### Volumes
 
 | Method | Path | Description |
-|--------|------|-------------|
+| ------ | ---- | ----------- |
 | `POST` | `/volumes/upload` | Upload `.h5` → `{ volume_id, n_slices, height, width }` |
-| `GET`  | `/volumes/{id}/info` | Shape/dtype of an uploaded volume |
+| `GET` | `/volumes/local` | List `.h5` files under `DATA_DIR` (relative paths + names) |
+| `POST` | `/volumes/register` | Register a local file by path → `{ volume_id, … }` (zero-copy symlink, no upload) |
+| `GET` | `/volumes/{id}/info` | Shape/dtype of a stored/registered volume |
+| `GET` | `/volumes/{id}/normalized` | Render-ready binary of a stored/registered volume (same format as job results) |
 
 ### Filter jobs
 
 | Method | Path | Description |
-|--------|------|-------------|
+| ------ | ---- | ----------- |
 | `POST` | `/jobs/` | Submit filter job → `{ job_id }` |
-| `GET`  | `/jobs/{id}` | Poll status + metrics |
-| `GET`  | `/jobs/{id}/volume/{stitcher}` | Render-ready binary result (pre-normalised) |
+| `GET` | `/jobs/{id}` | Poll status + metrics |
+| `GET` | `/jobs/{id}/volume/{stitcher}` | Render-ready binary result (pre-normalised) |
 
 ### Stitching sessions
 
 | Method | Path | Description |
-|--------|------|-------------|
+| ------ | ---- | ----------- |
 | `POST` | `/sessions/` | Create multi-volume session → `{ session_id }` |
-| `GET`  | `/sessions/{id}` | Poll status, offsets, metrics, `merged_volume_id` |
-| `GET`  | `/sessions/{id}/merged` | Merged volume — render-ready binary (pre-computed) |
-| `GET`  | `/sessions/{id}/mip` | Maximum Intensity Projection (2-D, float32) |
+| `GET` | `/sessions/{id}` | Poll status, offsets, metrics, `merged_volume_id` |
+| `GET` | `/sessions/{id}/merged` | Merged volume — render-ready binary (pre-computed) |
+| `GET` | `/sessions/{id}/mip` | Maximum Intensity Projection (2-D, float32) |
 | `POST` | `/sessions/{id}/filter` | Apply filter chain to merged volume |
 
 ### Utility
 
 | Method | Path | Description |
-|--------|------|-------------|
+| ------ | ---- | ----------- |
 | `DELETE` | `/cleanup` | Delete all files in `uploads/` |
 
 #### Render-ready binary format
 
 All volume endpoints return a packed binary instead of raw float32:
 
-```
+```text
 Headers:  X-Shape  = "<nSlices>,<height>,<width>"
           X-VCount = "<above-threshold voxel count>"
 
@@ -338,7 +373,7 @@ Lumina/
 ## Stack
 
 | Layer | Technology |
-|-------|-----------|
+| ----- | ---------- |
 | Backend | Python 3.11 · FastAPI · h5py · NumPy · SciPy · scikit-image · SimpleITK |
 | Backend (optional) | BM3D · itk-elastix |
 | Frontend | React 18 · TypeScript · Three.js · MUI v6 · Zustand · Vite |
