@@ -4,7 +4,7 @@ import { palette } from '../../shared/theme/palette'
 export const sliderSx = {
     color: palette.tealBorder,
     py: 0,
-    '& .MuiSlider-thumb': { width: 12, height: 12 },
+    '& .MuiSlider-thumb': { width: '12px', height: '12px' },
     '& .MuiSlider-track': { opacity: 0.8 },
     '& .MuiSlider-rail': { opacity: 0.3 },
 }
@@ -15,6 +15,9 @@ export const labelSx = {
     letterSpacing: '0.05em',
     userSelect: 'none' as const,
 }
+
+/** Shared small-control font for Select / MenuItem / InputLabel slots in the panel. */
+export const controlFontSx = { fontSize: '0.7rem' }
 
 export const inputStyle: CSSProperties = {
     width: 48,
@@ -44,7 +47,7 @@ export const panelSx = {
     py: 1.5,
 }
 
-export const sliderStackSx = { width: 210 }
+export const sliderStackSx = { width: '210px' }
 
 export const separatorSx = {
     fontSize: '0.7rem',

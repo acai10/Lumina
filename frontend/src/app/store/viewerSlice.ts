@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { putVolume, getVolume, deleteVolume, clearVolumes } from '../../shared/h5'
+import { VOLUME_DIMS } from '../../shared/h5/h5Reader'
 import type {
     H5FileEntry,
     H5PerFileState,
@@ -41,6 +42,8 @@ const defaultSlicePanelControls = () => ({
     x: { ...DEFAULT_SLICE_PANEL_CONTROL },
 })
 
+const [VOLUME_N_SLICES, VOLUME_HEIGHT, VOLUME_WIDTH] = VOLUME_DIMS
+
 export const defaultRenderControls: H5RenderControls = {
     volumeSpacing: 200,
     h5Threshold: 0.8,
@@ -48,9 +51,9 @@ export const defaultRenderControls: H5RenderControls = {
     h5Brightness: 1.0,
     h5Contrast: 1.0,
     h5PointSize: 1.0,
-    h5SliceRange: [0, 512],
-    h5WidthRange: [0, 250],
-    h5HeightRange: [0, 250],
+    h5SliceRange: [0, VOLUME_N_SLICES],
+    h5WidthRange: [0, VOLUME_WIDTH],
+    h5HeightRange: [0, VOLUME_HEIGHT],
 }
 
 interface ViewerState {
@@ -188,6 +191,7 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 hasSlices: e.data.normalizedVolume !== null,
                 sourceFile: e.sourceFile,
                 backendVolumeId: e.backendVolumeId,
+                registeredVolumeId: e.registeredVolumeId,
             }))
             const newActiveIndex = tabs.length // first new entry position
 
@@ -289,11 +293,11 @@ export const useViewerStore = create<ViewerState>((set, get) => {
             }
 
             // Remove H5 per-file state for closed H5 tabs.
-            const newStates =
+            const newStates: Record<string, H5PerFileState> =
                 closing.type === 'h5'
-                    ? (Object.fromEntries(
+                    ? Object.fromEntries(
                           Object.entries(h5PerFileStates).filter(([k]) => k !== closing.name),
-                      ) as typeof h5PerFileStates)
+                      )
                     : h5PerFileStates
 
             // Keep active index in valid range.

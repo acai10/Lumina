@@ -72,13 +72,26 @@ export async function putVolume(key: string, data: H5VolumeData): Promise<void> 
     })
 }
 
+function isCachedVolume(v: unknown): v is CachedVolume {
+    return (
+        v !== null &&
+        typeof v === 'object' &&
+        typeof (v as CachedVolume).nSlices === 'number' &&
+        (v as CachedVolume).vIndices instanceof Float32Array &&
+        (v as CachedVolume).vIntensities instanceof Float32Array
+    )
+}
+
 /** Restore a volume's buffers, or `null` if no entry exists for `key`. */
 export async function getVolume(key: string): Promise<H5VolumeData | null> {
     const db = await openDB()
     const record = await new Promise<CachedVolume | undefined>((resolve, reject) => {
         const store = tx(db, 'readonly')
         const req = store.get(key)
-        req.onsuccess = () => resolve(req.result as CachedVolume | undefined)
+        req.onsuccess = () => {
+            const r = req.result
+            resolve(isCachedVolume(r) ? r : undefined)
+        }
         req.onerror = () => reject(req.error ?? new Error('IndexedDB get failed'))
     })
     if (!record) return null

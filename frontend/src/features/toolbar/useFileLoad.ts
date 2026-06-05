@@ -3,6 +3,8 @@ import type { ChangeEvent } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { loadH5FileInWorker, VOLUME_DIMS } from '../../shared/h5/h5Reader'
 import { useViewerStore } from '../../app/store/viewerSlice'
+import { registerLocalVolume, fetchNormalizedVolume } from '../../shared/api'
+import type { LocalVolume } from '../../shared/api'
 import type { H5FileEntry } from '../../shared/types/viewer.types'
 
 export function useFileLoad() {
@@ -47,6 +49,26 @@ export function useFileLoad() {
         }
     }
 
+    const loadServerVolume = async (local: LocalVolume) => {
+        setIsLoading(true)
+        try {
+            // Register the file by path (zero-copy symlink) — no bytes uploaded — then
+            // fetch the backend-normalised, render-ready volume (no h5wasm worker).
+            const { volume_id } = await registerLocalVolume(local.path)
+            const data = await fetchNormalizedVolume(volume_id)
+            const entry: H5FileEntry = { name: local.name, data, registeredVolumeId: volume_id }
+            await loadH5([entry])
+            setNotification({ message: 'File loaded', severity: 'success' })
+        } catch (err) {
+            setNotification({
+                message: `Failed to load "${local.name}": ${err instanceof Error ? err.message : String(err)}`,
+                severity: 'error',
+            })
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
     const handleSTLLoad = (e: ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files ?? [])
         e.target.value = ''
@@ -79,5 +101,6 @@ export function useFileLoad() {
         handleSTLLoad,
         handleH5Load,
         handleH5FolderLoad,
+        loadServerVolume,
     }
 }

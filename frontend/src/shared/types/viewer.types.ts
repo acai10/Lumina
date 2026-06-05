@@ -18,6 +18,9 @@ export interface H5FileEntry {
     data: H5VolumeData
     sourceFile?: File
     backendVolumeId?: string
+    // Single volume registered server-side by path (job pipeline). Distinct from
+    // `backendVolumeId`, which is a merged *session* id using the session filter.
+    registeredVolumeId?: string
 }
 
 /**
@@ -36,6 +39,7 @@ export interface H5TabEntry {
     hasSlices: boolean
     sourceFile?: File
     backendVolumeId?: string
+    registeredVolumeId?: string
 }
 
 /** STL tab stored in the unified tabs array. */

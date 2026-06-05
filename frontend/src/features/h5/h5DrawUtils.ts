@@ -20,7 +20,8 @@ export function applyDrawRanges(
     const total = countAboveThreshold(vIntensities, threshold)
     let remaining = total
     for (const geo of geos) {
-        const attr = geo.getAttribute('vIntensity') as THREE.BufferAttribute | null
+        const rawAttr = geo.getAttribute('vIntensity')
+        const attr = rawAttr instanceof THREE.BufferAttribute ? rawAttr : null
         if (!attr) continue
         const chunkSize = attr.count
         const draw = Math.min(chunkSize, remaining)

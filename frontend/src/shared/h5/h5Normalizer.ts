@@ -1,5 +1,10 @@
 import type { H5VolumeData } from '../types/viewer.types'
 
+/** Max value of a Uint8 channel — the normalised volume is quantised to 0..255. */
+const UINT8_MAX = 255
+/** 24-bit quantisation range for the intensity radix-sort key (2 × 12-bit passes). */
+const INTENSITY_SORT_QUANT = 0xffffff
+
 export function normalizeVolume(
     raw: Float32Array,
     dims: [number, number, number],
@@ -52,7 +57,7 @@ export function normalizeVolume(
         const range = sliceMax[s] > mn ? sliceMax[s] - mn : 1
         for (let i = 0; i < sliceSize; i++) {
             const normalized = (raw[offset + i] - mn) / range
-            if (normalizedVolume) normalizedVolume[offset + i] = Math.round(normalized * 255)
+            if (normalizedVolume) normalizedVolume[offset + i] = Math.round(normalized * UINT8_MAX)
             if (normalized >= threshold) {
                 tmpIndices[idx] = offset + i
                 tmpIntensities[idx] = normalized
@@ -68,7 +73,7 @@ export function normalizeVolume(
 
     const sortKeys = new Uint32Array(count)
     for (let i = 0; i < count; i++) {
-        sortKeys[i] = ~Math.round(tmpIntensities[i] * 0xffffff) & 0xffffff
+        sortKeys[i] = ~Math.round(tmpIntensities[i] * INTENSITY_SORT_QUANT) & INTENSITY_SORT_QUANT
     }
 
     const perm = new Uint32Array(count)

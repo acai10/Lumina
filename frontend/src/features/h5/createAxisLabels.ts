@@ -23,22 +23,23 @@ export function createAxisLabels(
     axisLen: number,
     labelScale: number,
 ): THREE.Sprite[] {
-    return AXIS_DEFINITIONS.map(({ text, color, pos }) => {
+    return AXIS_DEFINITIONS.flatMap(({ text, color, pos }) => {
         const canvas = document.createElement('canvas')
         canvas.width = AXIS_LABEL_CANVAS_SIZE
         canvas.height = AXIS_LABEL_CANVAS_SIZE
-        const ctx = canvas.getContext('2d')!
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return []
         ctx.fillStyle = color
         ctx.font = AXIS_LABEL_FONT
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
-        ctx.fillText(text, 32, 32)
+        ctx.fillText(text, AXIS_LABEL_CANVAS_SIZE / 2, AXIS_LABEL_CANVAS_SIZE / 2)
         const texture = new THREE.CanvasTexture(canvas)
         const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false })
         const sprite = new THREE.Sprite(mat)
         sprite.position.set(pos[0] * axisLen, pos[1] * axisLen, pos[2] * axisLen)
         sprite.scale.setScalar(labelScale)
         scene.add(sprite)
-        return sprite
+        return [sprite]
     })
 }

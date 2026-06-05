@@ -4,17 +4,17 @@ import Typography from '@mui/material/Typography'
 import { palette } from '../../shared/theme/palette'
 import { glowSx } from '../../app/App.styles'
 
-export const ToolbarRoot = styled(Stack)({
+export const ToolbarRoot = styled(Stack)(({ theme }) => ({
     flexShrink: 0,
     background: palette.toolbarBg,
     backdropFilter: 'blur(10px)',
     borderBottom: `1px solid ${palette.toolbarBorder}`,
-    padding: '8px 24px',
+    padding: theme.spacing(1, 3),
     overflowX: 'auto',
     flexWrap: 'nowrap',
     '&::-webkit-scrollbar': { height: 4 },
     '&::-webkit-scrollbar-thumb': { background: palette.scrollbarThumb, borderRadius: 2 },
-})
+}))
 
 export const FileNameText = styled(Typography)({
     marginLeft: 'auto',

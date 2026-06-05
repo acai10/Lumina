@@ -99,7 +99,7 @@ export function RangeSliderRow({ label, value, min, max, step, onChange }: Range
                 step={step}
                 value={value}
                 onChange={(_, v) => {
-                    if (Array.isArray(v)) onChange(v as [number, number])
+                    if (Array.isArray(v) && v.length === 2) onChange([v[0], v[1]])
                 }}
                 sx={sliderSx}
             />

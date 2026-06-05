@@ -1,15 +1,29 @@
 export type FilterType = 'gaussian' | 'median' | 'lee' | 'bm3d' | 'normalize' | 'anisotropy'
 
-export interface FilterStep {
-    type: FilterType
-    params: Record<string, unknown>
-}
+/**
+ * A single preprocessing step. Discriminated on `type` so each filter's `params`
+ * are exactly the keys the backend expects — no `Record<string, unknown>`.
+ */
+export type FilterStep =
+    | { type: 'gaussian'; params: { sigma: number } }
+    | { type: 'median'; params: { size: number } }
+    | { type: 'lee'; params: { window: number } }
+    | { type: 'bm3d'; params: { sigma_psd: number } }
+    | { type: 'normalize'; params: { low_percentile: number; high_percentile: number } }
+    | { type: 'anisotropy'; params: Record<string, never> }
 
 export interface JobRequest {
     volume_id: string
     filter_chain: FilterStep[]
     stitchers: string[]
 }
+
+export const JOB_STATUS = {
+    PENDING: 'pending',
+    RUNNING: 'running',
+    DONE: 'done',
+    ERROR: 'error',
+} as const
 
 export interface JobStatus {
     status: 'pending' | 'running' | 'done' | 'error'
@@ -24,7 +38,19 @@ export interface UploadResponse {
     width: number
 }
 
+/** A source `.h5` file available on the server under `data_dir`. */
+export interface LocalVolume {
+    path: string // relative to data_dir, e.g. "subdir/scan.h5"
+    name: string // display name (filename)
+}
+
 // ── Multi-volume stitching sessions ──────────────────────────────────────────
+
+export const REGISTRATION_METHOD = {
+    PHASE_CORRELATION: 'phase_correlation',
+    CROSS_CORRELATION: 'cross_correlation',
+    ICP: 'icp',
+} as const
 
 export type RegistrationMethod = 'phase_correlation' | 'cross_correlation' | 'icp'
 

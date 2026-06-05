@@ -13,6 +13,14 @@ import { applyDrawRanges } from './h5DrawUtils'
 // Firefox caps drawArraysInstanced at 30 M vertices per draw call; leave headroom
 const MAX_VERTS_PER_DRAW = 28_000_000
 
+// STL overlay appearance: a semi-transparent blue mesh lit by its own ambient + key light.
+const STL_OVERLAY_COLOR = 0x88aaff
+const STL_OVERLAY_OPACITY = 0.4
+const STL_OVERLAY_LIGHT_COLOR = 0xffffff
+const STL_OVERLAY_AMBIENT_INTENSITY = 0.6
+const STL_OVERLAY_DIR_INTENSITY = 1.2
+const STL_OVERLAY_DIR_POSITION: [number, number, number] = [1, 2, 3]
+
 interface H5ViewerProps {
     vIndices: Float32Array
     vIntensities: Float32Array
@@ -193,22 +201,30 @@ export default function H5Viewer({
                 geo.computeVertexNormals()
                 geo.computeBoundingBox()
                 const center = new THREE.Vector3()
-                geo.boundingBox!.getCenter(center)
+                const bb = geo.boundingBox
+                if (!bb) return
+                bb.getCenter(center)
                 geo.translate(-center.x, -center.y, -center.z)
 
                 const mat = new THREE.MeshStandardMaterial({
-                    color: 0x88aaff,
+                    color: STL_OVERLAY_COLOR,
                     transparent: true,
-                    opacity: 0.4,
+                    opacity: STL_OVERLAY_OPACITY,
                     side: THREE.DoubleSide,
                     depthWrite: false,
                 })
                 stlMeshGroup.add(new THREE.Mesh(geo, mat))
                 scene.add(stlMeshGroup)
 
-                const ambient = new THREE.AmbientLight(0xffffff, 0.6)
-                const dir = new THREE.DirectionalLight(0xffffff, 1.2)
-                dir.position.set(1, 2, 3)
+                const ambient = new THREE.AmbientLight(
+                    STL_OVERLAY_LIGHT_COLOR,
+                    STL_OVERLAY_AMBIENT_INTENSITY,
+                )
+                const dir = new THREE.DirectionalLight(
+                    STL_OVERLAY_LIGHT_COLOR,
+                    STL_OVERLAY_DIR_INTENSITY,
+                )
+                dir.position.set(...STL_OVERLAY_DIR_POSITION)
                 lights.push(ambient, dir)
                 lights.forEach((l) => scene.add(l))
                 needsRenderRef.current = true
@@ -261,6 +277,7 @@ export default function H5Viewer({
         needsRenderRef.current = true
     }, [h5Threshold, vIntensities])
 
+    // volumeSpacing also mutates bounding-box geometry — keep isolated from pure uniform updates.
     useEffect(() => {
         const mat = materialRef.current
         if (!mat) return
@@ -272,6 +289,12 @@ export default function H5Viewer({
             boxHelper.box.min.y = -volumeSpacing / 2
             boxHelper.box.max.y = volumeSpacing / 2
         }
+        needsRenderRef.current = true
+    }, [volumeSpacing])
+
+    useEffect(() => {
+        const mat = materialRef.current
+        if (!mat) return
         mat.uniforms.uPointSize.value = h5PointSize
         mat.uniforms.uBrightness.value = h5Brightness
         mat.uniforms.uContrast.value = h5Contrast
@@ -284,7 +307,6 @@ export default function H5Viewer({
         mat.uniforms.uHeightMax.value = heightMax
         needsRenderRef.current = true
     }, [
-        volumeSpacing,
         h5PointSize,
         h5Brightness,
         h5Contrast,

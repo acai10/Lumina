@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { createSession, pollSession, fetchSessionMerged, uploadVolume } from '../../shared/api'
+import { JOB_STATUS } from '../../shared/api/types'
 import type { RegistrationMethod, SessionStatus } from '../../shared/api'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5FileEntry } from '../../shared/types/viewer.types'
@@ -7,9 +8,12 @@ import type { H5FileEntry } from '../../shared/types/viewer.types'
 export type StitchPhase = 'idle' | 'uploading' | 'processing' | 'downloading' | 'done' | 'error'
 
 export interface VolumeConfig {
-    file: File
+    name: string
     row: number
     col: number
+    // Exactly one source is set: a local `file` to upload, or an already-registered
+    // server-side `volumeId` (path-based, no upload).
+    file?: File
     volumeId?: string
 }
 
@@ -21,7 +25,7 @@ export function useStitchSession() {
     const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null)
     const [error, setError] = useState<string | null>(null)
 
-    const run = async (configs: VolumeConfig[], method: RegistrationMethod) => {
+    const run = async (configs: VolumeConfig[], method: RegistrationMethod): Promise<void> => {
         setError(null)
         setSessionStatus(null)
 
@@ -29,7 +33,16 @@ export function useStitchSession() {
             setPhase('uploading')
             const entries = await Promise.all(
                 configs.map(async (cfg) => {
-                    const { volume_id } = await uploadVolume(cfg.file)
+                    // Server-registered volumes already live on the backend by path —
+                    // skip the upload; only local files are uploaded.
+                    let volume_id: string
+                    if (cfg.volumeId) {
+                        volume_id = cfg.volumeId
+                    } else if (cfg.file) {
+                        volume_id = (await uploadVolume(cfg.file)).volume_id
+                    } else {
+                        throw new Error(`Volume "${cfg.name}" has neither a file nor an id`)
+                    }
                     return { volume_id, row: cfg.row, col: cfg.col }
                 }),
             )
@@ -42,13 +55,13 @@ export function useStitchSession() {
             })
 
             let status = await pollSession(session_id)
-            while (status.status === 'pending' || status.status === 'running') {
+            while (status.status === JOB_STATUS.PENDING || status.status === JOB_STATUS.RUNNING) {
                 await new Promise<void>((res) => setTimeout(res, POLL_INTERVAL_MS))
                 status = await pollSession(session_id)
             }
             setSessionStatus(status)
 
-            if (status.status === 'error') {
+            if (status.status === JOB_STATUS.ERROR) {
                 throw new Error(status.error ?? 'Session failed')
             }
 

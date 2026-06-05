@@ -16,7 +16,19 @@ import { useFilterJob } from './useFilterJob'
 import type { FilterPhase } from './useFilterJob'
 import { useFilterParams } from './useFilterParams'
 import type { FilterTypeOrNone } from './useFilterParams'
-import { labelSx } from './ControlsPanel.styles'
+import { labelSx, controlFontSx } from './ControlsPanel.styles'
+
+const FILTER_KEYS = new Set<string>([
+    'none',
+    'gaussian',
+    'median',
+    'lee',
+    'bm3d',
+    'normalize',
+    'anisotropy',
+])
+const isFilterType = (v: unknown): v is FilterTypeOrNone =>
+    typeof v === 'string' && FILTER_KEYS.has(v)
 
 const FILTER_LABELS: Record<FilterTypeOrNone, string> = {
     none: 'None',
@@ -49,26 +61,21 @@ export function PreprocessingSection() {
         fileKey,
         activeEntry?.sourceFile,
         activeEntry?.backendVolumeId,
+        activeEntry?.registeredVolumeId,
     )
     const {
-        filterType,
-        setFilterType,
-        gaussianSigma,
-        setGaussianSigma,
-        medianRadius,
-        setMedianRadius,
-        leeWindow,
-        setLeeWindow,
-        bm3dSigma,
-        setBm3dSigma,
-        normalizeLow,
-        setNormalizeLow,
-        normalizeHigh,
-        setNormalizeHigh,
+        type: filterType,
+        setType: setFilterType,
+        params,
+        updateParam,
         buildFilterStep,
     } = useFilterParams()
 
-    if (!activeEntry || (!activeEntry.sourceFile && !activeEntry.backendVolumeId)) return null
+    if (
+        !activeEntry ||
+        (!activeEntry.sourceFile && !activeEntry.backendVolumeId && !activeEntry.registeredVolumeId)
+    )
+        return null
 
     const handleApply = () => (filterType === 'none' ? revert() : run(buildFilterStep()))
 
@@ -79,16 +86,19 @@ export function PreprocessingSection() {
             </Typography>
 
             <FormControl size="small" fullWidth>
-                <InputLabel sx={{ fontSize: '0.7rem' }}>Filter</InputLabel>
+                <InputLabel sx={controlFontSx}>Filter</InputLabel>
                 <Select
                     value={filterType}
                     label="Filter"
-                    onChange={(e) => setFilterType(e.target.value as FilterTypeOrNone)}
+                    onChange={(e) => {
+                        const v = e.target.value
+                        if (isFilterType(v)) setFilterType(v)
+                    }}
                     disabled={isBusy}
-                    sx={{ fontSize: '0.7rem' }}
+                    sx={controlFontSx}
                 >
                     {(Object.keys(FILTER_LABELS) as FilterTypeOrNone[]).map((k) => (
-                        <MenuItem key={k} value={k} sx={{ fontSize: '0.7rem' }}>
+                        <MenuItem key={k} value={k} sx={controlFontSx}>
                             {FILTER_LABELS[k]}
                         </MenuItem>
                     ))}
@@ -98,48 +108,48 @@ export function PreprocessingSection() {
             {filterType === 'gaussian' && (
                 <SliderRow
                     label="Sigma"
-                    value={gaussianSigma}
+                    value={params.gaussianSigma}
                     {...RENDER_CONTROL_LIMITS.filterGaussianSigma}
-                    onChange={setGaussianSigma}
+                    onChange={(v) => updateParam('gaussianSigma', v)}
                 />
             )}
             {filterType === 'median' && (
                 <SliderRow
                     label="Radius"
-                    value={medianRadius}
+                    value={params.medianRadius}
                     {...RENDER_CONTROL_LIMITS.filterMedianRadius}
-                    onChange={setMedianRadius}
+                    onChange={(v) => updateParam('medianRadius', v)}
                 />
             )}
             {filterType === 'lee' && (
                 <SliderRow
                     label="Window size"
-                    value={leeWindow}
+                    value={params.leeWindow}
                     {...RENDER_CONTROL_LIMITS.filterLeeWindow}
-                    onChange={setLeeWindow}
+                    onChange={(v) => updateParam('leeWindow', v)}
                 />
             )}
             {filterType === 'bm3d' && (
                 <SliderRow
                     label="Sigma PSD"
-                    value={bm3dSigma}
+                    value={params.bm3dSigma}
                     {...RENDER_CONTROL_LIMITS.filterBm3dSigma}
-                    onChange={setBm3dSigma}
+                    onChange={(v) => updateParam('bm3dSigma', v)}
                 />
             )}
             {filterType === 'normalize' && (
                 <>
                     <SliderRow
                         label="Low percentile"
-                        value={normalizeLow}
+                        value={params.normalizeLow}
                         {...RENDER_CONTROL_LIMITS.filterNormalizeLow}
-                        onChange={setNormalizeLow}
+                        onChange={(v) => updateParam('normalizeLow', v)}
                     />
                     <SliderRow
                         label="High percentile"
-                        value={normalizeHigh}
+                        value={params.normalizeHigh}
                         {...RENDER_CONTROL_LIMITS.filterNormalizeHigh}
-                        onChange={setNormalizeHigh}
+                        onChange={(v) => updateParam('normalizeHigh', v)}
                     />
                 </>
             )}

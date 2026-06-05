@@ -66,7 +66,7 @@ export async function loadH5File(
 }
 
 /** Reply shape posted back by h5.worker — discriminated on `ok`. */
-type WorkerResponse = { ok: true; result: H5VolumeData } | { ok: false; error: string }
+export type WorkerResponse = { ok: true; result: H5VolumeData } | { ok: false; error: string }
 
 export function loadH5FileInWorker(
     file: File,

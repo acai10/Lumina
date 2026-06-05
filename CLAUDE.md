@@ -11,6 +11,20 @@ docker compose up --build   # start backend + frontend
 docker compose down         # stop services
 ```
 
+#### Loading local source volumes by path (no upload)
+
+To make on-disk `.h5` files selectable via **Load H5 → From server…** (registered by
+path, zero-copy, no ~128 MB upload), point the backend at the host directory holding them:
+
+```bash
+LUMINA_DATA_DIR=/abs/path/to/h5 docker compose up --build
+# or persist it in a .env file next to docker-compose.yml: LUMINA_DATA_DIR=/abs/path/to/h5
+```
+
+The directory is bind-mounted read-only at `/data` (`DATA_DIR=/data`), so originals are
+never modified. Running the backend directly (without Docker) needs only `DATA_DIR=…`, no
+mount. The classic upload path works regardless.
+
 ### Direct development
 
 ```bash

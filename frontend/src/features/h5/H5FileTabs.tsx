@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { memo, useCallback, useRef } from 'react'
 import type React from 'react'
 import { IconButton, Stack, Tab } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
@@ -6,6 +6,31 @@ import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import { cleanupUploads } from '../../shared/api'
 import { H5Tabs, closeIconButtonSx, dragTabSx, stlTabSx } from './H5FileTabs.styles'
+
+interface TabLabelProps {
+    name: string
+    index: number
+    onClose: (i: number) => void
+}
+
+const TabLabel = memo(function TabLabel({ name, index, onClose }: TabLabelProps) {
+    const handleClose = useCallback(
+        (e: React.MouseEvent) => {
+            e.stopPropagation()
+            onClose(index)
+            cleanupUploads().catch(() => {})
+        },
+        [index, onClose],
+    )
+    return (
+        <Stack direction="row" alignItems="center" spacing={0.5}>
+            {name}
+            <IconButton size="small" component="span" onClick={handleClose} sx={closeIconButtonSx}>
+                <CloseIcon sx={{ fontSize: '0.7rem' }} />
+            </IconButton>
+        </Stack>
+    )
+})
 
 export default function H5FileTabs() {
     const { tabs, activeTabIndex, selectTab, closeTab, reorderTab } = useViewerStore(
@@ -23,10 +48,14 @@ export default function H5FileTabs() {
     // drag-and-drop index always matches the MUI position index exactly.
     const dragIndexRef = useRef(-1)
 
+    const handleClose = useCallback((i: number) => closeTab(i), [closeTab])
+
     return (
         <H5Tabs
             value={activeTabIndex}
-            onChange={(_, v) => selectTab(v as number)}
+            onChange={(_, v) => {
+                if (typeof v === 'number') selectTab(v)
+            }}
             variant="scrollable"
             scrollButtons="auto"
         >
@@ -44,23 +73,7 @@ export default function H5FileTabs() {
                         dragIndexRef.current = -1
                     }}
                     sx={t.type === 'stl' ? stlTabSx : dragTabSx}
-                    label={
-                        <Stack direction="row" alignItems="center" spacing={0.5}>
-                            {t.name}
-                            <IconButton
-                                size="small"
-                                component="span"
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    closeTab(i)
-                                    cleanupUploads().catch(() => {})
-                                }}
-                                sx={closeIconButtonSx}
-                            >
-                                <CloseIcon sx={{ fontSize: '0.7rem' }} />
-                            </IconButton>
-                        </Stack>
-                    }
+                    label={<TabLabel name={t.name} index={i} onClose={handleClose} />}
                 />
             ))}
         </H5Tabs>

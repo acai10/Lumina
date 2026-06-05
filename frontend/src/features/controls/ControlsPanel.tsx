@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from 'react'
 import Divider from '@mui/material/Divider'
 import IconButton from '@mui/material/IconButton'
 import MenuItem from '@mui/material/MenuItem'
@@ -14,7 +15,7 @@ import {
     defaultRenderControls,
     DEFAULT_STL_OPACITY,
 } from '../../app/store/viewerSlice'
-import { panelSx, resetButtonSx, labelSx } from './ControlsPanel.styles'
+import { panelSx, resetButtonSx, labelSx, controlFontSx } from './ControlsPanel.styles'
 import { RENDER_CONTROL_LIMITS, getRenderControlLimits } from './renderControlLimits'
 import { PreprocessingSection } from './PreprocessingSection'
 import { SliderRow, RangeSliderRow } from './SliderRow'
@@ -62,9 +63,15 @@ export default function ControlsPanel() {
     const limits = getRenderControlLimits(activeH5?.meta)
     const hasSliceView = !!activeH5?.hasSlices
 
-    const stlTabs = tabs.flatMap((t, i) => (t.type === 'stl' ? [{ tab: t, index: i }] : []))
+    const stlTabs = useMemo(
+        () => tabs.flatMap((t, i) => (t.type === 'stl' ? [{ tab: t, index: i }] : [])),
+        [tabs],
+    )
 
-    const updateControls = (patch: Partial<H5RenderControls>) => updateActiveRenderState(patch)
+    const updateControls = useCallback(
+        (patch: Partial<H5RenderControls>) => updateActiveRenderState(patch),
+        [updateActiveRenderState],
+    )
 
     if (tabs.length === 0) return null
 
@@ -155,19 +162,16 @@ export default function ControlsPanel() {
                                             const v = Number(e.target.value)
                                             setStlOverlayIndex(v === NO_OVERLAY_SENTINEL ? null : v)
                                         }}
-                                        sx={{ fontSize: '0.7rem' }}
+                                        sx={controlFontSx}
                                     >
-                                        <MenuItem
-                                            value={NO_OVERLAY_SENTINEL}
-                                            sx={{ fontSize: '0.7rem' }}
-                                        >
+                                        <MenuItem value={NO_OVERLAY_SENTINEL} sx={controlFontSx}>
                                             None
                                         </MenuItem>
                                         {stlTabs.map(({ tab, index }) => (
                                             <MenuItem
                                                 key={tab.name}
                                                 value={index}
-                                                sx={{ fontSize: '0.7rem' }}
+                                                sx={controlFontSx}
                                             >
                                                 {tab.name}
                                             </MenuItem>

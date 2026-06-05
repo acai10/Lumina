@@ -1,4 +1,6 @@
+import { useCallback } from 'react'
 import { Box } from '@mui/material'
+import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5Meta } from '../../shared/types/viewer.types'
 import { SlicePanel } from './SlicePanel'
@@ -10,20 +12,31 @@ interface H5SliceViewerProps {
 }
 
 export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5SliceViewerProps) {
-    const sliceZ = useViewerStore(
-        (s) => s.h5PerFileStates[fileKey]?.sliceIndex ?? Math.floor(meta.nSlices / 2),
+    const { sliceZ, sliceY, sliceX, setH5SliceIndex, setH5SliceY, setH5SliceX } = useViewerStore(
+        useShallow((s) => ({
+            sliceZ: s.h5PerFileStates[fileKey]?.sliceIndex ?? Math.floor(meta.nSlices / 2),
+            sliceY: s.h5PerFileStates[fileKey]?.sliceY ?? Math.floor(meta.height / 2),
+            sliceX: s.h5PerFileStates[fileKey]?.sliceX ?? Math.floor(meta.width / 2),
+            setH5SliceIndex: s.setH5SliceIndex,
+            setH5SliceY: s.setH5SliceY,
+            setH5SliceX: s.setH5SliceX,
+        })),
     )
-    const sliceY = useViewerStore(
-        (s) => s.h5PerFileStates[fileKey]?.sliceY ?? Math.floor(meta.height / 2),
-    )
-    const sliceX = useViewerStore(
-        (s) => s.h5PerFileStates[fileKey]?.sliceX ?? Math.floor(meta.width / 2),
-    )
-    const setH5SliceIndex = useViewerStore((s) => s.setH5SliceIndex)
-    const setH5SliceY = useViewerStore((s) => s.setH5SliceY)
-    const setH5SliceX = useViewerStore((s) => s.setH5SliceX)
 
-    const common = { normalizedVolume, meta, fileKey }
+    // Stable per-axis callbacks so the memoized SlicePanels don't re-render (and
+    // re-run their ~500k-pixel repaint) when a sibling panel's slider fires.
+    const onSliceChangeZ = useCallback(
+        (v: number) => setH5SliceIndex(fileKey, v),
+        [setH5SliceIndex, fileKey],
+    )
+    const onSliceChangeY = useCallback(
+        (v: number) => setH5SliceY(fileKey, v),
+        [setH5SliceY, fileKey],
+    )
+    const onSliceChangeX = useCallback(
+        (v: number) => setH5SliceX(fileKey, v),
+        [setH5SliceX, fileKey],
+    )
 
     return (
         <Box
@@ -42,31 +55,37 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
         >
             {/* axis="z" navigates s → maps to Y-axis in 3D space */}
             <SlicePanel
-                {...common}
+                normalizedVolume={normalizedVolume}
+                meta={meta}
+                fileKey={fileKey}
                 axis="z"
                 sliceIndex={sliceZ}
                 label="Y"
                 orient="ccw90"
-                onSliceChange={(v) => setH5SliceIndex(fileKey, v)}
+                onSliceChange={onSliceChangeZ}
             />
             {/* axis="y" navigates h → maps to Z-axis in 3D space */}
             <SlicePanel
-                {...common}
+                normalizedVolume={normalizedVolume}
+                meta={meta}
+                fileKey={fileKey}
                 axis="y"
                 sliceIndex={sliceY}
                 label="Z"
                 orient="flip180"
-                onSliceChange={(v) => setH5SliceY(fileKey, v)}
+                onSliceChange={onSliceChangeY}
             />
             {/* axis="x" navigates w → X-axis */}
             <Box sx={{ gridColumn: '1 / -1', overflow: 'hidden', height: '100%' }}>
                 <SlicePanel
-                    {...common}
+                    normalizedVolume={normalizedVolume}
+                    meta={meta}
+                    fileKey={fileKey}
                     axis="x"
                     sliceIndex={sliceX}
                     label="X"
                     orient="ccw90"
-                    onSliceChange={(v) => setH5SliceX(fileKey, v)}
+                    onSliceChange={onSliceChangeX}
                 />
             </Box>
         </Box>
