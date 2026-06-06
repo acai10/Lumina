@@ -76,7 +76,7 @@ export default function MipViewer({ data, shape, title = 'MIP — Top View' }: P
                 style={{
                     width: displayW,
                     height: displayH,
-                    border: `1px solid ${palette.cyanBorder}`,
+                    border: `1px solid ${palette.borderGlass}`,
                     display: 'block',
                     imageRendering: 'pixelated',
                 }}
@@ -93,7 +93,7 @@ export default function MipViewer({ data, shape, title = 'MIP — Top View' }: P
                         step={0.05}
                         value={brightness}
                         onChange={(_, v) => setBrightness(typeof v === 'number' ? v : v[0])}
-                        sx={{ color: palette.cyan }}
+                        sx={{ color: palette.primary }}
                     />
                 </Stack>
                 <Stack direction="row" alignItems="center" spacing={1}>
@@ -107,7 +107,7 @@ export default function MipViewer({ data, shape, title = 'MIP — Top View' }: P
                         step={0.05}
                         value={contrast}
                         onChange={(_, v) => setContrast(typeof v === 'number' ? v : v[0])}
-                        sx={{ color: palette.cyan }}
+                        sx={{ color: palette.primary }}
                     />
                 </Stack>
             </Stack>

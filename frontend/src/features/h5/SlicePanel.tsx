@@ -131,7 +131,20 @@ export const SlicePanel = memo(function SlicePanel({
         })
 
         return () => cancelAnimationFrame(rafId)
-    }, [normalizedVolume, axis, orient, sliceIndex, lut, height, width, meta.nSlices, origW, origH, canvasW, canvasH])
+    }, [
+        normalizedVolume,
+        axis,
+        orient,
+        sliceIndex,
+        lut,
+        height,
+        width,
+        meta.nSlices,
+        origW,
+        origH,
+        canvasW,
+        canvasH,
+    ])
 
     const applyTransform = useCallback(() => {
         if (!canvasRef.current) return
@@ -199,7 +212,7 @@ export const SlicePanel = memo(function SlicePanel({
                 position: 'relative',
                 cursor: cursorStyle,
                 userSelect: 'none',
-                border: `1px solid ${palette.hairlineFaint}`,
+                border: `1px solid ${palette.sceneHairline}`,
                 borderRadius: 1,
                 display: 'flex',
                 flexDirection: 'column',
@@ -222,7 +235,7 @@ export const SlicePanel = memo(function SlicePanel({
                     px: 0.5,
                     background: palette.overlayScrim,
                     borderRadius: 0.5,
-                    color: 'text.secondary',
+                    color: palette.sceneTextMuted,
                     pointerEvents: 'none',
                 }}
             >
@@ -262,7 +275,7 @@ export const SlicePanel = memo(function SlicePanel({
                     backdropFilter: 'blur(6px)',
                     px: 1.5,
                     py: 0.75,
-                    borderTop: `1px solid ${palette.hairlineDim}`,
+                    borderTop: `1px solid ${palette.sceneHairlineDim}`,
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
                 onWheel={(e) => e.stopPropagation()}

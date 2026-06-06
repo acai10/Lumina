@@ -4,18 +4,19 @@ import { palette } from '../../shared/theme/palette'
 
 export const H5Tabs = styled(Tabs)({
     flexShrink: 0,
-    background: palette.toolbarBg,
-    borderBottom: `1px solid ${palette.toolbarBorder}`,
+    background: palette.surfaceGlass,
+    backdropFilter: 'blur(12px)',
+    borderBottom: `1px solid ${palette.borderGlass}`,
     minHeight: 36,
     '& .MuiTab-root': {
         minHeight: 36,
         fontSize: '0.75rem',
         color: palette.textMuted,
         textTransform: 'none',
-        letterSpacing: '0.03em',
+        letterSpacing: '0.02em',
     },
-    '& .MuiTab-root.Mui-selected': { color: palette.tealLabel },
-    '& .MuiTabs-indicator': { backgroundColor: palette.tealBorder },
+    '& .MuiTab-root.Mui-selected': { color: palette.primaryDeep },
+    '& .MuiTabs-indicator': { backgroundColor: palette.primary },
 })
 
 export const closeIconButtonSx = {
@@ -28,9 +29,9 @@ export const closeIconButtonSx = {
 
 export const dragTabSx = { cursor: 'grab' }
 
-// STL tabs are tinted cyan to distinguish them from H5 tabs; selected state brightens.
+// STL tabs are tinted teal to distinguish them from H5 tabs; selected state deepens.
 export const stlTabSx = {
     cursor: 'grab',
-    color: palette.cyanTabIdle,
-    '&.Mui-selected': { color: palette.cyanTabSelected },
+    color: palette.secondary,
+    '&.Mui-selected': { color: palette.secondary, fontWeight: 600 },
 }

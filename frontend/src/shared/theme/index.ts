@@ -1,2 +1,3 @@
 export { palette } from './palette'
-export { darkTheme } from './theme'
+export { medicalTheme } from './theme'
+export * from './layout'

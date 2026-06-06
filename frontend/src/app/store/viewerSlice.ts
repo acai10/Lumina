@@ -72,8 +72,10 @@ interface ViewerState {
     notification: AppNotification | null
     stlOpacity: number
     stitchPanelOpen: boolean
+    controlsPanelOpen: boolean
     // Actions — unified tab management
     toggleStitchPanel: () => void
+    toggleControlsPanel: () => void
     loadH5: (entries: H5FileEntry[]) => Promise<void>
     /** Restore an evicted tab's buffers from IndexedDB; no-op if already resident. */
     ensureHydrated: (fileKey: string) => Promise<void>
@@ -119,6 +121,7 @@ const initialState = {
     notification: null,
     stlOpacity: DEFAULT_STL_OPACITY,
     stitchPanelOpen: false,
+    controlsPanelOpen: true,
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => {
@@ -176,6 +179,7 @@ export const useViewerStore = create<ViewerState>((set, get) => {
         ...initialState,
 
         toggleStitchPanel: () => set((s) => ({ stitchPanelOpen: !s.stitchPanelOpen })),
+        toggleControlsPanel: () => set((s) => ({ controlsPanelOpen: !s.controlsPanelOpen })),
 
         loadH5: async (entries) => {
             const { tabs, h5PerFileStates, hydrationOrder } = get()

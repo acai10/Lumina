@@ -14,8 +14,8 @@ export const gridTextFieldSx = {
     },
 }
 
-/** Teal outline used by the "Add Files / Folder / Server" buttons. */
-export const tealOutlineButtonSx = { borderColor: palette.tealBorder, color: palette.tealLabel }
+/** Accent outline used by the "Add Files / Folder / Server" buttons. */
+export const tealOutlineButtonSx = { borderColor: palette.borderGlass, color: palette.secondary }
 
 /** Small muted caption above an input group (volume list, method selector). */
 export const subLabelSx = { color: palette.textMuted, mb: 0.5, display: 'block' }

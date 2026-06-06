@@ -1,5 +1,5 @@
 import { Slider, Stack, Typography } from '@mui/material'
-import { sliderSx, labelSx, inputStyle, sliderStackSx, separatorSx } from './ControlsPanel.styles'
+import { sliderSx, labelSx, NumberInput, sliderStackSx, separatorSx } from './ControlsPanel.styles'
 import { useNumberInput } from './useNumberInput'
 
 interface SliderRowProps {
@@ -18,7 +18,7 @@ export function SliderRow({ label, value, min, max, step, onChange }: SliderRowP
         <Stack spacing={2.5} sx={sliderStackSx}>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Typography sx={labelSx}>{label}</Typography>
-                <input
+                <NumberInput
                     type="number"
                     value={inputVal}
                     min={min}
@@ -29,7 +29,6 @@ export function SliderRow({ label, value, min, max, step, onChange }: SliderRowP
                     onKeyDown={(e) => {
                         if (e.key === 'Enter') e.currentTarget.blur()
                     }}
-                    style={inputStyle}
                 />
             </Stack>
             <Slider
@@ -63,7 +62,7 @@ export function RangeSliderRow({ label, value, min, max, step, onChange }: Range
             <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Typography sx={labelSx}>{label}</Typography>
                 <Stack direction="row" spacing={0.5} alignItems="center">
-                    <input
+                    <NumberInput
                         type="number"
                         value={minInput.inputVal}
                         min={min}
@@ -74,10 +73,9 @@ export function RangeSliderRow({ label, value, min, max, step, onChange }: Range
                         onKeyDown={(e) => {
                             if (e.key === 'Enter') e.currentTarget.blur()
                         }}
-                        style={inputStyle}
                     />
                     <Typography sx={separatorSx}>–</Typography>
-                    <input
+                    <NumberInput
                         type="number"
                         value={maxInput.inputVal}
                         min={min}
@@ -88,7 +86,6 @@ export function RangeSliderRow({ label, value, min, max, step, onChange }: Range
                         onKeyDown={(e) => {
                             if (e.key === 'Enter') e.currentTarget.blur()
                         }}
-                        style={inputStyle}
                     />
                 </Stack>
             </Stack>
