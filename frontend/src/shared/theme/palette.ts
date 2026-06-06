@@ -1,65 +1,83 @@
 export const palette = {
-    // Base backgrounds
-    bgDeep: '#0a0f1e', // main canvas / toolbar base
-    bgPaper: '#0d1320', // MUI paper surfaces
-    bgDeepHex: 0x0a0f1e as const, // Three.js integer form — used by renderer.setClearColor
+    // ===================================================================
+    // SCENE — the viewer canvases (3D point-cloud, 2D slices, STL).
+    // Kept dark/black so rendered models read at maximum contrast.
+    // These tokens must stay dark regardless of the light UI chrome.
+    // ===================================================================
+    sceneBg: '#000000', // central viewer-pane background (CSS form)
+    sceneBgHex: 0x000000 as const, // Three.js renderer.setClearColor form (black)
 
-    // Primary cyan — buttons, slider, accents
-    cyan: '#64c8ff', // full opacity
-    cyanBorder: 'rgba(100,200,255,0.4)',
-    cyanGlow: 'rgba(100,200,255,0.3)',
-    cyanLabel: '#a0d8ff', // STL button label (lighter cyan)
-    cyanTabIdle: 'rgba(100,200,255,0.6)', // STL tab label, unselected
-    cyanTabSelected: 'rgba(100,200,255,0.9)', // STL tab label, selected
+    // Text that sits ON the dark scene (axis chips, slice control bars) — light.
+    sceneText: 'rgba(236,243,252,0.92)',
+    sceneTextMuted: 'rgba(236,243,252,0.6)',
 
-    // Secondary teal — H5 button
-    tealBorder: 'rgba(100,255,200,0.4)',
-    tealLabel: '#a0ffdc',
+    // Accent for sliders/controls overlaid on the dark scene (pops on black).
+    sceneAccent: 'rgba(120,200,255,0.9)',
 
-    // Stitch (purple) action button
-    stitchBorder: 'rgba(200,150,255,0.4)',
-    stitchLabel: 'rgba(220,180,255,0.85)',
-    stitchGlow: 'rgba(180,100,255,0.3)',
-
-    // Text — light blue-white at various opacities
-    textPrimary: 'rgba(200,220,255,0.7)',
-    textSecondary: 'rgba(200,220,255,0.55)',
-    textMuted: 'rgba(200,220,255,0.4)',
-    textDim: 'rgba(200,220,255,0.5)',
-
-    // Error
-    errorText: 'rgba(255,120,120,0.85)',
-
-    // Clear / destructive action
-    clearBorder: 'rgba(255,100,100,0.35)',
-    clearLabel: 'rgba(255,160,160,0.75)',
-    clearGlow: 'rgba(255,80,80,0.2)',
-
-    // Surfaces with blur
-    toolbarBg: 'rgba(10,15,30,0.92)',
-    toolbarBorder: 'rgba(100,200,255,0.1)',
-    panelBg: 'rgba(10,15,30,0.75)',
-
-    // Neutral overlays / hairlines (slice-panel scrims, scrollbar)
-    scrollbarThumb: 'rgba(255,255,255,0.15)',
+    // Scene scrims / hairlines (dark glass overlays inside the black pane).
     overlayScrim: 'rgba(0,0,0,0.55)', // axis-label chip background
-    controlsScrim: 'rgba(0,0,0,0.6)', // slice-panel controls bar
-    hairlineFaint: 'rgba(255,255,255,0.08)', // panel border
-    hairlineDim: 'rgba(255,255,255,0.06)', // controls bar top border
+    controlsScrim: 'rgba(8,14,24,0.72)', // slice-panel control bar
+    sceneHairline: 'rgba(255,255,255,0.12)', // slice-panel border
+    sceneHairlineDim: 'rgba(255,255,255,0.08)', // control-bar top border
 
-    // Three.js mesh colors
+    // Three.js mesh colors (tuned for the dark scene — unchanged).
     meshColorHex: 0x4477bb as const,
     edgeColorHex: 0x88ccff as const,
-    tealBorderHex: 0x64ffc8 as const, // Three.js integer form of teal — used for bounding box helpers
+    tealBorderHex: 0x64ffc8 as const, // bounding-box helper
 
-    // Three.js STL lighting colors
+    // Three.js STL lighting colors.
     hemiSkyHex: 0x4466cc as const,
     hemiGroundHex: 0x001122 as const,
     fillLightHex: 0xaaccff as const,
     rimLightHex: 0xffc080 as const,
 
-    // Axis helper colors
+    // Axis helper colors.
     axisX: '#ff4444',
     axisY: '#44ff88',
     axisZ: '#4488ff',
+
+    // ===================================================================
+    // UI — light "medical / Vista Aero glass" application chrome.
+    // Frosted translucent surfaces, soft blue gradients, clinical-blue accent.
+    // ===================================================================
+
+    // App shell background — soft Aero blue-grey gradient.
+    bgApp: '#e9f0fa',
+    bgAppGradient: 'linear-gradient(160deg, #eef4fc 0%, #dce7f5 100%)',
+
+    // Surfaces.
+    surfaceGlass: 'rgba(248,251,255,0.72)', // frosted panels/toolbar/menus (+ backdrop blur)
+    surfaceGlassStrong: 'rgba(250,252,255,0.85)', // less-translucent variant (dialogs)
+    surfaceSolid: '#f4f8fd', // opaque cards / table rows (MUI paper)
+    surfaceSubtle: 'rgba(43,125,233,0.07)', // hover / selected tint
+
+    // Borders & gloss.
+    borderGlass: 'rgba(120,160,210,0.40)', // soft blue hairline
+    borderStrong: 'rgba(90,130,180,0.55)', // emphasized border
+    glassHighlight: 'rgba(255,255,255,0.65)', // inset top-edge Aero bevel
+    glassShadow: '0 6px 20px rgba(40,70,120,0.18)', // panel drop shadow
+
+    // Clinical-blue accent (primary action color).
+    primary: '#2b7de9',
+    primaryDeep: '#1565c0',
+    primaryGradient: 'linear-gradient(180deg, #4a93f0 0%, #2b7de9 100%)',
+    primaryGradientHover: 'linear-gradient(180deg, #5aa0f5 0%, #3a8af0 100%)',
+    primarySoft: 'rgba(43,125,233,0.12)', // tinted backgrounds / focus ring base
+    focusRing: 'rgba(43,125,233,0.55)', // keyboard :focus-visible outline
+
+    // Teal secondary accent (H5-specific controls), darkened to read on white.
+    secondary: '#0097a7',
+    secondarySoft: 'rgba(0,151,167,0.12)',
+
+    // Destructive / error.
+    danger: '#d32f2f',
+    dangerSoft: 'rgba(211,47,47,0.10)',
+
+    // Text on light surfaces (all ≥ 4.5:1 on bgApp).
+    textPrimary: 'rgba(18,32,54,0.92)',
+    textSecondary: 'rgba(18,32,54,0.70)',
+    textMuted: 'rgba(18,32,54,0.55)',
+
+    // Light scrollbar thumb for the app chrome.
+    scrollbarThumb: 'rgba(90,130,180,0.45)',
 } as const

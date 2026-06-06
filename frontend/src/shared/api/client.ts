@@ -13,6 +13,8 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 const CONTENT_TYPE_JSON = 'application/json'
 const HEADER_X_SHAPE = 'X-Shape'
 const HEADER_X_VCOUNT = 'X-VCount'
+// Byte width of one Float32 — used to compute the offsets of the packed views below.
+const BYTES_PER_FLOAT32 = 4
 
 /**
  * Parse a JSON response body as `T`. This is the single place where unvalidated
@@ -125,8 +127,8 @@ async function parseNormalizedVolume(res: Response): Promise<H5VolumeData> {
     const buf = await res.arrayBuffer()
     // Three views into the same buffer — zero copy.
     const vIndices = new Float32Array(buf, 0, vCount)
-    const vIntensities = new Float32Array(buf, vCount * 4, vCount)
-    const normalizedVolume = new Uint8Array(buf, vCount * 8, total)
+    const vIntensities = new Float32Array(buf, vCount * BYTES_PER_FLOAT32, vCount)
+    const normalizedVolume = new Uint8Array(buf, vCount * BYTES_PER_FLOAT32 * 2, total)
     return { nSlices, height, width, vIndices, vIntensities, normalizedVolume }
 }
 

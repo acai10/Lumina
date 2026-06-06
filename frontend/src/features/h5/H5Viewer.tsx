@@ -21,6 +21,14 @@ const STL_OVERLAY_AMBIENT_INTENSITY = 0.6
 const STL_OVERLAY_DIR_INTENSITY = 1.2
 const STL_OVERLAY_DIR_POSITION: [number, number, number] = [1, 2, 3]
 
+// Scene framing, expressed as multiples of the volume's largest dimension (maxDim).
+const AXES_HELPER_SCALE = 0.7
+const AXIS_LABEL_LENGTH_SCALE = 0.78
+const AXIS_LABEL_SIZE_SCALE = 0.09
+const CAMERA_START_OFFSET: [number, number, number] = [0.5, 1.5, 1.2]
+const CAMERA_NEAR_FACTOR = 0.001
+const CAMERA_FAR_FACTOR = 100
+
 interface H5ViewerProps {
     vIndices: Float32Array
     vIntensities: Float32Array
@@ -69,11 +77,11 @@ export default function H5Viewer({
             defaultRenderControls
         const maxDim = Math.max(width, height, initialRc.volumeSpacing)
 
-        const axes = new THREE.AxesHelper(maxDim * 0.7)
+        const axes = new THREE.AxesHelper(maxDim * AXES_HELPER_SCALE)
         scene.add(axes)
 
-        const axisLen = maxDim * 0.78
-        const labelScale = maxDim * 0.09
+        const axisLen = maxDim * AXIS_LABEL_LENGTH_SCALE
+        const labelScale = maxDim * AXIS_LABEL_SIZE_SCALE
         const axisLabels = createAxisLabels(scene, axisLen, labelScale)
 
         const material = new THREE.ShaderMaterial({
@@ -135,11 +143,15 @@ export default function H5Viewer({
             camera.quaternion.fromArray(saved.cameraQuaternion)
             controls.target.fromArray(saved.controlsTarget)
         } else {
-            camera.position.set(maxDim * 0.5, maxDim * 1.5, maxDim * 1.2)
+            camera.position.set(
+                maxDim * CAMERA_START_OFFSET[0],
+                maxDim * CAMERA_START_OFFSET[1],
+                maxDim * CAMERA_START_OFFSET[2],
+            )
             camera.lookAt(0, 0, 0)
         }
-        camera.near = maxDim * 0.001
-        camera.far = maxDim * 100
+        camera.near = maxDim * CAMERA_NEAR_FACTOR
+        camera.far = maxDim * CAMERA_FAR_FACTOR
         camera.updateProjectionMatrix()
         controls.update()
 

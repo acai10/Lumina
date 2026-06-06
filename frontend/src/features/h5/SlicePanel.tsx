@@ -21,11 +21,14 @@ export interface SlicePanelProps {
 const UINT8_MAX = 255
 // Tone-map LUT covers every possible Uint8 input value.
 const LUT_SIZE = 256
+// Midpoint the S-curve pivots around; each half [0..pivot]/[pivot..1] is normalised
+// to [0..1] via `/ TONE_MAP_PIVOT` (= ×2) before the contrast power is applied.
+const TONE_MAP_PIVOT = 0.5
 
 function applyToneMap(value: number, brightness: number, contrast: number): number {
     let c = Math.min(value * brightness, 1.0)
-    if (c < 0.5) c = 0.5 * Math.pow(2.0 * c, contrast)
-    else c = 1.0 - 0.5 * Math.pow(2.0 * (1.0 - c), contrast)
+    if (c < TONE_MAP_PIVOT) c = TONE_MAP_PIVOT * Math.pow(c / TONE_MAP_PIVOT, contrast)
+    else c = 1.0 - TONE_MAP_PIVOT * Math.pow((1.0 - c) / TONE_MAP_PIVOT, contrast)
     return Math.round(c * UINT8_MAX)
 }
 
@@ -93,6 +96,8 @@ export const SlicePanel = memo(function SlicePanel({
             const imageData = ctx.createImageData(canvasW, canvasH)
             const pixels = imageData.data
 
+            // Voxels per slice — loop-invariant, hoisted out of the per-pixel hot loop.
+            const sliceStride = height * width
             for (let ny = 0; ny < canvasH; ny++) {
                 for (let nx = 0; nx < canvasW; nx++) {
                     let ox: number, oy: number
@@ -112,11 +117,11 @@ export const SlicePanel = memo(function SlicePanel({
 
                     let volIdx: number
                     if (axis === 'z') {
-                        volIdx = sliceIndex * height * width + oy * width + ox
+                        volIdx = sliceIndex * sliceStride + oy * width + ox
                     } else if (axis === 'y') {
-                        volIdx = oy * height * width + sliceIndex * width + ox
+                        volIdx = oy * sliceStride + sliceIndex * width + ox
                     } else {
-                        volIdx = ox * height * width + oy * width + sliceIndex
+                        volIdx = ox * sliceStride + oy * width + sliceIndex
                     }
 
                     const byte = lut[normalizedVolume[volIdx]]
@@ -131,7 +136,20 @@ export const SlicePanel = memo(function SlicePanel({
         })
 
         return () => cancelAnimationFrame(rafId)
-    }, [normalizedVolume, axis, orient, sliceIndex, lut, height, width, meta.nSlices, origW, origH, canvasW, canvasH])
+    }, [
+        normalizedVolume,
+        axis,
+        orient,
+        sliceIndex,
+        lut,
+        height,
+        width,
+        meta.nSlices,
+        origW,
+        origH,
+        canvasW,
+        canvasH,
+    ])
 
     const applyTransform = useCallback(() => {
         if (!canvasRef.current) return
@@ -199,7 +217,7 @@ export const SlicePanel = memo(function SlicePanel({
                 position: 'relative',
                 cursor: cursorStyle,
                 userSelect: 'none',
-                border: `1px solid ${palette.hairlineFaint}`,
+                border: `1px solid ${palette.sceneHairline}`,
                 borderRadius: 1,
                 display: 'flex',
                 flexDirection: 'column',
@@ -222,7 +240,7 @@ export const SlicePanel = memo(function SlicePanel({
                     px: 0.5,
                     background: palette.overlayScrim,
                     borderRadius: 0.5,
-                    color: 'text.secondary',
+                    color: palette.sceneTextMuted,
                     pointerEvents: 'none',
                 }}
             >
@@ -262,7 +280,7 @@ export const SlicePanel = memo(function SlicePanel({
                     backdropFilter: 'blur(6px)',
                     px: 1.5,
                     py: 0.75,
-                    borderTop: `1px solid ${palette.hairlineDim}`,
+                    borderTop: `1px solid ${palette.sceneHairlineDim}`,
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
                 onWheel={(e) => e.stopPropagation()}

@@ -1,4 +1,5 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import type { DragEvent } from 'react'
 import { Box, CircularProgress, Stack } from '@mui/material'
 import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from './app/store/viewerSlice'
@@ -7,9 +8,11 @@ import H5Viewer from './features/h5/H5Viewer'
 import H5SliceViewer from './features/h5/H5SliceViewer'
 import H5FileTabs from './features/h5/H5FileTabs'
 import Toolbar from './features/toolbar/Toolbar'
+import { useFileLoad } from './features/toolbar/useFileLoad'
 import AppSnackbar from './features/notifications/AppSnackbar'
 import ControlsPanel from './features/controls/ControlsPanel'
 import { StitcherPanel } from './features/stitcher'
+import { EmptyState } from './features/onboarding'
 import { palette } from './shared/theme/palette'
 
 export default function App() {
@@ -25,10 +28,13 @@ export default function App() {
         )
     const setNotification = useViewerStore((s) => s.setNotification)
     const ensureHydrated = useViewerStore((s) => s.ensureHydrated)
+    const { loadDroppedFiles } = useFileLoad()
+    const [dragActive, setDragActive] = useState(false)
 
     const activeTab = tabs[activeTabIndex]
     const activeH5 = activeTab?.type === 'h5' ? activeTab : null
     const activeStl = activeTab?.type === 'stl' ? activeTab : null
+    const hasFiles = tabs.length > 0
 
     // When the active H5 tab's buffers have been evicted to IndexedDB, pull them
     // back before rendering its viewer.
@@ -51,13 +57,43 @@ export default function App() {
         [setNotification],
     )
 
+    // App-wide drag-and-drop onto the scene pane (when a file is already loaded;
+    // the EmptyState handles drops itself when nothing is loaded).
+    const handleDrop = (e: DragEvent) => {
+        e.preventDefault()
+        setDragActive(false)
+        const files = Array.from(e.dataTransfer.files)
+        if (files.length > 0) loadDroppedFiles(files)
+    }
+
     return (
-        <Stack sx={{ height: '100vh', background: palette.bgDeep }}>
+        <Stack sx={{ height: '100vh', background: palette.bgAppGradient }}>
             <Toolbar />
-            {tabs.length > 0 && <H5FileTabs />}
+            {hasFiles && <H5FileTabs />}
             <Stack direction="row" sx={{ flex: 1, overflow: 'hidden' }}>
-                <Box sx={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-                    <ControlsPanel />
+                <ControlsPanel />
+                {/* Dedicated central viewer window — black for high model contrast. */}
+                <Box
+                    onDragOver={
+                        hasFiles
+                            ? (e) => {
+                                  e.preventDefault()
+                                  setDragActive(true)
+                              }
+                            : undefined
+                    }
+                    onDragLeave={hasFiles ? () => setDragActive(false) : undefined}
+                    onDrop={hasFiles ? handleDrop : undefined}
+                    sx={{
+                        flex: 1,
+                        overflow: 'hidden',
+                        position: 'relative',
+                        background: palette.sceneBg,
+                        outline: dragActive ? `2px dashed ${palette.primary}` : 'none',
+                        outlineOffset: -8,
+                    }}
+                >
+                    {!hasFiles && <EmptyState />}
 
                     {/* STL tab — standalone viewer */}
                     {activeStl && <STLViewer file={activeStl.file} onError={handleViewerError} />}

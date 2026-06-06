@@ -69,6 +69,17 @@ export function useFileLoad() {
         }
     }
 
+    /** Route drag-and-dropped files to the right loader, split by extension. */
+    const loadDroppedFiles = (files: File[]) => {
+        const h5 = files.filter((f) => f.name.toLowerCase().endsWith('.h5'))
+        const stl = files.filter((f) => f.name.toLowerCase().endsWith('.stl'))
+        if (stl.length > 0) loadStlFiles(stl)
+        if (h5.length > 0) void processH5Files(h5)
+        if (h5.length === 0 && stl.length === 0) {
+            setNotification({ message: 'Drop .h5 or .stl files', severity: 'info' })
+        }
+    }
+
     const handleSTLLoad = (e: ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files ?? [])
         e.target.value = ''
@@ -102,5 +113,9 @@ export function useFileLoad() {
         handleH5Load,
         handleH5FolderLoad,
         loadServerVolume,
+        // Imperative loaders for drag-and-drop / the empty-state dropzone.
+        loadH5Files: processH5Files,
+        loadStlFiles,
+        loadDroppedFiles,
     }
 }

@@ -27,7 +27,7 @@ interface StitchResultsProps {
 export function StitchResults({ status }: StitchResultsProps) {
     return (
         <>
-            <Divider sx={{ borderColor: palette.toolbarBorder }} />
+            <Divider sx={{ borderColor: palette.borderGlass }} />
 
             {/* Metrics table */}
             <Box>
@@ -70,7 +70,7 @@ export function StitchResults({ status }: StitchResultsProps) {
                 </Box>
             )}
 
-            <Divider sx={{ borderColor: palette.toolbarBorder }} />
+            <Divider sx={{ borderColor: palette.borderGlass }} />
             <Typography
                 variant="caption"
                 sx={{ color: palette.textSecondary, fontStyle: 'italic' }}

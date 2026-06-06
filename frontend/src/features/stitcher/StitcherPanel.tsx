@@ -18,8 +18,9 @@ import { useViewerStore } from '../../app/store/viewerSlice'
 import { useStitchSession, type VolumeConfig, type StitchPhase } from './useStitchSession'
 import { StitchResults } from './StitchResults'
 import { gridTextFieldSx, subLabelSx, tealOutlineButtonSx } from './StitcherPanel.styles'
+import { STITCHER_WIDTH } from '../../shared/theme/layout'
 
-const PANEL_WIDTH = 420
+const PANEL_WIDTH = STITCHER_WIDTH
 const MIN_STITCH_VOLUMES = 2
 
 function inferGridPos(filename: string): { row: number; col: number } {
@@ -119,8 +120,10 @@ export default function StitcherPanel() {
                 width: PANEL_WIDTH,
                 height: '100%',
                 overflowY: 'auto',
-                background: palette.panelBg,
-                borderLeft: `1px solid ${palette.toolbarBorder}`,
+                background: palette.surfaceGlass,
+                backdropFilter: 'blur(12px)',
+                borderLeft: `1px solid ${palette.borderGlass}`,
+                boxShadow: `inset 1px 0 0 ${palette.glassHighlight}`,
                 p: 2,
                 display: 'flex',
                 flexDirection: 'column',
@@ -145,7 +148,7 @@ export default function StitcherPanel() {
                         size="small"
                         variant="text"
                         onClick={handleReset}
-                        sx={{ color: palette.clearLabel, fontSize: '0.72rem', minWidth: 0 }}
+                        sx={{ color: palette.danger, fontSize: '0.72rem', minWidth: 0 }}
                     >
                         Clear
                     </Button>
@@ -224,7 +227,7 @@ export default function StitcherPanel() {
                                         variant="caption"
                                         sx={{
                                             flex: 1,
-                                            color: palette.textDim,
+                                            color: palette.textMuted,
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis',
                                             whiteSpace: 'nowrap',
@@ -262,7 +265,7 @@ export default function StitcherPanel() {
                                     size="small"
                                     onClick={() => removeConfig(i)}
                                     disabled={isBusy}
-                                    sx={{ color: palette.clearLabel, p: 0.25 }}
+                                    sx={{ color: palette.danger, p: 0.25 }}
                                 >
                                     ✕
                                 </IconButton>
@@ -274,10 +277,7 @@ export default function StitcherPanel() {
 
             {/* Method selector */}
             <Box>
-                <Typography
-                    variant="caption"
-                    sx={{ color: palette.textMuted, mb: 0.5, display: 'block' }}
-                >
+                <Typography variant="caption" sx={subLabelSx}>
                     Registration method
                 </Typography>
                 <Select
@@ -292,7 +292,7 @@ export default function StitcherPanel() {
                     sx={{
                         color: palette.textPrimary,
                         fontSize: '0.82rem',
-                        '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.cyanBorder },
+                        '& .MuiOutlinedInput-notchedOutline': { borderColor: palette.borderGlass },
                         '& .MuiSvgIcon-root': { color: palette.textMuted },
                     }}
                 >
@@ -311,11 +311,11 @@ export default function StitcherPanel() {
                 fullWidth
                 disabled={!canRun}
                 onClick={() => run(configs, method)}
-                sx={{ borderColor: palette.cyanBorder, color: palette.cyanLabel }}
+                sx={{ borderColor: palette.borderGlass, color: palette.primary }}
             >
                 {isBusy ? (
                     <Stack direction="row" spacing={1} alignItems="center">
-                        <CircularProgress size={14} sx={{ color: palette.cyan }} />
+                        <CircularProgress size={14} sx={{ color: palette.primary }} />
                         <span>{PHASE_LABELS[phase]}</span>
                     </Stack>
                 ) : (
@@ -325,7 +325,7 @@ export default function StitcherPanel() {
 
             {/* Error */}
             {error && (
-                <Typography variant="caption" sx={{ color: palette.errorText }}>
+                <Typography variant="caption" sx={{ color: palette.danger }}>
                     {error}
                 </Typography>
             )}

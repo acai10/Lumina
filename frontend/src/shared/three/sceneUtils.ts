@@ -76,7 +76,7 @@ export function createScene(
     })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_DEVICE_PIXEL_RATIO))
     renderer.setSize(w, h)
-    renderer.setClearColor(palette.bgDeepHex)
+    renderer.setClearColor(palette.sceneBgHex)
     if (toneMapping !== undefined) renderer.toneMapping = toneMapping
     if (toneMappingExposure !== undefined) renderer.toneMappingExposure = toneMappingExposure
     if (outputColorSpace !== undefined) renderer.outputColorSpace = outputColorSpace
