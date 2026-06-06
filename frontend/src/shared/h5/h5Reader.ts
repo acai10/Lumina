@@ -5,6 +5,9 @@ import { normalizeVolume } from './h5Normalizer'
 export const VOLUME_DIMS: [number, number, number] = [512, 250, 250]
 export const PRE_FILTER_THRESHOLD = 0.05
 
+// Fixed H5 dataset name — the backend writes the OCT volume under this key, no guessing.
+const H5_DATASET_NAME = 'OCT'
+
 export async function loadH5File(
     file: File,
     dims: [number, number, number] = VOLUME_DIMS,
@@ -20,9 +23,9 @@ export async function loadH5File(
             const [nSlices, height, width] = dims
             const expected = nSlices * height * width
 
-            const ds = f.get('OCT') as { value?: unknown } | null
+            const ds = f.get(H5_DATASET_NAME) as { value?: unknown } | null
             if (!ds || ds.value == null) {
-                throw new Error(`Dataset "OCT" not found in "${file.name}"`)
+                throw new Error(`Dataset "${H5_DATASET_NAME}" not found in "${file.name}"`)
             }
 
             const raw = ds.value
@@ -43,7 +46,7 @@ export async function loadH5File(
             } else if (Array.isArray(raw)) {
                 data = Float32Array.from(raw as number[])
             } else {
-                throw new Error(`Unsupported data type in "OCT" dataset`)
+                throw new Error(`Unsupported data type in "${H5_DATASET_NAME}" dataset`)
             }
 
             if (data.length !== expected) {

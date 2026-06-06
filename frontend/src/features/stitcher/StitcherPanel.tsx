@@ -277,10 +277,7 @@ export default function StitcherPanel() {
 
             {/* Method selector */}
             <Box>
-                <Typography
-                    variant="caption"
-                    sx={{ color: palette.textMuted, mb: 0.5, display: 'block' }}
-                >
+                <Typography variant="caption" sx={subLabelSx}>
                     Registration method
                 </Typography>
                 <Select

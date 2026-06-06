@@ -13,6 +13,13 @@ const DIR_FILL_INTENSITY = 0.7
 const DIR_RIM_INTENSITY = 1.0
 const EDGE_THRESHOLD_ANGLE = 20
 const EDGE_OPACITY = 0.55
+// Mesh surface finish.
+const STL_METALNESS = 0.1
+const STL_ROUGHNESS = 0.55
+// Camera framing, expressed as multiples of the mesh's largest dimension (maxDim).
+const CAMERA_FIT_DISTANCE = 1.8
+const CAMERA_NEAR_FACTOR = 0.001
+const CAMERA_FAR_FACTOR = 100
 
 interface STLViewerProps {
     file: File
@@ -98,8 +105,8 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
 
             const material = new THREE.MeshStandardMaterial({
                 color: palette.meshColorHex,
-                metalness: 0.1,
-                roughness: 0.55,
+                metalness: STL_METALNESS,
+                roughness: STL_ROUGHNESS,
                 side: THREE.DoubleSide,
                 transparent: true,
                 opacity: useViewerStore.getState().stlOpacity,
@@ -121,9 +128,9 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
             const edgeLines = new THREE.LineSegments(edges, edgeMat)
             mesh.add(edgeLines)
 
-            camera.position.set(0, 0, maxDim * 1.8)
-            camera.near = maxDim * 0.001
-            camera.far = maxDim * 100
+            camera.position.set(0, 0, maxDim * CAMERA_FIT_DISTANCE)
+            camera.near = maxDim * CAMERA_NEAR_FACTOR
+            camera.far = maxDim * CAMERA_FAR_FACTOR
             camera.updateProjectionMatrix()
             controls.update()
         }

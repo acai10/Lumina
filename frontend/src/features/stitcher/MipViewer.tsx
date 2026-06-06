@@ -10,6 +10,11 @@ interface Props {
 
 const CANVAS_MAX_PX = 512
 const UINT8_MAX = 255
+// Midpoint the brightness/contrast curve pivots around (0..1 intensity range).
+const TONE_MAP_PIVOT = 0.5
+// Brightness/contrast slider ranges (min/max/step), spread onto the MUI Sliders.
+const MIP_BRIGHTNESS_LIMITS = { min: 0.1, max: 2, step: 0.05 } as const
+const MIP_CONTRAST_LIMITS = { min: 0.1, max: 3, step: 0.05 } as const
 
 export default function MipViewer({ data, shape, title = 'MIP — Top View' }: Props) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -31,11 +36,17 @@ export default function MipViewer({ data, shape, title = 'MIP — Top View' }: P
             const imageData = ctx.createImageData(width, height)
             const pixels = imageData.data
 
-            for (let i = 0; i < data.length; i++) {
-                // Apply brightness and contrast: clamp(contrast*(v-0.5) + 0.5 + brightness-1, 0, 1)
+            // Hoist loop-invariants out of the per-pixel hot loop.
+            const len = data.length
+            const brightnessOffset = brightness - 1
+            for (let i = 0; i < len; i++) {
+                // Apply brightness and contrast: clamp(contrast*(v-pivot) + pivot + brightness-1, 0, 1)
                 const v = Math.max(
                     0,
-                    Math.min(1, contrast * (data[i] - 0.5) + 0.5 + (brightness - 1)),
+                    Math.min(
+                        1,
+                        contrast * (data[i] - TONE_MAP_PIVOT) + TONE_MAP_PIVOT + brightnessOffset,
+                    ),
                 )
                 const byte = Math.round(v * UINT8_MAX)
                 const pi = i * 4
@@ -88,9 +99,7 @@ export default function MipViewer({ data, shape, title = 'MIP — Top View' }: P
                     </Typography>
                     <Slider
                         size="small"
-                        min={0.1}
-                        max={2}
-                        step={0.05}
+                        {...MIP_BRIGHTNESS_LIMITS}
                         value={brightness}
                         onChange={(_, v) => setBrightness(typeof v === 'number' ? v : v[0])}
                         sx={{ color: palette.primary }}
@@ -102,9 +111,7 @@ export default function MipViewer({ data, shape, title = 'MIP — Top View' }: P
                     </Typography>
                     <Slider
                         size="small"
-                        min={0.1}
-                        max={3}
-                        step={0.05}
+                        {...MIP_CONTRAST_LIMITS}
                         value={contrast}
                         onChange={(_, v) => setContrast(typeof v === 'number' ? v : v[0])}
                         sx={{ color: palette.primary }}

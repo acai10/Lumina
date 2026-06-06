@@ -15,3 +15,9 @@ export const PANEL_RADIUS = 10
 
 /** Inner padding (MUI spacing units) for docked panels. */
 export const PANEL_PADDING = 1.75
+
+/**
+ * Left inset (px) for the slice-viewer grid so it clears the docked controls
+ * sidebar plus a gutter. Kept slightly wider than CONTROLS_WIDTH (248) on purpose.
+ */
+export const SLICE_GRID_LEFT_INSET = 270

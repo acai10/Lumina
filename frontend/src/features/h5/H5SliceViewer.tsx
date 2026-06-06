@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5Meta } from '../../shared/types/viewer.types'
 import { SlicePanel } from './SlicePanel'
+import { SLICE_GRID_LEFT_INSET } from '../../shared/theme/layout'
 
 interface H5SliceViewerProps {
     normalizedVolume: Uint8Array
@@ -50,7 +51,7 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
                 pt: 0.5,
                 pr: 0.5,
                 pb: 0.5,
-                pl: '270px',
+                pl: `${SLICE_GRID_LEFT_INSET}px`,
             }}
         >
             {/* axis="z" navigates s → maps to Y-axis in 3D space */}
