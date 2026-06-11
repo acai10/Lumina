@@ -57,7 +57,7 @@ export const medicalTheme = createTheme({
         MuiButton: {
             styleOverrides: {
                 root: ({ theme }) => ({
-                    borderRadius: `${theme.shape.borderRadius * 1.25}px`,
+                    borderRadius: `${theme.shape.borderRadius * 0.5}px`,
                     letterSpacing: '0.03em',
                     fontSize: theme.typography.body2.fontSize,
                     transition: theme.transitions.create(['box-shadow', 'background'], {
