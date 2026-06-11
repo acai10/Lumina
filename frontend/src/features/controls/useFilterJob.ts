@@ -26,12 +26,13 @@ export function useFilterJob(
     backendVolumeId?: string,
     registeredVolumeId?: string,
 ) {
-    const { setFilteringState, applyBackendFilter, saveFilterSnapshot, setNotification } =
+    const { setFilteringState, applyBackendFilter, saveFilterSnapshot, setFilterApplied, setNotification } =
         useViewerStore(
             useShallow((s) => ({
                 setFilteringState: s.setFilteringState,
                 applyBackendFilter: s.applyBackendFilter,
                 saveFilterSnapshot: s.saveFilterSnapshot,
+                setFilterApplied: s.setFilterApplied,
                 setNotification: s.setNotification,
             })),
         )
@@ -57,6 +58,7 @@ export function useFilterJob(
                 setPhase('downloading')
                 const newData = await filterSessionVolume(backendVolumeId, filterChain)
                 applyBackendFilter(fileKey, newData)
+                setFilterApplied(fileKey, true)
                 setNotification({ message: 'Filter applied', severity: 'success' })
                 return
             }
@@ -96,8 +98,10 @@ export function useFilterJob(
             setPhase('downloading')
             const newData = await fetchResultVolume(job_id, DEFAULT_STITCHER)
             applyBackendFilter(fileKey, newData)
+            setFilterApplied(fileKey, true)
             setNotification({ message: 'Filter applied', severity: 'success' })
         } catch (err) {
+            setFilterApplied(fileKey, false)
             setError(err instanceof Error ? err.message : String(err))
         } finally {
             setPhase('idle')
@@ -125,6 +129,7 @@ export function useFilterJob(
                 applyBackendFilter(fileKey, originalData)
             }
 
+            setFilterApplied(fileKey, false)
             setNotification({ message: 'Filter reverted', severity: 'info' })
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))

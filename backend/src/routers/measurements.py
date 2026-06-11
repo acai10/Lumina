@@ -58,9 +58,12 @@ async def measure_volume(volume_id: str, req: MeasureRequest) -> MeasureResponse
         logger.exception("Failed to load volume %s for measurement", volume_id)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-    result = compute_measurements(
-        volume,
-        threshold=req.threshold,
-        voxel_size_um=req.voxel_size_um,
-    )
+    try:
+        result = compute_measurements(
+            volume,
+            threshold=req.threshold,
+            voxel_size_um=req.voxel_size_um,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return MeasureResponse(**result)

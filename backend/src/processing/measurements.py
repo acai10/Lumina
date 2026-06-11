@@ -30,6 +30,8 @@ def compute_measurements(
         - ``lateral_diameter_um`` (float): Lateral extent — longest axis of the
           projected mask bounding box — in µm.
     """
+    if volume.ndim != 3:
+        raise ValueError(f"Expected 3D volume (nSlices, height, width), got shape {volume.shape}")
     dz, dy, dx = float(voxel_size_um[0]), float(voxel_size_um[1]), float(voxel_size_um[2])
     mask = (volume > threshold).astype(np.uint8)
 

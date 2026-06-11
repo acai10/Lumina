@@ -98,6 +98,8 @@ export interface H5PerFileState {
     }
     /** Snapshot captured immediately before the last filter was applied. */
     filterSnapshot?: H5VolumeData
+    /** True after a filter was successfully applied and not yet reverted. */
+    filterApplied?: boolean
     /** When true, viewers render `filterSnapshot` instead of the filtered data. */
     showingComparison?: boolean
     /** Active colormap for the slice viewer panels and 3D viewer. */

@@ -2,7 +2,9 @@ import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { Box } from '@mui/material'
+import { Box, IconButton, Tooltip } from '@mui/material'
+import GridOnIcon from '@mui/icons-material/GridOn'
+import GridOffIcon from '@mui/icons-material/GridOff'
 import { useViewerStore, defaultRenderControls } from '../../app/store/viewerSlice'
 import { createScene, disposeSceneGeometry } from '../../shared/three/sceneUtils'
 import { palette } from '../../shared/theme/palette'
@@ -84,6 +86,7 @@ export default function H5Viewer({
     const sceneRef = useRef<THREE.Scene | null>(null)
     // The green bounding box; its Y extent tracks the current volume spacing.
     const boxHelperRef = useRef<THREE.Box3Helper | null>(null)
+    const axesGroupRef = useRef<THREE.Group | null>(null)
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
     const controlsRef = useRef<OrbitControls | null>(null)
     const maxDimRef = useRef(0)
@@ -96,6 +99,8 @@ export default function H5Viewer({
         (s) => s.h5PerFileStates[fileKey]?.sliceColormapRange ?? DEFAULT_COLORMAP_RANGE,
     )
     const colorByDepth = useViewerStore((s) => s.h5PerFileStates[fileKey]?.colorByDepth ?? false)
+    const axesVisible = useViewerStore((s) => s.axesVisible)
+    const toggleAxesVisible = useViewerStore((s) => s.toggleAxesVisible)
 
     useEffect(() => {
         const container = containerRef.current
@@ -122,17 +127,23 @@ export default function H5Viewer({
             initialRc.h5Threshold,
         )
 
+        // Group all axis decorations so visibility can be toggled with one flag.
+        const axesGroup = new THREE.Group()
+        axesGroup.visible = useViewerStore.getState().axesVisible
+        scene.add(axesGroup)
+        axesGroupRef.current = axesGroup
+
         const axes = new THREE.AxesHelper(maxDim * AXES_HELPER_SCALE)
-        scene.add(axes)
+        axesGroup.add(axes)
 
         const axisLen = maxDim * AXIS_LABEL_LENGTH_SCALE
         const labelScale = maxDim * AXIS_LABEL_SIZE_SCALE
-        const axisLabels = createAxisLabels(scene, axisLen, labelScale)
+        const axisLabels = createAxisLabels(axesGroup, axisLen, labelScale)
         const voxelSizeUm =
             useViewerStore.getState().h5PerFileStates[fileKey]?.sliceVoxelSizeUm ??
             DEFAULT_VOXEL_SIZE_UM
         const tickLabels = createAxisTickLabels(
-            scene,
+            axesGroup,
             meta,
             voxelSizeUm,
             labelScale,
@@ -250,6 +261,7 @@ export default function H5Viewer({
             materialRef.current = null
             chunkGeosRef.current = []
             boxHelperRef.current = null
+            axesGroupRef.current = null
             sceneRef.current = null
             cameraRef.current = null
             controlsRef.current = null
@@ -432,6 +444,13 @@ export default function H5Viewer({
     }, [colorByDepth])
 
     useEffect(() => {
+        const group = axesGroupRef.current
+        if (!group) return
+        group.visible = axesVisible
+        needsRenderRef.current = true
+    }, [axesVisible])
+
+    useEffect(() => {
         const mat = materialRef.current
         if (!mat) return
         mat.uniforms.uPointSize.value = h5PointSize
@@ -462,6 +481,28 @@ export default function H5Viewer({
         <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
             <Box ref={containerRef} sx={{ width: '100%', height: '100%' }} />
             <ZoomModeButton active={zoomToCursor} onToggle={toggleZoomToCursor} />
+            <Tooltip title={axesVisible ? 'Achsen ausblenden' : 'Achsen einblenden'} placement="left">
+                <IconButton
+                    size="small"
+                    onClick={toggleAxesVisible}
+                    sx={{
+                        position: 'absolute',
+                        bottom: 40,
+                        right: 8,
+                        p: 0.6,
+                        color: axesVisible ? palette.accentBlue : palette.sceneTextMuted,
+                        background: palette.overlayScrim,
+                        borderRadius: 0.5,
+                        '&:hover': { background: palette.accentBlueHoverBg },
+                    }}
+                >
+                    {axesVisible ? (
+                        <GridOnIcon sx={{ fontSize: 20 }} />
+                    ) : (
+                        <GridOffIcon sx={{ fontSize: 20 }} />
+                    )}
+                </IconButton>
+            </Tooltip>
         </Box>
     )
 }

@@ -8,11 +8,10 @@ import numpy as np
 from ..config import settings
 from ..schemas.enums import JobStatus
 from .h5_reader import load_volume
-from .metrics import compute_hausdorff, compute_rmse
+from .metrics import compute_rmse
 from .multi_volume import (
     compute_global_offsets,
     compute_mip,
-    extract_surface_pointcloud,
     merge_volumes,
     overlap_crop,
     register_pair,
@@ -62,8 +61,7 @@ async def run_session(
     Args:
         session_id: UUID string identifying this session in the store.
         volume_entries: List of ``{"volume_id": str, "row": int, "col": int}`` dicts.
-        method: Registration method — ``"phase_correlation"``, ``"cross_correlation"``,
-            or ``"icp"``.
+        method: Registration method — ``"phase_correlation"`` or ``"cross_correlation"``.
         method_params: Per-method parameter overrides.
     """
     state = session_store.get(session_id)
@@ -113,7 +111,6 @@ async def run_session(
         # them from overlapping in memory with the merged array and the
         # normalization intermediates (which would push peak to 2.5+ GB).
         rmse_vals: list[float] = []
-        hausdorff_vals: list[float] = []
 
         for (a_id, b_id), (dy, dx) in pairwise_shifts.items():
             crops = overlap_crop(volumes[a_id], volumes[b_id], dy, dx)
@@ -121,15 +118,7 @@ async def run_session(
                 crop_a, crop_b = crops
                 rmse_vals.append(compute_rmse(crop_a, crop_b))
 
-            pts_a = extract_surface_pointcloud(volumes[a_id], max_points=5_000)
-            pts_b = extract_surface_pointcloud(volumes[b_id], max_points=5_000)
-            pts_b_shifted = pts_b.copy()
-            pts_b_shifted[:, 1] += dy
-            pts_b_shifted[:, 2] += dx
-            hausdorff_vals.append(compute_hausdorff(pts_a, pts_b_shifted))
-
         state.metrics["rmse"] = float(np.mean(rmse_vals)) if rmse_vals else 0.0
-        state.metrics["hausdorff"] = float(np.mean(hausdorff_vals)) if hausdorff_vals else 0.0
 
         # ── Merge and save ────────────────────────────────────────────────────
         # Build vol_list/off_list now that metrics are done; free volumes after merge.

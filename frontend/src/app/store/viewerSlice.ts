@@ -105,6 +105,7 @@ interface ViewerState {
     controlsPanelOpen: boolean
     fileListPanelOpen: boolean
     zoomToCursor: boolean
+    axesVisible: boolean
     // Actions — unified tab management
     toggleStitchPanel: () => void
     toggleControlsPanel: () => void
@@ -129,6 +130,7 @@ interface ViewerState {
     setBackendVolumeId: (fileKey: string, volumeId: string) => void
     applyBackendFilter: (fileKey: string, newData: H5VolumeData) => void
     saveFilterSnapshot: (fileKey: string) => void
+    setFilterApplied: (fileKey: string, value: boolean) => void
     setShowingComparison: (fileKey: string, value: boolean) => void
     setSliceColormap: (fileKey: string, colormap: ColormapType) => void
     setSliceColormapRange: (fileKey: string, range: [number, number]) => void
@@ -155,6 +157,7 @@ interface ViewerState {
     clearNotification: () => void
     setStlOpacity: (v: number) => void
     toggleZoomToCursor: () => void
+    toggleAxesVisible: () => void
     reset: () => void
 }
 
@@ -171,6 +174,7 @@ const initialState = {
     fileListPanelOpen: false,
     controlsPanelOpen: true,
     zoomToCursor: true,
+    axesVisible: true,
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => {
@@ -237,6 +241,7 @@ export const useViewerStore = create<ViewerState>((set, get) => {
         toggleControlsPanel: () => set((s) => ({ controlsPanelOpen: !s.controlsPanelOpen })),
         toggleFileListPanel: () => set((s) => ({ fileListPanelOpen: !s.fileListPanelOpen })),
         toggleZoomToCursor: () => set((s) => ({ zoomToCursor: !s.zoomToCursor })),
+        toggleAxesVisible: () => set((s) => ({ axesVisible: !s.axesVisible })),
 
         loadH5: async (entries) => {
             const { tabs, h5PerFileStates, hydrationOrder } = get()
@@ -523,6 +528,14 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 },
             }))
         },
+
+        setFilterApplied: (fileKey, value) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], filterApplied: value },
+                },
+            })),
 
         setShowingComparison: (fileKey, value) =>
             set((state) => ({

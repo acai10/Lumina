@@ -19,7 +19,7 @@ export function ZoomModeButton({ active, onToggle }: ZoomModeButtonProps) {
                     position: 'absolute',
                     bottom: 8,
                     right: 8,
-                    p: 0.4,
+                    p: 0.6,
                     color: active ? palette.accentBlue : palette.sceneTextMuted,
                     background: palette.overlayScrim,
                     borderRadius: 0.5,
@@ -27,9 +27,9 @@ export function ZoomModeButton({ active, onToggle }: ZoomModeButtonProps) {
                 }}
             >
                 {active ? (
-                    <FilterCenterFocusIcon sx={{ fontSize: 16 }} />
+                    <FilterCenterFocusIcon sx={{ fontSize: 20 }} />
                 ) : (
-                    <CenterFocusWeakIcon sx={{ fontSize: 16 }} />
+                    <CenterFocusWeakIcon sx={{ fontSize: 20 }} />
                 )}
             </IconButton>
         </Tooltip>

@@ -128,7 +128,7 @@ export function PreprocessingSection() {
     const activeEntry = activeTab?.type === 'h5' ? activeTab : null
     const fileKey = activeEntry?.name ?? ''
     const perFile: H5PerFileState | undefined = fileKey ? h5PerFileStates[fileKey] : undefined
-    const hasSnapshot = !!perFile?.filterSnapshot
+    const filterApplied = perFile?.filterApplied ?? false
     const showingComparison = perFile?.showingComparison ?? false
 
     // Hooks must be called unconditionally — derive args defensively above the early return
@@ -279,7 +279,7 @@ export function PreprocessingSection() {
                 Add step
             </Button>
 
-            {/* Apply / Reset / Compare / spinner */}
+            {/* Apply / Reset / spinner */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                 <Button
                     size="small"
@@ -300,19 +300,6 @@ export function PreprocessingSection() {
                 >
                     Reset
                 </Button>
-                {hasSnapshot && (
-                    <Tooltip title={showingComparison ? 'Show filtered' : 'Show original'}>
-                        <Button
-                            size="small"
-                            variant={showingComparison ? 'contained' : 'outlined'}
-                            onClick={() => setShowingComparison(fileKey, !showingComparison)}
-                            disabled={isBusy}
-                            sx={{ fontSize: '0.65rem', py: 0.4 }}
-                        >
-                            {showingComparison ? 'Filtered' : 'Compare'}
-                        </Button>
-                    </Tooltip>
-                )}
                 {isBusy && (
                     <>
                         <CircularProgress size={12} thickness={5} />
@@ -322,6 +309,22 @@ export function PreprocessingSection() {
                     </>
                 )}
             </Box>
+
+            {/* Compare toggle */}
+            {filterApplied && (
+                <Tooltip title={showingComparison ? 'Gefiltertes Bild anzeigen' : 'Original anzeigen'}>
+                    <Button
+                        size="small"
+                        variant={showingComparison ? 'contained' : 'outlined'}
+                        onClick={() => setShowingComparison(fileKey, !showingComparison)}
+                        disabled={isBusy}
+                        fullWidth
+                        sx={{ fontSize: '0.65rem', py: 0.4 }}
+                    >
+                        {showingComparison ? 'Filtered' : 'Compare'}
+                    </Button>
+                </Tooltip>
+            )}
 
             {error && (
                 <Alert severity="error" sx={{ fontSize: '0.65rem', py: 0.2 }} onClose={clearError}>

@@ -2,14 +2,8 @@ import logging
 
 import numpy as np
 from scipy.fft import fft2, ifft2, next_fast_len
-from scipy.spatial import KDTree
-from scipy.spatial.distance import directed_hausdorff
 
 logger = logging.getLogger(__name__)
-
-_SURFACE_SAMPLE_MAX = 10_000
-_ICP_MAX_ITER = 50
-_ICP_TOLERANCE = 1e-4
 
 
 def compute_mip(vol: np.ndarray) -> np.ndarray:
@@ -41,80 +35,6 @@ def segment_surface(vol: np.ndarray, threshold: float = 0.05) -> np.ndarray:
     # overlay check (map[i] === sliceIndex, sliceIndex >= 0) never matches them.
     height_map[~mask.any(axis=0)] = -1
     return height_map
-
-
-def extract_surface_pointcloud(
-    vol: np.ndarray,
-    max_points: int = _SURFACE_SAMPLE_MAX,
-) -> np.ndarray:
-    """Extract a 3D point cloud from the OCT surface height map.
-
-    Args:
-        vol: Float32 array of shape (n_slices, height, width).
-        max_points: Maximum number of points to return (random subsample).
-
-    Returns:
-        Float32 array of shape (N, 3) with columns [z, y, x].
-    """
-    height_map = segment_surface(vol)
-    ys, xs = np.meshgrid(np.arange(vol.shape[1]), np.arange(vol.shape[2]), indexing="ij")
-    pts = np.stack([height_map.ravel(), ys.ravel(), xs.ravel()], axis=1).astype(np.float32)
-
-    if len(pts) > max_points:
-        rng = np.random.default_rng(seed=0)
-        idx = rng.choice(len(pts), size=max_points, replace=False)
-        pts = pts[idx]
-
-    return pts
-
-
-def icp_translation(
-    source: np.ndarray,
-    target: np.ndarray,
-    max_iter: int = _ICP_MAX_ITER,
-    tolerance: float = _ICP_TOLERANCE,
-) -> np.ndarray:
-    """Translation-only ICP: align source point cloud to target.
-
-    Args:
-        source: Float32 array of shape (N, 3) — the moving cloud.
-        target: Float32 array of shape (M, 3) — the fixed cloud.
-        max_iter: Maximum number of ICP iterations.
-        tolerance: Stop when the update norm is below this value.
-
-    Returns:
-        Float32 array of shape (3,) representing [dz, dy, dx] total translation
-        that moves *source* towards *target*.
-    """
-    pts = source.copy().astype(np.float64)
-    total_t = np.zeros(3, dtype=np.float64)
-    tree = KDTree(target.astype(np.float64))
-
-    for _ in range(max_iter):
-        _, indices = tree.query(pts)
-        delta = np.mean(target[indices].astype(np.float64) - pts, axis=0)
-        pts += delta
-        total_t += delta
-        if np.linalg.norm(delta) < tolerance:
-            break
-
-    logger.debug("icp_translation converged with total shift %s", total_t)
-    return total_t.astype(np.float32)
-
-
-def hausdorff_distance(pts_a: np.ndarray, pts_b: np.ndarray) -> float:
-    """Symmetric Hausdorff distance between two point clouds.
-
-    Args:
-        pts_a: Float array of shape (N, D).
-        pts_b: Float array of shape (M, D).
-
-    Returns:
-        Symmetric Hausdorff distance (max of both directed distances).
-    """
-    d_ab = directed_hausdorff(pts_a, pts_b)[0]
-    d_ba = directed_hausdorff(pts_b, pts_a)[0]
-    return float(max(d_ab, d_ba))
 
 
 def _phase_corr_padded(img_a: np.ndarray, img_b: np.ndarray) -> tuple[float, float]:
@@ -162,8 +82,7 @@ def register_pair(
     Args:
         vol_a: Reference float32 volume (n_slices, height, width).
         vol_b: Moving float32 volume (n_slices, height, width).
-        method: One of ``"phase_correlation"``, ``"cross_correlation"``, ``"icp"``.
-        params: Method-specific keyword overrides.
+        method: One of ``"phase_correlation"``, ``"cross_correlation"``.
 
     Returns:
         Tuple ``(dy, dx)`` — pixel shift of vol_b relative to vol_a.
@@ -178,13 +97,6 @@ def register_pair(
         dy, dx = _phase_corr_padded(mip_a, mip_b)
         logger.debug("register_pair [%s]: (dy=%f, dx=%f)", method, dy, dx)
         return dy, dx
-
-    if method == "icp":
-        pts_a = extract_surface_pointcloud(vol_a)
-        pts_b = extract_surface_pointcloud(vol_b)
-        t = icp_translation(pts_b, pts_a)
-        logger.debug("register_pair [icp]: (dz=%f, dy=%f, dx=%f)", t[0], t[1], t[2])
-        return float(t[1]), float(t[2])
 
     raise ValueError(f"Unknown registration method: {method!r}")
 

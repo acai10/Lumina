@@ -77,8 +77,8 @@ vec3 applyColormap(float t) {
             clamp(t * 3.0 - 2.0, 0.0, 1.0)
         );
     }
-    // GRAY (default)
-    return vec3(t, t, t);
+    // GRAY (default) — pure white; intensity drives alpha (see main below)
+    return vec3(1.0, 1.0, 1.0);
 }
 
 void main() {
@@ -108,6 +108,12 @@ void main() {
         float span = max(uColormapMax - uColormapMin, 0.001);
         t = clamp((c - uColormapMin) / span, 0.0, 1.0);
     }
-    fragColor = vec4(applyColormap(t), uOpacity);
+    if (uColormap == 0) {
+        // Gray: pure white cloud — intensity drives alpha so brightness/contrast
+        // still control the apparent density and brightness of the point cloud.
+        fragColor = vec4(1.0, 1.0, 1.0, t * uOpacity);
+    } else {
+        fragColor = vec4(applyColormap(t), uOpacity);
+    }
 }
 `

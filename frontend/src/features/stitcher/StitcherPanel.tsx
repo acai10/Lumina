@@ -33,7 +33,6 @@ function inferGridPos(filename: string): { row: number; col: number } {
 const METHOD_LABELS: Record<RegistrationMethod, string> = {
     phase_correlation: 'Phase Correlation',
     cross_correlation: 'Cross Correlation',
-    icp: 'ICP (Point Cloud)',
 }
 
 const isRegistrationMethod = (v: unknown): v is RegistrationMethod =>

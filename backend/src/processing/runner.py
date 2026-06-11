@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -9,21 +8,11 @@ import numpy as np
 from ..config import settings
 from ..schemas.enums import JobStatus
 from .filters import apply_filter_chain
-from .h5_reader import load_volume
+from .h5_reader import load_volume_flexible as load_volume
 from .metrics import compute_all
 from .stitchers import STITCHER_REGISTRY
 
 logger = logging.getLogger(__name__)
-
-# Lazy so worker processes (Windows spawn) don't re-instantiate it on import.
-_executor: ProcessPoolExecutor | None = None
-
-
-def _get_executor() -> ProcessPoolExecutor:
-    global _executor
-    if _executor is None:
-        _executor = ProcessPoolExecutor()
-    return _executor
 
 
 @dataclass
@@ -63,19 +52,55 @@ def create_job(job_id: str) -> JobState:
     return job_store.create(job_id)
 
 
-def _run_stitcher_sync(
-    volume: np.ndarray,
-    stitcher_name: str,
-    params: dict,
-) -> np.ndarray:
-    fn = STITCHER_REGISTRY[stitcher_name]
-    return fn(volume, params)
-
-
 def shutdown_executor() -> None:
-    """Shut down the process pool; called by the FastAPI lifespan handler."""
-    if _executor is not None:
-        _executor.shutdown(wait=False)
+    """No-op — kept for backward compatibility with the lifespan handler."""
+
+
+def _execute_pipeline(
+    job_id: str,
+    volume_id: str,
+    filter_chain: list[dict[str, Any]],
+    stitchers: list[str],
+    stitcher_params: dict[str, dict[str, Any]],
+    state: JobState,
+) -> None:
+    """Run the full filter → stitch pipeline synchronously in a worker thread.
+
+    Filters are applied one at a time in the declared order.  Each stitcher
+    then processes the filtered result and its output is saved to disk.
+
+    Args:
+        job_id: Identifies this job (used as filename prefix for results).
+        volume_id: Stem of the ``.h5`` source file in ``uploads_dir``.
+        filter_chain: Ordered filter steps, each ``{"type": str, "params": dict}``.
+        stitchers: Stitcher names to run sequentially after filtering.
+        stitcher_params: Per-stitcher parameter overrides.
+        state: Mutable job state updated in place.
+    """
+    volume = load_volume(settings.uploads_dir / f"{volume_id}.h5")
+
+    # Apply filters one by one so earlier results feed later steps.
+    preprocessed = volume
+    for i, step in enumerate(filter_chain):
+        logger.debug("Job %s: applying filter step %d/%d", job_id, i + 1, len(filter_chain))
+        preprocessed = apply_filter_chain(preprocessed, [step], copy_input=False)
+
+    # Run each stitcher sequentially on the preprocessed volume.
+    for name in stitchers:
+        if name not in STITCHER_REGISTRY:
+            logger.warning("Job %s: unknown stitcher %r — skipped", job_id, name)
+            continue
+        try:
+            logger.debug("Job %s: running stitcher %r", job_id, name)
+            result_vol = STITCHER_REGISTRY[name](preprocessed, stitcher_params.get(name, {}))
+            np.save(settings.uploads_dir / f"{job_id}_{name}.npy", result_vol)
+            state.results[name] = compute_all(preprocessed, result_vol)
+        except Exception as exc:
+            logger.exception("Stitcher %s failed for job %s", name, job_id)
+            state.results[name] = {"error": f"{type(exc).__name__}: {exc}"}
+
+    state.status = JobStatus.DONE
+    logger.info("Job %s completed successfully", job_id)
 
 
 async def run_job(
@@ -88,13 +113,17 @@ async def run_job(
 ) -> None:
     """Execute the full filter + stitch pipeline for *job_id* as a background task.
 
+    The pipeline runs in a worker thread via ``asyncio.to_thread`` so the
+    event loop stays free during computation.  Filters are applied sequentially
+    in the declared order before any stitcher runs.
+
     Args:
         job_id: UUID string that identifies this job in the store.
         volume_id: Stem of the .h5 file to load from uploads_dir.
         filter_chain: Ordered list of ``{"type": str, "params": dict}`` dicts.
         stitchers: Names of stitchers to run (must be in STITCHER_REGISTRY).
         stitcher_params: Per-stitcher kwarg overrides.
-        seg_mask_id: Optional volume_id of a segmentation mask for Dice metric.
+        seg_mask_id: Unused; reserved for future segmentation-mask Dice metric.
     """
     state = job_store.get(job_id)
     if state is None:
@@ -105,41 +134,15 @@ async def run_job(
     state.status = JobStatus.RUNNING
 
     try:
-        volume = load_volume(settings.uploads_dir / f"{volume_id}.h5")
-        # `volume` was just loaded for this job and the filters never mutate their
-        # input in place, so skip the defensive ~128 MB copy apply_filter_chain
-        # would otherwise make.
-        preprocessed = (
-            apply_filter_chain(volume, filter_chain, copy_input=False) if filter_chain else volume
+        await asyncio.to_thread(
+            _execute_pipeline,
+            job_id,
+            volume_id,
+            filter_chain,
+            stitchers,
+            stitcher_params or {},
+            state,
         )
-
-        loop = asyncio.get_running_loop()
-        s_params = stitcher_params or {}
-
-        tasks = {
-            name: loop.run_in_executor(
-                _get_executor(),
-                _run_stitcher_sync,
-                preprocessed,
-                name,
-                s_params.get(name, {}),
-            )
-            for name in stitchers
-            if name in STITCHER_REGISTRY
-        }
-
-        for name, task in tasks.items():
-            try:
-                result_vol = await task
-                np.save(settings.uploads_dir / f"{job_id}_{name}.npy", result_vol)
-                state.results[name] = compute_all(preprocessed, result_vol)
-            except Exception as exc:
-                logger.exception("Stitcher %s failed for job %s", name, job_id)
-                state.results[name] = {"error": f"{type(exc).__name__}: {exc}"}
-
-        state.status = JobStatus.DONE
-        logger.info("Job %s completed successfully", job_id)
-
     except Exception as exc:
         logger.exception("Job %s failed", job_id)
         state.status = JobStatus.ERROR

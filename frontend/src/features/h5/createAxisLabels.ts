@@ -29,7 +29,7 @@ function formatTickLabel(um: number): string {
 }
 
 function makeTickSprite(
-    scene: THREE.Scene,
+    scene: THREE.Object3D,
     pos: THREE.Vector3,
     text: string,
     spriteScale: number,
@@ -63,7 +63,7 @@ function makeTickSprite(
  * @returns Array of created sprites (caller is responsible for disposal on unmount).
  */
 export function createAxisLabels(
-    scene: THREE.Scene,
+    scene: THREE.Object3D,
     axisLen: number,
     labelScale: number,
 ): THREE.Sprite[] {
@@ -102,7 +102,7 @@ export function createAxisLabels(
  * @returns Array of created sprites (caller is responsible for disposal on unmount).
  */
 export function createAxisTickLabels(
-    scene: THREE.Scene,
+    scene: THREE.Object3D,
     meta: { nSlices: number; height: number; width: number },
     voxelSizeUm: [number, number, number],
     labelScale: number,

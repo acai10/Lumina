@@ -58,8 +58,12 @@ function colormapRGB(t: number, colormap: ColormapType): [number, number, number
     }
 }
 
-// Convert screen click (relative to container) → canvas pixel coords, accounting for
-// the CSS scale+translate applied to the canvas element.
+// Convert screen click (relative to container) → canvas pixel coords.
+//
+// The canvas element is CSS-constrained by maxWidth/maxHeight so its displayed
+// CSS size (cssDW × cssDH) can be smaller than its pixel dimensions
+// (canvasW × canvasH). Without correcting for this ratio the measured coords
+// are offset (especially noticeable on the YZ panel where canvasH = 512).
 function screenToCanvas(
     sx: number,
     sy: number,
@@ -67,6 +71,8 @@ function screenToCanvas(
     containerH: number,
     canvasW: number,
     canvasH: number,
+    cssDW: number,
+    cssDH: number,
     zoom: number,
     panX: number,
     panY: number,
@@ -74,8 +80,8 @@ function screenToCanvas(
     const mx = sx - containerW / 2
     const my = sy - containerH / 2
     return {
-        cx: (mx - panX) / zoom + canvasW / 2,
-        cy: (my - panY) / zoom + canvasH / 2,
+        cx: ((mx - panX) / zoom) * (canvasW / cssDW) + canvasW / 2,
+        cy: ((my - panY) / zoom) * (canvasH / cssDH) + canvasH / 2,
     }
 }
 
@@ -124,7 +130,7 @@ function computeDistanceMm(
     return Math.sqrt(d1Um * d1Um + d2Um * d2Um) / UM_PER_MM
 }
 
-const ZOOM_STEP_FACTOR = 1.05
+const ZOOM_STEP_FACTOR = 1.03
 const MIN_ZOOM = 1
 const MAX_ZOOM = 20
 
@@ -480,8 +486,11 @@ export const SlicePanel = memo(function SlicePanel({
                 const dy = Math.abs(e.clientY - clickStartRef.current.y)
                 if (dx < 5 && dy < 5) {
                     const wrapper = canvasWrapperRef.current
-                    if (wrapper) {
+                    const canvas = canvasRef.current
+                    if (wrapper && canvas) {
                         const rect = wrapper.getBoundingClientRect()
+                        const cssDW = canvas.offsetWidth || canvasW
+                        const cssDH = canvas.offsetHeight || canvasH
                         const { cx, cy } = screenToCanvas(
                             e.clientX - rect.left,
                             e.clientY - rect.top,
@@ -489,6 +498,8 @@ export const SlicePanel = memo(function SlicePanel({
                             rect.height,
                             canvasW,
                             canvasH,
+                            cssDW,
+                            cssDH,
                             zoomRef.current,
                             panRef.current.x,
                             panRef.current.y,
@@ -588,10 +599,10 @@ export const SlicePanel = memo(function SlicePanel({
                     onMouseDown={(e) => e.stopPropagation()}
                     sx={{
                         position: 'absolute',
-                        top: 2,
-                        right: 2,
+                        top: 4,
+                        right: 4,
                         zIndex: 3,
-                        p: 0.4,
+                        p: 0.6,
                         color: measuring ? palette.accentBlue : palette.sceneTextMuted,
                         background: palette.overlayScrim,
                         borderRadius: 0.5,
@@ -599,83 +610,73 @@ export const SlicePanel = memo(function SlicePanel({
                     }}
                 >
                     {measuring ? (
-                        <CloseIcon sx={{ fontSize: 13 }} />
+                        <CloseIcon sx={{ fontSize: 18 }} />
                     ) : (
-                        <StraightenIcon sx={{ fontSize: 13 }} />
+                        <StraightenIcon sx={{ fontSize: 18 }} />
                     )}
                 </IconButton>
             </Tooltip>
 
-            {/* Colorbar — thin vertical gradient strip on the right */}
-            <Box
-                sx={{
-                    position: 'absolute',
-                    right: 22,
-                    top: '25%',
-                    width: 12,
-                    height: '50%',
-                    background: colormapCss,
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    borderRadius: 0.5,
-                    zIndex: 2,
-                    pointerEvents: 'none',
-                }}
-            />
-            <Typography
-                sx={{
-                    position: 'absolute',
-                    right: 36,
-                    top: '24%',
-                    fontSize: '0.5rem',
-                    lineHeight: 1,
-                    opacity: 0.65,
-                    color: '#fff',
-                    zIndex: 2,
-                    pointerEvents: 'none',
-                }}
-            >
-                255
-            </Typography>
-            <Typography
-                sx={{
-                    position: 'absolute',
-                    right: 40,
-                    top: '73%',
-                    fontSize: '0.5rem',
-                    lineHeight: 1,
-                    opacity: 0.65,
-                    color: '#fff',
-                    zIndex: 2,
-                    pointerEvents: 'none',
-                }}
-            >
-                0
-            </Typography>
-
-            {/* Canvas area */}
-            <Box
-                ref={canvasWrapperRef}
-                sx={{
-                    flex: 1,
-                    overflow: 'hidden',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minHeight: 0,
-                    position: 'relative',
-                }}
-            >
-                <canvas
-                    ref={canvasRef}
-                    style={{
-                        transform: 'translate(0px, 0px) scale(1)',
-                        transformOrigin: 'center center',
-                        imageRendering: 'pixelated',
-                        maxWidth: '100%',
-                        maxHeight: '100%',
-                        objectFit: 'contain',
+            {/* Canvas + colorbar row — colorbar lives outside the image area so it never overlaps content */}
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden', minHeight: 0 }}>
+                {/* Canvas area */}
+                <Box
+                    ref={canvasWrapperRef}
+                    sx={{
+                        flex: 1,
+                        overflow: 'hidden',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        minHeight: 0,
+                        minWidth: 0,
+                        position: 'relative',
                     }}
-                />
+                >
+                    <canvas
+                        ref={canvasRef}
+                        style={{
+                            transform: 'translate(0px, 0px) scale(1)',
+                            transformOrigin: 'center center',
+                            imageRendering: 'pixelated',
+                            maxWidth: '100%',
+                            maxHeight: '100%',
+                            objectFit: 'contain',
+                        }}
+                    />
+                </Box>
+
+                {/* Colorbar strip — dedicated side channel, no overlap */}
+                <Box
+                    sx={{
+                        width: 28,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 0.5,
+                        py: 1,
+                        pointerEvents: 'none',
+                        flexShrink: 0,
+                    }}
+                >
+                    <Typography sx={{ fontSize: '0.48rem', lineHeight: 1, opacity: 0.65, color: '#fff' }}>
+                        255
+                    </Typography>
+                    <Box
+                        sx={{
+                            flex: 1,
+                            maxHeight: '55%',
+                            width: 10,
+                            background: colormapCss,
+                            border: '1px solid rgba(255,255,255,0.15)',
+                            borderRadius: 0.5,
+                        }}
+                    />
+                    <Typography sx={{ fontSize: '0.48rem', lineHeight: 1, opacity: 0.65, color: '#fff' }}>
+                        0
+                    </Typography>
+                </Box>
             </Box>
 
             {/* Live measurement result */}

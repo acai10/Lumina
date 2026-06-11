@@ -50,7 +50,6 @@ export interface LocalVolume {
 export const REGISTRATION_METHOD = {
     PHASE_CORRELATION: 'phase_correlation',
     CROSS_CORRELATION: 'cross_correlation',
-    ICP: 'icp',
 } as const
 
 export type RegistrationMethod = (typeof REGISTRATION_METHOD)[keyof typeof REGISTRATION_METHOD]

@@ -128,18 +128,18 @@ export default function Toolbar() {
                     <Button
                         variant="outlined"
                         size="small"
-                        sx={[h5ButtonSx, { opacity: fileListPanelOpen ? 1 : 0.7 }]}
-                        onClick={toggleFileListPanel}
-                    >
-                        Dateien {serverVolumes.length > 0 ? `(${serverVolumes.length})` : ''}
-                    </Button>
-                    <Button
-                        variant="outlined"
-                        size="small"
                         sx={[stitchButtonSx, { opacity: stitchPanelOpen ? 1 : 0.7 }]}
                         onClick={toggleStitchPanel}
                     >
                         Stitch
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        sx={[h5ButtonSx, { opacity: fileListPanelOpen ? 1 : 0.7 }]}
+                        onClick={toggleFileListPanel}
+                    >
+                        Dateien {serverVolumes.length > 0 ? `(${serverVolumes.length})` : ''}
                     </Button>
                     <Menu
                         anchorEl={h5MenuAnchor}
