@@ -23,9 +23,11 @@ export default defineConfig({
         // cache and parse them independently of the app code. Three.js in particular
         // is large and rarely changes — keeping it separate means app edits don't
         // bust its cache, and chunks load in parallel with the main bundle.
+        // NOTE: h5wasm is intentionally NOT listed here. It is imported only by
+        // h5.worker.ts (the Web Worker), which Vite bundles separately. Listing it
+        // as a main-thread manualChunk previously shipped a duplicate ~4.4 MB copy.
         manualChunks: {
           three: ['three'],
-          h5wasm: ['h5wasm'],
           mui: ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
           vendor: ['react', 'react-dom', 'zustand'],
         },

@@ -2,6 +2,7 @@ export {
     uploadVolume,
     listLocalVolumes,
     registerLocalVolume,
+    registerLocalVolumesBatch,
     createJob,
     pollJob,
     fetchResultVolume,

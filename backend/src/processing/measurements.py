@@ -46,6 +46,7 @@ def compute_measurements(
     face_xy = float(dx * dy)
     face_xz = float(dx * dz)
     face_yz = float(dy * dz)
+
     # Count exposed faces along each axis using diff — exposed if neighbour is outside.
     def _exposed_faces(arr: np.ndarray, axis: int) -> int:
         return int(np.abs(np.diff(arr, axis=axis, prepend=0, append=0)).clip(0).sum())

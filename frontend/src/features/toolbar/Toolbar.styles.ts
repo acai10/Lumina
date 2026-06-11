@@ -44,12 +44,6 @@ export const clearButtonSx = {
     '&:hover': { borderColor: palette.danger, background: palette.dangerSoft },
 }
 
-export const menuPaperSx = {
-    background: palette.surfaceGlass,
-    border: `1px solid ${palette.borderGlass}`,
-    backdropFilter: 'blur(12px)',
-}
-
 export const menuItemSx = { fontSize: '0.85rem', color: palette.textPrimary }
 
 export const LoadingText = styled(Typography)({

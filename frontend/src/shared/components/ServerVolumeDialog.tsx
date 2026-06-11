@@ -18,6 +18,7 @@ import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import type { LocalVolume } from '../api'
+import { groupByFolder } from '../utils'
 
 interface ServerVolumeDialogProps {
     open: boolean
@@ -26,37 +27,15 @@ interface ServerVolumeDialogProps {
     error: string | null
     onClose: () => void
     onPick: (local: LocalVolume) => void
+    /**
+     * Optional batch handler. When provided, multi-file confirmations (the "Add"
+     * button and folder picks) call this once with all selected volumes instead
+     * of calling `onPick` per file — letting callers register them in a single
+     * request. Falls back to repeated `onPick` when omitted.
+     */
+    onPickMany?: (locals: LocalVolume[]) => void
     /** When true, allow selecting several files/folders and confirm with an "Add" button. */
     multiple?: boolean
-}
-
-interface VolumeGroup {
-    folder: string | null // null = root level
-    files: LocalVolume[]
-}
-
-function groupByFolder(volumes: LocalVolume[]): VolumeGroup[] {
-    const map = new Map<string | null, LocalVolume[]>()
-    for (const v of volumes) {
-        const parts = v.path.split('/')
-        const folder = parts.length > 1 ? parts.slice(0, -1).join('/') : null
-        const list = map.get(folder) ?? []
-        list.push(v)
-        map.set(folder, list)
-    }
-    // Root files first, then folders sorted alphabetically
-    const groups: VolumeGroup[] = []
-    const root = map.get(null)
-    if (root) groups.push({ folder: null, files: root })
-    for (const [folder, files] of map) {
-        if (folder !== null) groups.push({ folder, files })
-    }
-    groups.sort((a, b) => {
-        if (a.folder === null) return -1
-        if (b.folder === null) return 1
-        return a.folder.localeCompare(b.folder)
-    })
-    return groups
 }
 
 /**
@@ -74,8 +53,13 @@ export function ServerVolumeDialog({
     error,
     onClose,
     onPick,
+    onPickMany,
     multiple = false,
 }: ServerVolumeDialogProps) {
+    const pickAll = (locals: LocalVolume[]) => {
+        if (onPickMany) onPickMany(locals)
+        else locals.forEach(onPick)
+    }
     const [selected, setSelected] = useState<Set<string>>(() => new Set())
     const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
 
@@ -134,7 +118,7 @@ export function ServerVolumeDialog({
     }
 
     const confirmMultiple = () => {
-        volumes.filter((v) => selected.has(v.path)).forEach(onPick)
+        pickAll(volumes.filter((v) => selected.has(v.path)))
         close()
     }
 
@@ -144,7 +128,7 @@ export function ServerVolumeDialog({
     }
 
     const pickFolder = (folder: string) => {
-        filesInFolder(folder).forEach(onPick)
+        pickAll(filesInFolder(folder))
         close()
     }
 

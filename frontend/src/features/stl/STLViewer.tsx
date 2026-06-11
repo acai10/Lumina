@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Box } from '@mui/material'
 import { palette } from '../../shared/theme/palette'
 import { createScene, disposeSceneGeometry } from '../../shared/three/sceneUtils'
+import { ZoomModeButton } from '../../shared/components'
 import { useViewerStore } from '../../app/store/viewerSlice'
 
 const HEMI_INTENSITY = 0.7
@@ -50,8 +52,11 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null)
     const meshRef = useRef<THREE.Mesh | null>(null)
     const materialRef = useRef<THREE.MeshStandardMaterial | null>(null)
+    const controlsRef = useRef<OrbitControls | null>(null)
 
     const stlOpacity = useViewerStore((s) => s.stlOpacity)
+    const zoomToCursor = useViewerStore((s) => s.zoomToCursor)
+    const toggleZoomToCursor = useViewerStore((s) => s.toggleZoomToCursor)
 
     useEffect(() => {
         const container = containerRef.current
@@ -67,6 +72,7 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
             canvasRef.current,
         )
         canvasRef.current = renderer.domElement
+        controlsRef.current = controls
 
         addLights(scene)
 
@@ -155,6 +161,7 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
             cancelAnimationFrame(animId)
             meshRef.current = null
             materialRef.current = null
+            controlsRef.current = null
             disposeSceneGeometry(scene)
             disposeBase()
         }
@@ -167,5 +174,14 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
         }
     }, [stlOpacity])
 
-    return <Box ref={containerRef} sx={{ width: '100%', height: '100%' }} />
+    useEffect(() => {
+        if (controlsRef.current) controlsRef.current.zoomToCursor = zoomToCursor
+    }, [zoomToCursor])
+
+    return (
+        <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
+            <Box ref={containerRef} sx={{ width: '100%', height: '100%' }} />
+            <ZoomModeButton active={zoomToCursor} onToggle={toggleZoomToCursor} />
+        </Box>
+    )
 }

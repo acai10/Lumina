@@ -36,6 +36,8 @@ const FILTER_LABELS: Record<FilterTypeOrNone, string> = {
 }
 
 const FILTER_OPTIONS = Object.entries(FILTER_LABELS) as [FilterTypeOrNone, string][]
+const FILTER_TYPE_KEYS = new Set(Object.keys(FILTER_LABELS))
+const isFilterTypeOrNone = (v: string): v is FilterTypeOrNone => FILTER_TYPE_KEYS.has(v)
 
 const PHASE_LABEL: Partial<Record<FilterPhase, string>> = {
     uploading: 'Uploading…',
@@ -136,16 +138,9 @@ export function PreprocessingSection() {
         activeEntry?.backendVolumeId,
         activeEntry?.registeredVolumeId,
     )
-    const {
-        steps,
-        addStep,
-        removeStep,
-        moveStep,
-        updateStepType,
-        updateStepParam,
-        buildFilterChain,
-        reset,
-    } = usePipeline()
+    const { pipeline, buildFilterChain } = usePipeline()
+    const { steps, addStep, removeStep, moveStep, updateStepType, updateStepParam, reset } =
+        pipeline
 
     if (
         !activeEntry ||
@@ -205,9 +200,10 @@ export function PreprocessingSection() {
                                     <Select
                                         value={step.type}
                                         label="Filter"
-                                        onChange={(e) =>
-                                            updateStepType(i, e.target.value as FilterTypeOrNone)
-                                        }
+                                        onChange={(e) => {
+                                            if (isFilterTypeOrNone(e.target.value))
+                                                updateStepType(i, e.target.value)
+                                        }}
                                         disabled={isBusy}
                                         sx={controlFontSx}
                                     >

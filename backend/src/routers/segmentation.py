@@ -4,8 +4,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from src.config import settings
-from src.processing.h5_reader import load_volume
+from src.processing.h5_reader import load_volume_flexible
 from src.processing.multi_volume import segment_surface
+from src.processing.volume_cache import load_volume_cached
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ async def segment_volume(volume_id: str, threshold: float = _DEFAULT_THRESHOLD) 
         raise HTTPException(status_code=404, detail=f"Volume '{volume_id}' not found")
 
     try:
-        volume = load_volume(path)
+        volume = load_volume_cached(path, load_volume_flexible)
     except Exception as exc:
         logger.exception("Failed to load volume %s for segmentation", volume_id)
         raise HTTPException(status_code=500, detail=str(exc)) from exc

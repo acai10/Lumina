@@ -19,35 +19,7 @@ import { useServerVolumes } from '../../shared/components'
 import { useFileLoad } from '../toolbar/useFileLoad'
 import { palette } from '../../shared/theme/palette'
 import { FILE_LIST_WIDTH, PANEL_PADDING } from '../../shared/theme/layout'
-import type { LocalVolume } from '../../shared/api'
-
-interface VolumeGroup {
-    folder: string | null
-    files: LocalVolume[]
-}
-
-function groupByFolder(volumes: LocalVolume[]): VolumeGroup[] {
-    const map = new Map<string | null, LocalVolume[]>()
-    for (const v of volumes) {
-        const parts = v.path.split('/')
-        const folder = parts.length > 1 ? parts.slice(0, -1).join('/') : null
-        const list = map.get(folder) ?? []
-        list.push(v)
-        map.set(folder, list)
-    }
-    const groups: VolumeGroup[] = []
-    const root = map.get(null)
-    if (root) groups.push({ folder: null, files: root })
-    for (const [folder, files] of map) {
-        if (folder !== null) groups.push({ folder, files })
-    }
-    groups.sort((a, b) => {
-        if (a.folder === null) return -1
-        if (b.folder === null) return 1
-        return a.folder.localeCompare(b.folder)
-    })
-    return groups
-}
+import { groupByFolder } from '../../shared/utils'
 
 const panelSx = {
     flexShrink: 0,
@@ -77,10 +49,14 @@ const iconBtnSx = {
 export function FileListPanel() {
     const toggleFileListPanel = useViewerStore((s) => s.toggleFileListPanel)
     const { volumes, loading, error, refresh } = useServerVolumes()
-    const { loadServerVolume } = useFileLoad()
+    const {
+        loaders: { loadServerVolume },
+    } = useFileLoad()
 
     // Auto-load on mount so the panel is immediately populated when opened.
-    useEffect(() => { void refresh() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        void refresh()
+    }, [refresh])
 
     const groups = useMemo(() => groupByFolder(volumes), [volumes])
 
@@ -138,7 +114,10 @@ export function FileListPanel() {
                                     >
                                         <ListItemIcon sx={{ minWidth: 24 }}>
                                             <InsertDriveFileIcon
-                                                sx={{ fontSize: '0.9rem', color: palette.textMuted }}
+                                                sx={{
+                                                    fontSize: '0.9rem',
+                                                    color: palette.textMuted,
+                                                }}
                                             />
                                         </ListItemIcon>
                                         <ListItemText

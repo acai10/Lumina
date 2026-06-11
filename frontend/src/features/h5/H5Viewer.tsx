@@ -1,14 +1,17 @@
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Box } from '@mui/material'
 import { useViewerStore, defaultRenderControls } from '../../app/store/viewerSlice'
 import { createScene, disposeSceneGeometry } from '../../shared/three/sceneUtils'
 import { palette } from '../../shared/theme/palette'
+import { ZoomModeButton } from '../../shared/components'
 import type { H5Meta } from '../../shared/types/viewer.types'
-import { createAxisLabels } from './createAxisLabels'
+import { createAxisLabels, createAxisTickLabels } from './createAxisLabels'
+import { DEFAULT_VOXEL_SIZE_UM } from '../../shared/constants'
 import { vertexShader, fragmentShader } from './h5ViewerShaders'
-import { applyDrawRanges } from './h5DrawUtils'
+import { applyDrawRanges, countAboveThreshold } from './h5DrawUtils'
 
 // Firefox caps drawArraysInstanced at 30 M vertices per draw call; leave headroom
 const MAX_VERTS_PER_DRAW = 28_000_000
@@ -16,6 +19,29 @@ const MAX_VERTS_PER_DRAW = 28_000_000
 // Stable fallback constants — inline `?? [0,1]` creates a new array every render
 // and breaks Zustand's snapshot cache check, causing an infinite re-render loop.
 const DEFAULT_COLORMAP_RANGE: [number, number] = [0, 1]
+
+// Percentiles used to build the auto-fit colour window. Above-threshold OCT
+// intensities are heavily skewed toward the top, so a plain min/max window maps
+// almost everything onto the hot end of the colormap and looks near-monochrome.
+// Clipping the top/bottom tails and stretching the bulk gives a visible gradient
+// (a standard contrast-stretch, like clim percentiles in imaging tools).
+const COLOR_WINDOW_LOW_PCT = 0.02
+const COLOR_WINDOW_HIGH_PCT = 0.98
+
+// Robust colour window over the voxels currently visible (>= threshold). vIntensities
+// is sorted DESCENDING, so high values sit at low indices: the high-percentile (ceil)
+// is near index 0 and the low-percentile (floor) is near the end of the visible range.
+// Falls back to [threshold, 1] when nothing is visible.
+function visibleIntensityWindow(vIntensities: Float32Array, threshold: number): [number, number] {
+    const total = countAboveThreshold(vIntensities, threshold)
+    if (total === 0 || vIntensities.length === 0) return [threshold, 1]
+    const hiIdx = Math.min(total - 1, Math.floor((1 - COLOR_WINDOW_HIGH_PCT) * total))
+    const loIdx = Math.min(total - 1, Math.floor((1 - COLOR_WINDOW_LOW_PCT) * total))
+    const ceil = vIntensities[hiIdx]
+    const floor = vIntensities[loIdx]
+    // Guard against a degenerate zero-width window (all visible voxels identical).
+    return floor < ceil ? [floor, ceil] : [floor, floor + 0.001]
+}
 
 // STL overlay appearance: a semi-transparent blue mesh lit by its own ambient + key light.
 const STL_OVERLAY_COLOR = 0x88aaff
@@ -58,19 +84,18 @@ export default function H5Viewer({
     const sceneRef = useRef<THREE.Scene | null>(null)
     // The green bounding box; its Y extent tracks the current volume spacing.
     const boxHelperRef = useRef<THREE.Box3Helper | null>(null)
+    const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
+    const controlsRef = useRef<OrbitControls | null>(null)
+    const maxDimRef = useRef(0)
 
     const renderControls = useViewerStore(
         (s) => s.h5PerFileStates[fileKey]?.renderControls ?? defaultRenderControls,
     )
-    const sliceColormap = useViewerStore(
-        (s) => s.h5PerFileStates[fileKey]?.sliceColormap ?? 'gray',
-    )
+    const sliceColormap = useViewerStore((s) => s.h5PerFileStates[fileKey]?.sliceColormap ?? 'gray')
     const colormapRange = useViewerStore(
         (s) => s.h5PerFileStates[fileKey]?.sliceColormapRange ?? DEFAULT_COLORMAP_RANGE,
     )
-    const colorByDepth = useViewerStore(
-        (s) => s.h5PerFileStates[fileKey]?.colorByDepth ?? false,
-    )
+    const colorByDepth = useViewerStore((s) => s.h5PerFileStates[fileKey]?.colorByDepth ?? false)
 
     useEffect(() => {
         const container = containerRef.current
@@ -89,6 +114,13 @@ export default function H5Viewer({
             useViewerStore.getState().h5PerFileStates[fileKey]?.renderControls ??
             defaultRenderControls
         const maxDim = Math.max(width, height, initialRc.volumeSpacing)
+        maxDimRef.current = maxDim
+        cameraRef.current = camera
+        controlsRef.current = controls
+        const [initialFloor, initialCeil] = visibleIntensityWindow(
+            vIntensities,
+            initialRc.h5Threshold,
+        )
 
         const axes = new THREE.AxesHelper(maxDim * AXES_HELPER_SCALE)
         scene.add(axes)
@@ -96,6 +128,16 @@ export default function H5Viewer({
         const axisLen = maxDim * AXIS_LABEL_LENGTH_SCALE
         const labelScale = maxDim * AXIS_LABEL_SIZE_SCALE
         const axisLabels = createAxisLabels(scene, axisLen, labelScale)
+        const voxelSizeUm =
+            useViewerStore.getState().h5PerFileStates[fileKey]?.sliceVoxelSizeUm ??
+            DEFAULT_VOXEL_SIZE_UM
+        const tickLabels = createAxisTickLabels(
+            scene,
+            meta,
+            voxelSizeUm,
+            labelScale,
+            initialRc.volumeSpacing,
+        )
 
         const material = new THREE.ShaderMaterial({
             glslVersion: THREE.GLSL3,
@@ -119,6 +161,8 @@ export default function H5Viewer({
                 uColormapMin: { value: 0 },
                 uColormapMax: { value: 1 },
                 uColorByDepth: { value: 0 },
+                uIntensityFloor: { value: initialFloor },
+                uIntensityCeil: { value: initialCeil },
             },
             vertexShader,
             fragmentShader,
@@ -199,7 +243,7 @@ export default function H5Viewer({
                 cameraQuaternion: camera.quaternion.toArray() as [number, number, number, number],
                 controlsTarget: controls.target.toArray() as [number, number, number],
             })
-            axisLabels.forEach((sprite) => {
+            ;[...axisLabels, ...tickLabels].forEach((sprite) => {
                 sprite.material.map?.dispose()
                 sprite.material.dispose()
             })
@@ -207,6 +251,8 @@ export default function H5Viewer({
             chunkGeosRef.current = []
             boxHelperRef.current = null
             sceneRef.current = null
+            cameraRef.current = null
+            controlsRef.current = null
             disposeSceneGeometry(scene)
             disposeBase()
         }
@@ -281,6 +327,31 @@ export default function H5Viewer({
         }
     }, [stlOverlayFile])
 
+    const cameraResetGen = useViewerStore((s) => s.h5PerFileStates[fileKey]?.cameraResetGen ?? 0)
+    const lastCameraResetGenRef = useRef(cameraResetGen)
+    useEffect(() => {
+        if (cameraResetGen === lastCameraResetGenRef.current) return
+        lastCameraResetGenRef.current = cameraResetGen
+        const camera = cameraRef.current
+        const controls = controlsRef.current
+        const maxDim = maxDimRef.current
+        if (!camera || !controls || !maxDim) return
+        camera.position.set(
+            maxDim * CAMERA_START_OFFSET[0],
+            maxDim * CAMERA_START_OFFSET[1],
+            maxDim * CAMERA_START_OFFSET[2],
+        )
+        controls.target.set(0, 0, 0)
+        controls.update()
+        needsRenderRef.current = true
+    }, [cameraResetGen])
+
+    const zoomToCursor = useViewerStore((s) => s.zoomToCursor)
+    const toggleZoomToCursor = useViewerStore((s) => s.toggleZoomToCursor)
+    useEffect(() => {
+        if (controlsRef.current) controlsRef.current.zoomToCursor = zoomToCursor
+    }, [zoomToCursor])
+
     const {
         volumeSpacing,
         h5PointSize,
@@ -303,6 +374,11 @@ export default function H5Viewer({
         if (!mat) return
         mat.uniforms.uThreshold.value = h5Threshold
         applyDrawRanges(chunkGeosRef.current, vIntensities, h5Threshold)
+        // The visible intensity window shifts with the threshold — refit so the
+        // colormap keeps spanning exactly the currently displayed voxels.
+        const [floor, ceil] = visibleIntensityWindow(vIntensities, h5Threshold)
+        mat.uniforms.uIntensityFloor.value = floor
+        mat.uniforms.uIntensityCeil.value = ceil
         needsRenderRef.current = true
     }, [h5Threshold, vIntensities])
 
@@ -382,5 +458,10 @@ export default function H5Viewer({
         heightMax,
     ])
 
-    return <Box ref={containerRef} sx={{ width: '100%', height: '100%' }} />
+    return (
+        <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
+            <Box ref={containerRef} sx={{ width: '100%', height: '100%' }} />
+            <ZoomModeButton active={zoomToCursor} onToggle={toggleZoomToCursor} />
+        </Box>
+    )
 }

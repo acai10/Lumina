@@ -42,8 +42,37 @@ import { PreprocessingSection } from './PreprocessingSection'
 import { SliderRow, RangeSliderRow } from './SliderRow'
 import type { ColormapType, H5RenderControls } from '../../shared/types/viewer.types'
 import { segmentVolume, measureVolume, uploadVolume } from '../../shared/api/client'
+import type { MeasureResult } from '../../shared/api/client'
+import { palette } from '../../shared/theme/palette'
+import { DEFAULT_VOXEL_SIZE_UM, UM_PER_MM } from '../../shared/constants'
 
 const NO_OVERLAY_SENTINEL = -1
+const UM2_PER_MM2 = 1e6
+const UM3_PER_MM3 = 1e9
+
+const COLORMAP_VALUES: ColormapType[] = ['gray', 'jet', 'hot']
+const isColormapType = (v: string): v is ColormapType => (COLORMAP_VALUES as string[]).includes(v)
+
+function MeasurementResultPanel({ result }: { result: MeasureResult }) {
+    const rows: [string, string][] = [
+        ['Volumen', `${(result.volume_um3 / UM3_PER_MM3).toFixed(4)} mm³`],
+        ['Oberfläche', `${(result.surface_area_um2 / UM2_PER_MM2).toFixed(4)} mm²`],
+        ['Ø Dicke', `${(result.mean_thickness_um / UM_PER_MM).toFixed(3)} mm`],
+        ['Max Dicke', `${(result.max_thickness_um / UM_PER_MM).toFixed(3)} mm`],
+        ['Lat. Durchm.', `${(result.lateral_diameter_um / UM_PER_MM).toFixed(3)} mm`],
+        ['Voxel', result.voxel_count.toLocaleString()],
+    ]
+    return (
+        <Stack spacing={0.25}>
+            {rows.map(([k, v]) => (
+                <Stack key={k} direction="row" justifyContent="space-between">
+                    <Typography sx={{ ...labelSx, opacity: 0.65 }}>{k}</Typography>
+                    <Typography sx={{ ...labelSx, fontWeight: 600 }}>{v}</Typography>
+                </Stack>
+            ))}
+        </Stack>
+    )
+}
 
 const OVERLAY_COLORS: [number, number, number][] = [
     [255, 80, 80],
@@ -99,6 +128,7 @@ export default function ControlsPanel() {
         setMeasurementResult,
         setBackendVolumeId,
         setNotification,
+        requestCameraReset,
     } = useViewerStore(
         useShallow((s) => ({
             tabs: s.tabs,
@@ -123,12 +153,13 @@ export default function ControlsPanel() {
             setMeasurementResult: s.setMeasurementResult,
             setBackendVolumeId: s.setBackendVolumeId,
             setNotification: s.setNotification,
+            requestCameraReset: s.requestCameraReset,
         })),
     )
 
     const [isSegmenting, setIsSegmenting] = useState(false)
     const [isMeasuring, setIsMeasuring] = useState(false)
-    const [voxelSize, setVoxelSize] = useState<[number, number, number]>([1.0, 1.0, 1.0])
+    const [voxelSize, setVoxelSize] = useState<[number, number, number]>(DEFAULT_VOXEL_SIZE_UM)
     const [segThreshold, setSegThreshold] = useState(0.5)
 
     const activeTab = tabs[activeTabIndex]
@@ -150,8 +181,9 @@ export default function ControlsPanel() {
 
     const sliceColormap: ColormapType =
         (activeKey ? h5PerFileStates[activeKey]?.sliceColormap : undefined) ?? 'gray'
-    const colormapRange: [number, number] =
-        (activeKey ? h5PerFileStates[activeKey]?.sliceColormapRange : undefined) ?? [0, 1]
+    const colormapRange: [number, number] = (activeKey
+        ? h5PerFileStates[activeKey]?.sliceColormapRange
+        : undefined) ?? [0, 1]
     const colorByDepth = (activeKey ? h5PerFileStates[activeKey]?.colorByDepth : undefined) ?? false
     const segmentationOverlays = activeKey
         ? (h5PerFileStates[activeKey]?.segmentationOverlays ?? [])
@@ -179,8 +211,18 @@ export default function ControlsPanel() {
 
     const handleReset = useCallback(() => {
         if (activeH5) {
-            if (viewMode === 'slice' && activeKey) resetSlicePanelControls(activeKey)
-            else updateActiveRenderState({ ...defaultRenderControls })
+            if (viewMode === 'slice' && activeKey) {
+                resetSlicePanelControls(activeKey)
+            } else {
+                const { nSlices, height, width } = activeH5.meta
+                updateActiveRenderState({
+                    ...defaultRenderControls,
+                    h5SliceRange: [0, nSlices],
+                    h5HeightRange: [0, height],
+                    h5WidthRange: [0, width],
+                })
+                if (activeKey) requestCameraReset(activeKey)
+            }
         } else {
             setStlOpacity(DEFAULT_STL_OPACITY)
         }
@@ -191,6 +233,7 @@ export default function ControlsPanel() {
         resetSlicePanelControls,
         updateActiveRenderState,
         setStlOpacity,
+        requestCameraReset,
     ])
 
     if (tabs.length === 0) return null
@@ -266,7 +309,8 @@ export default function ControlsPanel() {
                             exclusive
                             size="small"
                             onChange={(_, v) => {
-                                if (v && activeKey) setSliceColormap(activeKey, v as ColormapType)
+                                if (v && activeKey && isColormapType(v))
+                                    setSliceColormap(activeKey, v)
                             }}
                             sx={{ alignSelf: 'flex-start' }}
                         >
@@ -328,7 +372,14 @@ export default function ControlsPanel() {
                             </Stack>
 
                             {/* Segment + Clear buttons */}
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                            <Box
+                                sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 1,
+                                    flexWrap: 'wrap',
+                                }}
+                            >
                                 <Button
                                     size="small"
                                     variant="outlined"
@@ -339,8 +390,12 @@ export default function ControlsPanel() {
                                         try {
                                             const volumeId = await resolveVolumeId()
                                             if (!volumeId) return
-                                            const { data } = await segmentVolume(volumeId, segThreshold)
-                                            const colorIdx = segmentationOverlays.length % OVERLAY_COLORS.length
+                                            const { data } = await segmentVolume(
+                                                volumeId,
+                                                segThreshold,
+                                            )
+                                            const colorIdx =
+                                                segmentationOverlays.length % OVERLAY_COLORS.length
                                             addSegmentationOverlay(activeKey, {
                                                 id: `${Date.now()}`,
                                                 threshold: segThreshold,
@@ -349,7 +404,8 @@ export default function ControlsPanel() {
                                                 label: `t=${segThreshold.toFixed(2)}`,
                                             })
                                             setNotification({
-                                                message: 'Segmentierung abgeschlossen — Slices-Ansicht öffnen',
+                                                message:
+                                                    'Segmentierung abgeschlossen — Slices-Ansicht öffnen',
                                                 severity: 'success',
                                             })
                                         } catch (err) {
@@ -373,7 +429,9 @@ export default function ControlsPanel() {
                                         size="small"
                                         variant="outlined"
                                         color="error"
-                                        onClick={() => activeKey && clearSegmentationOverlays(activeKey)}
+                                        onClick={() =>
+                                            activeKey && clearSegmentationOverlays(activeKey)
+                                        }
                                         disabled={isSegmenting}
                                         sx={{ fontSize: '0.65rem', py: 0.4 }}
                                     >
@@ -459,7 +517,8 @@ export default function ControlsPanel() {
                                                     ]
                                                     next[i] = v
                                                     setVoxelSize(next)
-                                                    if (activeKey) setSliceVoxelSizeUm(activeKey, next)
+                                                    if (activeKey)
+                                                        setSliceVoxelSizeUm(activeKey, next)
                                                 }
                                             }}
                                             style={{
@@ -467,9 +526,9 @@ export default function ControlsPanel() {
                                                 fontSize: '0.72rem',
                                                 padding: '2px 4px',
                                                 borderRadius: 4,
-                                                border: '1px solid rgba(120,160,210,0.4)',
-                                                background: '#f4f8fd',
-                                                color: 'rgba(18,32,54,0.92)',
+                                                border: `1px solid ${palette.borderGlass}`,
+                                                background: palette.surfaceSolid,
+                                                color: palette.textPrimary,
                                                 textAlign: 'right',
                                             }}
                                         />
@@ -510,54 +569,11 @@ export default function ControlsPanel() {
                                 </Button>
                                 {isMeasuring && <CircularProgress size={12} thickness={5} />}
                             </Box>
-                            {activeKey &&
-                                h5PerFileStates[activeKey]?.measurementResult &&
-                                (() => {
-                                    const r = h5PerFileStates[activeKey].measurementResult!
-                                    const rows: [string, string][] = [
-                                        [
-                                            'Volumen',
-                                            `${(r.volume_um3 / 1e9).toFixed(4)} mm³`,
-                                        ],
-                                        [
-                                            'Oberfläche',
-                                            `${(r.surface_area_um2 / 1e6).toFixed(4)} mm²`,
-                                        ],
-                                        [
-                                            'Ø Dicke',
-                                            `${(r.mean_thickness_um / 1000).toFixed(3)} mm`,
-                                        ],
-                                        [
-                                            'Max Dicke',
-                                            `${(r.max_thickness_um / 1000).toFixed(3)} mm`,
-                                        ],
-                                        [
-                                            'Lat. Durchm.',
-                                            `${(r.lateral_diameter_um / 1000).toFixed(3)} mm`,
-                                        ],
-                                        ['Voxel', r.voxel_count.toLocaleString()],
-                                    ]
-                                    return (
-                                        <Stack spacing={0.25}>
-                                            {rows.map(([k, v]) => (
-                                                <Stack
-                                                    key={k}
-                                                    direction="row"
-                                                    justifyContent="space-between"
-                                                >
-                                                    <Typography sx={{ ...labelSx, opacity: 0.65 }}>
-                                                        {k}
-                                                    </Typography>
-                                                    <Typography
-                                                        sx={{ ...labelSx, fontWeight: 600 }}
-                                                    >
-                                                        {v}
-                                                    </Typography>
-                                                </Stack>
-                                            ))}
-                                        </Stack>
-                                    )
-                                })()}
+                            {activeKey && h5PerFileStates[activeKey]?.measurementResult && (
+                                <MeasurementResultPanel
+                                    result={h5PerFileStates[activeKey].measurementResult!}
+                                />
+                            )}
                         </Stack>
                     )}
 

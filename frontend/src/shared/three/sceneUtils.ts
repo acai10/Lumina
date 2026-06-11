@@ -88,6 +88,7 @@ export function createScene(
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.15
+    controls.zoomToCursor = true
 
     const handleResize = () => {
         const rw = container.clientWidth

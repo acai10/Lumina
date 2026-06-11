@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import IconButton from '@mui/material/IconButton'
+import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
@@ -10,7 +11,7 @@ import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import { palette } from '../../shared/theme/palette'
-import { cleanupUploads, registerLocalVolume } from '../../shared/api'
+import { cleanupUploads, registerLocalVolume, registerLocalVolumesBatch } from '../../shared/api'
 import { REGISTRATION_METHOD } from '../../shared/api/types'
 import type { LocalVolume, RegistrationMethod } from '../../shared/api'
 import { ServerVolumeDialog, useServerVolumes } from '../../shared/components'
@@ -60,7 +61,40 @@ export default function StitcherPanel() {
         error: serverVolumesError,
         refresh: refreshServerVolumes,
     } = useServerVolumes()
+    const tabs = useViewerStore((s) => s.tabs)
     const setNotification = useViewerStore((s) => s.setNotification)
+
+    const [loadedMenuAnchor, setLoadedMenuAnchor] = useState<HTMLElement | null>(null)
+
+    // H5 tabs that can be used as stitcher inputs:
+    // - sourceFile → will be uploaded fresh (local file, not yet on backend)
+    // - registeredVolumeId → zero-copy path reference already on backend
+    // - backendVolumeId with registeredVolumeId → stitched result, uses merged .h5
+    // Tabs that only have backendVolumeId (old stitched tabs before the fix, or
+    // sessions without a merged_volume_id) cannot be added as stitcher inputs.
+    const loadableH5Tabs = useMemo(
+        () =>
+            tabs.filter(
+                (t) =>
+                    t.type === 'h5' &&
+                    (t.sourceFile !== undefined || t.registeredVolumeId !== undefined),
+            ),
+        [tabs],
+    )
+
+    const handleAddFromLoaded = (tabName: string) => {
+        setLoadedMenuAnchor(null)
+        const tab = tabs.find((t) => t.type === 'h5' && t.name === tabName)
+        if (!tab || tab.type !== 'h5') return
+        const cfg: VolumeConfig = {
+            name: tab.name,
+            ...inferGridPos(tab.name),
+            ...(tab.registeredVolumeId
+                ? { volumeId: tab.registeredVolumeId }
+                : { file: tab.sourceFile }),
+        }
+        addConfigs([cfg])
+    }
 
     const addConfigs = (entries: VolumeConfig[]) => {
         setConfigs((prev) => {
@@ -90,6 +124,26 @@ export default function StitcherPanel() {
         } catch (err) {
             setNotification({
                 message: `Failed to add "${local.name}": ${err instanceof Error ? err.message : String(err)}`,
+                severity: 'error',
+            })
+        }
+    }
+
+    const handleServerPickMany = async (locals: LocalVolume[]) => {
+        if (locals.length === 0) return
+        try {
+            // One round-trip registers every selected tile (vs N+1 per-file calls).
+            const responses = await registerLocalVolumesBatch(locals.map((l) => l.path))
+            addConfigs(
+                responses.map((r, i) => ({
+                    name: locals[i].name,
+                    volumeId: r.volume_id,
+                    ...inferGridPos(locals[i].name),
+                })),
+            )
+        } catch (err) {
+            setNotification({
+                message: `Failed to add volumes: ${err instanceof Error ? err.message : String(err)}`,
                 severity: 'error',
             })
         }
@@ -179,11 +233,10 @@ export default function StitcherPanel() {
                         e.target.value = ''
                     }}
                 />
-                <Stack direction="row" spacing={1}>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     <Button
                         variant="outlined"
                         size="small"
-                        fullWidth
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isBusy}
                         sx={tealOutlineButtonSx}
@@ -193,7 +246,6 @@ export default function StitcherPanel() {
                     <Button
                         variant="outlined"
                         size="small"
-                        fullWidth
                         onClick={() => folderInputRef.current?.click()}
                         disabled={isBusy}
                         sx={tealOutlineButtonSx}
@@ -203,14 +255,47 @@ export default function StitcherPanel() {
                     <Button
                         variant="outlined"
                         size="small"
-                        fullWidth
                         onClick={handleServerOpen}
                         disabled={isBusy}
                         sx={tealOutlineButtonSx}
                     >
                         From Server
                     </Button>
+                    <Tooltip
+                        title={
+                            loadableH5Tabs.length === 0
+                                ? 'Keine geladenen H5-Dateien verfügbar'
+                                : 'Geladene H5-Datei hinzufügen'
+                        }
+                    >
+                        <span>
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                disabled={isBusy || loadableH5Tabs.length === 0}
+                                onClick={(e) => setLoadedMenuAnchor(e.currentTarget)}
+                                sx={tealOutlineButtonSx}
+                            >
+                                From Loaded
+                            </Button>
+                        </span>
+                    </Tooltip>
                 </Stack>
+                <Menu
+                    anchorEl={loadedMenuAnchor}
+                    open={Boolean(loadedMenuAnchor)}
+                    onClose={() => setLoadedMenuAnchor(null)}
+                >
+                    {loadableH5Tabs.map((t) => (
+                        <MenuItem
+                            key={t.name}
+                            onClick={() => handleAddFromLoaded(t.name)}
+                            sx={{ fontSize: '0.8rem' }}
+                        >
+                            {t.name}
+                        </MenuItem>
+                    ))}
+                </Menu>
             </Box>
 
             {/* Volume list */}
@@ -296,11 +381,13 @@ export default function StitcherPanel() {
                         '& .MuiSvgIcon-root': { color: palette.textMuted },
                     }}
                 >
-                    {(Object.keys(METHOD_LABELS) as RegistrationMethod[]).map((m) => (
-                        <MenuItem key={m} value={m} sx={{ fontSize: '0.82rem' }}>
-                            {METHOD_LABELS[m]}
-                        </MenuItem>
-                    ))}
+                    {(Object.keys(METHOD_LABELS) as string[])
+                        .filter(isRegistrationMethod)
+                        .map((m) => (
+                            <MenuItem key={m} value={m} sx={{ fontSize: '0.82rem' }}>
+                                {METHOD_LABELS[m]}
+                            </MenuItem>
+                        ))}
                 </Select>
             </Box>
 
@@ -340,6 +427,7 @@ export default function StitcherPanel() {
                 error={serverVolumesError}
                 onClose={() => setServerDialogOpen(false)}
                 onPick={handleServerPick}
+                onPickMany={handleServerPickMany}
                 multiple
             />
         </Box>

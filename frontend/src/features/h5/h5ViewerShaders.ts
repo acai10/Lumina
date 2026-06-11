@@ -56,6 +56,10 @@ uniform float uColormapMin;
 uniform float uColormapMax;
 // 0 = color by intensity, 1 = color by depth (slice position)
 uniform int uColorByDepth;
+// Auto-fit colour window: min/max intensity among the currently visible
+// (above-threshold) voxels. The full colormap is mapped across [floor, ceil].
+uniform float uIntensityFloor;
+uniform float uIntensityCeil;
 
 vec3 applyColormap(float t) {
     if (uColormap == 1) {
@@ -91,9 +95,13 @@ void main() {
         float span = max(uColormapMax - uColormapMin, 0.001);
         t = clamp((t - uColormapMin) / span, 0.0, 1.0);
     } else {
-        // Remap [uThreshold, 1.0] → [0, 1] so the full colormap gradient covers
-        // the visible intensity range, not just the narrow band above threshold.
-        float visible = clamp((fIntensity - uThreshold) / max(1.0 - uThreshold, 0.001), 0.0, 1.0);
+        // Brightness heatmap with auto-fit. The 3D view only renders voxels above
+        // uThreshold, so the displayed intensities live in [uIntensityFloor,
+        // uIntensityCeil] — the actual min/max of the visible voxels. Stretch that
+        // exact band across the full colormap so brighter voxels always get visibly
+        // hotter colors, no matter where the threshold sits. Without this every
+        // visible point would collapse into the top colormap sliver and look uniform.
+        float visible = clamp((fIntensity - uIntensityFloor) / max(uIntensityCeil - uIntensityFloor, 0.001), 0.0, 1.0);
         float c = clamp(visible * uBrightness, 0.0, 1.0);
         if (c < 0.5) c = 0.5 * pow(2.0 * c, uContrast);
         else         c = 1.0 - 0.5 * pow(2.0 * (1.0 - c), uContrast);

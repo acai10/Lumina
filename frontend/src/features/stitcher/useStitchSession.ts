@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { createSession, pollSession, fetchSessionMerged, uploadVolume } from '../../shared/api'
 import { JOB_STATUS } from '../../shared/api/types'
 import type { RegistrationMethod, SessionStatus } from '../../shared/api'
@@ -24,8 +24,15 @@ export function useStitchSession() {
     const [phase, setPhase] = useState<StitchPhase>('idle')
     const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null)
     const [error, setError] = useState<string | null>(null)
+    const abortRef = useRef<AbortController | null>(null)
 
     const run = async (configs: VolumeConfig[], method: RegistrationMethod): Promise<void> => {
+        // Cancel any previous in-flight run before starting a new one.
+        abortRef.current?.abort()
+        const abort = new AbortController()
+        abortRef.current = abort
+        const { signal } = abort
+
         setError(null)
         setSessionStatus(null)
 
@@ -46,18 +53,20 @@ export function useStitchSession() {
                     return { volume_id, row: cfg.row, col: cfg.col }
                 }),
             )
+            if (signal.aborted) return
 
             setPhase('processing')
-            const { session_id } = await createSession({
-                volumes: entries,
-                method,
-                method_params: {},
-            })
+            const { session_id } = await createSession(
+                { volumes: entries, method, method_params: {} },
+                signal,
+            )
+            if (signal.aborted) return
 
-            let status = await pollSession(session_id)
+            let status = await pollSession(session_id, signal)
             while (status.status === JOB_STATUS.PENDING || status.status === JOB_STATUS.RUNNING) {
                 await new Promise<void>((res) => setTimeout(res, POLL_INTERVAL_MS))
-                status = await pollSession(session_id)
+                if (signal.aborted) return
+                status = await pollSession(session_id, signal)
             }
             setSessionStatus(status)
 
@@ -68,22 +77,33 @@ export function useStitchSession() {
             // fetchSessionMerged now returns H5VolumeData directly from the backend —
             // no Web Worker or JS normalization step needed.
             setPhase('downloading')
-            const volumeData = await fetchSessionMerged(session_id)
+            const volumeData = await fetchSessionMerged(session_id, signal)
+            if (signal.aborted) return
 
             const entry: H5FileEntry = {
                 name: `Stitched (${new Date().toLocaleTimeString()})`,
                 data: volumeData,
                 backendVolumeId: session_id,
+                // merged_volume_id is the proper /volumes/{id} key for the merged .h5
+                // file created by the backend. It must be stored as registeredVolumeId
+                // so that segmentation, measurement, and the filter-job pipeline all
+                // hit the correct /volumes/{id}/... endpoints instead of the session
+                // endpoint which is only valid for the session-filter fast path.
+                registeredVolumeId: status.merged_volume_id ?? undefined,
             }
             await loadH5([entry])
             setPhase('done')
         } catch (err) {
+            // AbortError is expected when the user resets mid-run — not an error.
+            if (err instanceof Error && err.name === 'AbortError') return
             setError(err instanceof Error ? err.message : String(err))
             setPhase('error')
         }
     }
 
     const reset = () => {
+        abortRef.current?.abort()
+        abortRef.current = null
         setPhase('idle')
         setSessionStatus(null)
         setError(null)

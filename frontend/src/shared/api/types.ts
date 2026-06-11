@@ -24,8 +24,10 @@ export const JOB_STATUS = {
     ERROR: 'error',
 } as const
 
+export type JobStatusValue = (typeof JOB_STATUS)[keyof typeof JOB_STATUS]
+
 export interface JobStatus {
-    status: 'pending' | 'running' | 'done' | 'error'
+    status: JobStatusValue
     results: Record<string, Record<string, number>>
     error?: string
 }
@@ -51,7 +53,7 @@ export const REGISTRATION_METHOD = {
     ICP: 'icp',
 } as const
 
-export type RegistrationMethod = 'phase_correlation' | 'cross_correlation' | 'icp'
+export type RegistrationMethod = (typeof REGISTRATION_METHOD)[keyof typeof REGISTRATION_METHOD]
 
 export interface VolumeEntry {
     volume_id: string
@@ -66,7 +68,7 @@ export interface SessionRequest {
 }
 
 export interface SessionStatus {
-    status: 'pending' | 'running' | 'done' | 'error'
+    status: JobStatusValue
     offsets: Record<string, [number, number]>
     metrics: Record<string, number>
     merged_volume_id?: string

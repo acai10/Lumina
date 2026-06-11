@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5Meta, SegmentationOverlay } from '../../shared/types/viewer.types'
 import { SlicePanel } from './SlicePanel'
+import { DEFAULT_VOXEL_SIZE_UM } from '../../shared/constants'
 
 interface H5SliceViewerProps {
     normalizedVolume: Uint8Array
@@ -14,7 +15,6 @@ interface H5SliceViewerProps {
 // Stable reference — prevents useShallow from seeing a new array every render
 // when segmentationOverlays is undefined in the store (?? [] creates a fresh []).
 const EMPTY_OVERLAYS: SegmentationOverlay[] = []
-const DEFAULT_VOXEL_SIZE: [number, number, number] = [1, 1, 1]
 const DEFAULT_COLORMAP_RANGE: [number, number] = [0, 1]
 
 export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5SliceViewerProps) {
@@ -40,10 +40,8 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
             segmentationOverlays:
                 s.h5PerFileStates[fileKey]?.segmentationOverlays ?? EMPTY_OVERLAYS,
             sliceColormap: s.h5PerFileStates[fileKey]?.sliceColormap ?? 'gray',
-            colormapRange:
-                s.h5PerFileStates[fileKey]?.sliceColormapRange ?? DEFAULT_COLORMAP_RANGE,
-            voxelSizeUm:
-                s.h5PerFileStates[fileKey]?.sliceVoxelSizeUm ?? DEFAULT_VOXEL_SIZE,
+            colormapRange: s.h5PerFileStates[fileKey]?.sliceColormapRange ?? DEFAULT_COLORMAP_RANGE,
+            voxelSizeUm: s.h5PerFileStates[fileKey]?.sliceVoxelSizeUm ?? DEFAULT_VOXEL_SIZE_UM,
         })),
     )
 
@@ -72,14 +70,14 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
                 p: 0.5,
             }}
         >
-            {/* XY — navigates slices (z-axis in data space) */}
+            {/* XZ — navigates slices (z-axis in data space) */}
             <SlicePanel
                 normalizedVolume={normalizedVolume}
                 meta={meta}
                 fileKey={fileKey}
                 axis="z"
                 sliceIndex={sliceZ}
-                label="XY"
+                label="XZ"
                 orient="ccw90"
                 onSliceChange={onSliceChangeZ}
                 colormap={sliceColormap}
@@ -87,14 +85,14 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
                 segmentationOverlays={segmentationOverlays}
                 voxelSizeUm={voxelSizeUm}
             />
-            {/* XZ — navigates height (y-axis in data space) */}
+            {/* XY — navigates height (y-axis in data space) */}
             <SlicePanel
                 normalizedVolume={normalizedVolume}
                 meta={meta}
                 fileKey={fileKey}
                 axis="y"
                 sliceIndex={sliceY}
-                label="XZ"
+                label="XY"
                 orient="flip180"
                 onSliceChange={onSliceChangeY}
                 colormap={sliceColormap}

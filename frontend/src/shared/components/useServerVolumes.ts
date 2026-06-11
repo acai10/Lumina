@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { listLocalVolumes } from '../api'
 import type { LocalVolume } from '../api'
 
@@ -14,7 +14,7 @@ export function useServerVolumes() {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
-    const refresh = async () => {
+    const refresh = useCallback(async () => {
         setLoading(true)
         setError(null)
         try {
@@ -24,7 +24,7 @@ export function useServerVolumes() {
         } finally {
             setLoading(false)
         }
-    }
+    }, [])
 
     return { volumes, loading, error, refresh }
 }

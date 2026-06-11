@@ -53,6 +53,21 @@ export async function registerLocalVolume(path: string): Promise<UploadResponse>
     return getJson<UploadResponse>(res)
 }
 
+/**
+ * Register several server-side `.h5` files by path in a single round-trip.
+ * Equivalent to calling {@link registerLocalVolume} per path but avoids the
+ * N+1 request storm when adding many tiles (e.g. a 25-volume stitch grid).
+ */
+export async function registerLocalVolumesBatch(paths: string[]): Promise<UploadResponse[]> {
+    const res = await fetch(`${BASE_URL}/volumes/register-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': CONTENT_TYPE_JSON },
+        body: JSON.stringify({ paths }),
+    })
+    if (!res.ok) throw new Error(`Batch register failed: ${await res.text()}`)
+    return getJson<UploadResponse[]>(res)
+}
+
 export async function createJob(req: JobRequest): Promise<{ job_id: string }> {
     const res = await fetch(`${BASE_URL}/jobs/`, {
         method: 'POST',
@@ -71,18 +86,22 @@ export async function pollJob(jobId: string): Promise<JobStatus> {
 
 // ── Multi-volume stitching sessions ──────────────────────────────────────────
 
-export async function createSession(req: SessionRequest): Promise<{ session_id: string }> {
+export async function createSession(
+    req: SessionRequest,
+    signal?: AbortSignal,
+): Promise<{ session_id: string }> {
     const res = await fetch(`${BASE_URL}/sessions/`, {
         method: 'POST',
         headers: { 'Content-Type': CONTENT_TYPE_JSON },
         body: JSON.stringify(req),
+        signal,
     })
     if (!res.ok) throw new Error(`Session creation failed: ${await res.text()}`)
     return getJson<{ session_id: string }>(res)
 }
 
-export async function pollSession(sessionId: string): Promise<SessionStatus> {
-    const res = await fetch(`${BASE_URL}/sessions/${sessionId}`)
+export async function pollSession(sessionId: string, signal?: AbortSignal): Promise<SessionStatus> {
+    const res = await fetch(`${BASE_URL}/sessions/${sessionId}`, { signal })
     if (!res.ok) throw new Error(`Session poll failed: ${await res.text()}`)
     return getJson<SessionStatus>(res)
 }
@@ -115,6 +134,37 @@ export async function cleanupUploads(): Promise<void> {
 // The frontend creates three typed-array views into the single response ArrayBuffer —
 // no copy, no Web Worker, no normalization computation needed.
 
+/**
+ * Stream the response body into a single pre-sized ArrayBuffer.
+ *
+ * `X-Shape`/`X-VCount` tell us the exact payload size up front, so we allocate
+ * once and fill it chunk-by-chunk via the stream reader. This avoids the
+ * transient double-allocation that `res.arrayBuffer()` can incur while it grows
+ * its internal buffer — important for the multi-hundred-MB stitched-volume
+ * payloads. Falls back to `arrayBuffer()` when streams are unavailable.
+ */
+async function streamBodyInto(res: Response, byteLength: number): Promise<ArrayBuffer> {
+    const reader = res.body?.getReader()
+    if (!reader) return res.arrayBuffer()
+
+    const out = new Uint8Array(byteLength)
+    let offset = 0
+    for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (!value) continue
+        // Guard against a server sending more bytes than advertised.
+        const remaining = byteLength - offset
+        if (value.length > remaining) {
+            out.set(value.subarray(0, remaining), offset)
+            break
+        }
+        out.set(value, offset)
+        offset += value.length
+    }
+    return out.buffer
+}
+
 async function parseNormalizedVolume(res: Response): Promise<H5VolumeData> {
     if (!res.ok) throw new Error(await res.text())
     const shapeHeader = res.headers.get(HEADER_X_SHAPE)
@@ -124,7 +174,8 @@ async function parseNormalizedVolume(res: Response): Promise<H5VolumeData> {
     const vCount = parseInt(vCountHeader, 10)
     const total = nSlices * height * width
 
-    const buf = await res.arrayBuffer()
+    const byteLength = vCount * BYTES_PER_FLOAT32 * 2 + total
+    const buf = await streamBodyInto(res, byteLength)
     // Three views into the same buffer — zero copy.
     const vIndices = new Float32Array(buf, 0, vCount)
     const vIntensities = new Float32Array(buf, vCount * BYTES_PER_FLOAT32, vCount)
@@ -146,8 +197,11 @@ export async function fetchNormalizedVolume(volumeId: string): Promise<H5VolumeD
     return parseNormalizedVolume(res)
 }
 
-export async function fetchSessionMerged(sessionId: string): Promise<H5VolumeData> {
-    const res = await fetch(`${BASE_URL}/sessions/${sessionId}/merged`)
+export async function fetchSessionMerged(
+    sessionId: string,
+    signal?: AbortSignal,
+): Promise<H5VolumeData> {
+    const res = await fetch(`${BASE_URL}/sessions/${sessionId}/merged`, { signal })
     return parseNormalizedVolume(res)
 }
 

@@ -9,7 +9,7 @@ import {
     fetchSessionMerged,
 } from '../../shared/api/client'
 import { useShallow } from 'zustand/react/shallow'
-import { loadH5FileInWorker } from '../../shared/h5/h5Reader'
+import { loadH5FileInWorker } from '../../shared/h5'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import { JOB_STATUS, REGISTRATION_METHOD } from '../../shared/api/types'
 import type { FilterStep } from '../../shared/api/types'
@@ -49,7 +49,11 @@ export function useFilterJob(
 
         try {
             // ── Merged-result path: backend normalises, no worker needed ──────
-            if (backendVolumeId) {
+            // Only take this path for pure server-side session results (no local file,
+            // no path-registered volume). backendVolumeId is also lazily set by
+            // resolveVolumeId for local files used in segmentation — those must go
+            // through the normal upload→job pipeline below.
+            if (backendVolumeId && !sourceFile && !registeredVolumeId) {
                 setPhase('downloading')
                 const newData = await filterSessionVolume(backendVolumeId, filterChain)
                 applyBackendFilter(fileKey, newData)
@@ -107,7 +111,7 @@ export function useFilterJob(
         try {
             setPhase('reverting')
 
-            if (backendVolumeId) {
+            if (backendVolumeId && !sourceFile && !registeredVolumeId) {
                 // Reload the original merged volume — backend normalises, no worker.
                 const originalData = await fetchSessionMerged(backendVolumeId)
                 applyBackendFilter(fileKey, originalData)

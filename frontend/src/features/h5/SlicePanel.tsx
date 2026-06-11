@@ -5,6 +5,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import { useViewerStore, DEFAULT_SLICE_PANEL_CONTROL } from '../../app/store/viewerSlice'
 import type { ColormapType, H5Meta, SegmentationOverlay } from '../../shared/types/viewer.types'
 import { palette } from '../../shared/theme/palette'
+import { UM_PER_MM, DEFAULT_VOXEL_SIZE_UM } from '../../shared/constants'
 import { slicePanelSliderSx, sliceRowLabelSx, sliceRowValueSx } from './H5SliceViewer.styles'
 import { RENDER_CONTROL_LIMITS } from '../controls/renderControlLimits'
 
@@ -28,6 +29,7 @@ const LUT_SIZE = 256
 const TONE_MAP_PIVOT = 0.5
 const SEG_A = 210
 const MEASURE_RADIUS = 5
+const SCALE_BAR_COLOR = '#a8caff'
 const COLORBAR_STOPS = 12
 
 function applyToneMap(value: number, brightness: number, contrast: number): number {
@@ -119,12 +121,90 @@ function computeDistanceMm(
         d1Um = (r2.ox - r1.ox) * dz
         d2Um = (r2.oy - r1.oy) * dy
     }
-    return Math.sqrt(d1Um * d1Um + d2Um * d2Um) / 1000
+    return Math.sqrt(d1Um * d1Um + d2Um * d2Um) / UM_PER_MM
 }
 
 const ZOOM_STEP_FACTOR = 1.05
 const MIN_ZOOM = 1
 const MAX_ZOOM = 20
+
+// ── Scale bar helpers ─────────────────────────────────────────────────────────
+const SCALE_NICE_UM = [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000]
+
+function scaleBarUm(targetPx: number, umPerPx: number): number {
+    const targetUm = targetPx * umPerPx
+    return SCALE_NICE_UM.find((v) => v >= targetUm * 0.5) ?? SCALE_NICE_UM[SCALE_NICE_UM.length - 1]
+}
+
+function formatScaleUm(um: number): string {
+    if (um >= UM_PER_MM)
+        return `${Number.isInteger(um / UM_PER_MM) ? um / UM_PER_MM : (um / UM_PER_MM).toFixed(1)} mm`
+    return `${um} µm`
+}
+
+function drawScaleBars(
+    ctx: CanvasRenderingContext2D,
+    canvasW: number,
+    canvasH: number,
+    hUmPerPx: number,
+    vUmPerPx: number,
+    displayRatio: number,
+): void {
+    // All sizes target ~constant CSS-pixel size regardless of canvas resolution.
+    const font = Math.max(8, Math.round(10 / displayRatio))
+    const margin = Math.max(4, Math.round(5 / displayRatio))
+    const tickLen = Math.max(3, Math.round(3 / displayRatio))
+    const barH = Math.max(1, Math.round(1.5 / displayRatio))
+    const gap = Math.max(2, Math.round(2 / displayRatio))
+
+    ctx.save()
+    ctx.font = `bold ${font}px sans-serif`
+
+    // ── Horizontal bar (bottom-left) ──────────────────────────────────────────
+    const hBarUm = scaleBarUm(canvasW * 0.28, hUmPerPx)
+    const hBarPx = hBarUm / hUmPerPx
+    const hX = margin
+    const hY = canvasH - margin
+
+    ctx.fillStyle = palette.overlayScrim
+    ctx.fillRect(
+        hX - gap,
+        hY - tickLen - font - gap * 2,
+        hBarPx + gap * 2,
+        tickLen + barH + font + gap * 3,
+    )
+    ctx.fillStyle = SCALE_BAR_COLOR
+    ctx.fillRect(hX, hY - barH, hBarPx, barH)
+    ctx.fillRect(hX, hY - barH - tickLen, barH, tickLen + barH)
+    ctx.fillRect(hX + hBarPx - barH, hY - barH - tickLen, barH, tickLen + barH)
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
+    ctx.fillText(formatScaleUm(hBarUm), hX + hBarPx / 2, hY - barH - tickLen - gap)
+
+    // ── Vertical bar (top-left) ───────────────────────────────────────────────
+    const vBarUm = scaleBarUm(canvasH * 0.28, vUmPerPx)
+    const vBarPx = vBarUm / vUmPerPx
+    const vX = margin
+    const vY = margin
+
+    ctx.fillStyle = palette.overlayScrim
+    ctx.fillRect(vX - gap, vY - gap, tickLen + barH + font + gap * 3, vBarPx + gap * 2)
+    ctx.fillStyle = SCALE_BAR_COLOR
+    ctx.fillRect(vX + tickLen, vY, barH, vBarPx)
+    ctx.fillRect(vX, vY, tickLen + barH, barH)
+    ctx.fillRect(vX, vY + vBarPx - barH, tickLen + barH, barH)
+    ctx.save()
+    ctx.translate(vX + tickLen + barH + gap, vY + vBarPx / 2)
+    ctx.rotate(-Math.PI / 2)
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(formatScaleUm(vBarUm), 0, 0)
+    ctx.restore()
+
+    ctx.restore()
+}
+
+const DEFAULT_COLORMAP_RANGE: [number, number] = [0, 1]
 
 export const SlicePanel = memo(function SlicePanel({
     normalizedVolume,
@@ -136,9 +216,9 @@ export const SlicePanel = memo(function SlicePanel({
     orient,
     onSliceChange,
     colormap = 'gray',
-    colormapRange = [0, 1] as [number, number],
+    colormapRange = DEFAULT_COLORMAP_RANGE,
     segmentationOverlays,
-    voxelSizeUm = [1, 1, 1],
+    voxelSizeUm = DEFAULT_VOXEL_SIZE_UM,
 }: SlicePanelProps) {
     const { nSlices, height, width } = meta
     const maxSlice = axis === 'z' ? nSlices - 1 : axis === 'y' ? height - 1 : width - 1
@@ -287,8 +367,8 @@ export const SlicePanel = memo(function SlicePanel({
             // Measurement overlay — draw on top of the existing canvas pixels.
             if (measuring && measurePoints.length > 0) {
                 ctx.save()
-                ctx.strokeStyle = '#4fa3ff'
-                ctx.fillStyle = '#4fa3ff'
+                ctx.strokeStyle = palette.accentBlue
+                ctx.fillStyle = palette.accentBlue
                 ctx.lineWidth = 2 / (zoomRef.current || 1)
 
                 for (const pt of measurePoints) {
@@ -306,6 +386,16 @@ export const SlicePanel = memo(function SlicePanel({
 
                 ctx.restore()
             }
+
+            // Scale bar overlay
+            const wrapper = canvasWrapperRef.current
+            const displayRatio = wrapper
+                ? Math.min(wrapper.clientWidth / canvasW, wrapper.clientHeight / canvasH)
+                : 1
+            const [dz, dy, dx] = voxelSizeUm
+            const hUmPerPx = axis === 'y' ? dx : dy
+            const vUmPerPx = axis === 'z' ? dx : dz
+            drawScaleBars(ctx, canvasW, canvasH, hUmPerPx, vUmPerPx, displayRatio)
         })
 
         return () => cancelAnimationFrame(rafId)
@@ -325,6 +415,7 @@ export const SlicePanel = memo(function SlicePanel({
         segmentationOverlays,
         measuring,
         measurePoints,
+        voxelSizeUm,
     ])
 
     const applyTransform = useCallback(() => {
@@ -349,7 +440,15 @@ export const SlicePanel = memo(function SlicePanel({
                 y: my - (my - panRef.current.y) * (newZoom / prevZoom),
             }
             applyTransform()
-            setCursorStyle(newZoom > MIN_ZOOM ? (measuring ? 'crosshair' : 'grab') : measuring ? 'crosshair' : 'default')
+            setCursorStyle(
+                newZoom > MIN_ZOOM
+                    ? measuring
+                        ? 'crosshair'
+                        : 'grab'
+                    : measuring
+                      ? 'crosshair'
+                      : 'default',
+            )
         },
         [applyTransform, measuring],
     )
@@ -455,7 +554,9 @@ export const SlicePanel = memo(function SlicePanel({
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
-            onMouseLeave={() => { isDragging.current = false }}
+            onMouseLeave={() => {
+                isDragging.current = false
+            }}
             onDoubleClick={resetView}
         >
             {/* Axis label */}
@@ -491,10 +592,10 @@ export const SlicePanel = memo(function SlicePanel({
                         right: 2,
                         zIndex: 3,
                         p: 0.4,
-                        color: measuring ? '#4fa3ff' : palette.sceneTextMuted,
+                        color: measuring ? palette.accentBlue : palette.sceneTextMuted,
                         background: palette.overlayScrim,
                         borderRadius: 0.5,
-                        '&:hover': { background: 'rgba(79,163,255,0.18)' },
+                        '&:hover': { background: palette.accentBlueHoverBg },
                     }}
                 >
                     {measuring ? (

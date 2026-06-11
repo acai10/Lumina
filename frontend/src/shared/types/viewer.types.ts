@@ -1,3 +1,5 @@
+import type { MeasureResult } from '../api/client'
+
 export type ColormapType = 'gray' | 'jet' | 'hot'
 
 export interface SegmentationOverlay {
@@ -82,6 +84,7 @@ export interface H5PerFileState {
     cameraPosition?: [number, number, number]
     cameraQuaternion?: [number, number, number, number]
     controlsTarget?: [number, number, number]
+    cameraResetGen?: number
     renderControls: H5RenderControls
     isFiltering?: boolean
     viewMode?: 'pointcloud' | 'slice'
@@ -108,12 +111,5 @@ export interface H5PerFileState {
     /** Voxel spacing (µm/vox) used for interactive slice-panel distance measurement [dz, dy, dx]. */
     sliceVoxelSizeUm?: [number, number, number]
     /** Last computed geometric measurement result for this volume. */
-    measurementResult?: {
-        voxel_count: number
-        volume_um3: number
-        surface_area_um2: number
-        mean_thickness_um: number
-        max_thickness_um: number
-        lateral_diameter_um: number
-    } | null
+    measurementResult?: MeasureResult | null
 }

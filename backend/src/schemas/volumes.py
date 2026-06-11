@@ -25,3 +25,9 @@ class RegisterRequest(BaseModel):
     """Register a local source file by path instead of uploading its bytes."""
 
     path: str  # relative to data_dir
+
+
+class RegisterBatchRequest(BaseModel):
+    """Register several local source files by path in a single request."""
+
+    paths: list[str]  # each relative to data_dir

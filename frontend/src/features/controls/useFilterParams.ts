@@ -87,13 +87,7 @@ export function usePipeline() {
     const reset = () => setSteps([BLANK_STEP()])
 
     return {
-        steps,
-        addStep,
-        removeStep,
-        moveStep,
-        updateStepType,
-        updateStepParam,
+        pipeline: { steps, addStep, removeStep, moveStep, updateStepType, updateStepParam, reset },
         buildFilterChain,
-        reset,
     }
 }

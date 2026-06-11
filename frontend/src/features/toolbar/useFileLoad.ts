@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import type { ChangeEvent } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { loadH5FileInWorker, VOLUME_DIMS } from '../../shared/h5/h5Reader'
+import { loadH5FileInWorker, VOLUME_DIMS } from '../../shared/h5'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import { registerLocalVolume, fetchNormalizedVolume } from '../../shared/api'
 import type { LocalVolume } from '../../shared/api'
@@ -106,16 +106,14 @@ export function useFileLoad() {
     }
 
     return {
-        stlInputRef,
-        h5InputRef,
-        h5FolderInputRef,
-        handleSTLLoad,
-        handleH5Load,
-        handleH5FolderLoad,
-        loadServerVolume,
-        // Imperative loaders for drag-and-drop / the empty-state dropzone.
-        loadH5Files: processH5Files,
-        loadStlFiles,
-        loadDroppedFiles,
+        pickers: {
+            stlInputRef,
+            h5InputRef,
+            h5FolderInputRef,
+            handleSTLLoad,
+            handleH5Load,
+            handleH5FolderLoad,
+        },
+        loaders: { loadH5Files: processH5Files, loadStlFiles, loadDroppedFiles, loadServerVolume },
     }
 }

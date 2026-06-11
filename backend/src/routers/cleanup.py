@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from src.config import settings
+from src.processing.volume_cache import clear as clear_volume_cache
 
 logger = logging.getLogger(__name__)
 
@@ -28,5 +29,7 @@ def cleanup_uploads() -> JSONResponse:
             except OSError:
                 logger.warning("Could not delete %s", p)
                 errors += 1
+    # Drop cached arrays so we never serve data backed by a now-deleted file.
+    clear_volume_cache()
     logger.info("cleanup: deleted %d file(s), %d error(s)", deleted, errors)
     return JSONResponse({"deleted": deleted, "errors": errors})
