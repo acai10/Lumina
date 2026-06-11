@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { Box } from '@mui/material'
@@ -54,6 +54,10 @@ export default function H5Viewer({
     const sceneRef = useRef<THREE.Scene | null>(null)
     // The green bounding box; its Y extent tracks the current volume spacing.
     const boxHelperRef = useRef<THREE.Box3Helper | null>(null)
+    // Bumped whenever the main effect rebuilds the scene so the STL overlay
+    // effect re-attaches to the NEW scene (it would otherwise keep targeting
+    // the disposed one and silently disappear after e.g. a backend filter).
+    const [sceneVersion, setSceneVersion] = useState(0)
 
     const renderControls = useViewerStore(
         (s) => s.h5PerFileStates[fileKey]?.renderControls ?? defaultRenderControls,
@@ -70,6 +74,7 @@ export default function H5Viewer({
         )
         canvasRef.current = renderer.domElement
         sceneRef.current = scene
+        setSceneVersion((v) => v + 1)
 
         const { nSlices, height, width } = meta
         const initialRc =
@@ -207,9 +212,25 @@ export default function H5Viewer({
         if (stlOverlayFile) {
             const loader = new STLLoader()
             reader = new FileReader()
+            reader.onerror = () => {
+                useViewerStore.getState().setNotification({
+                    message: `Could not read overlay "${stlOverlayFile.name}"`,
+                    severity: 'error',
+                })
+            }
             reader.onload = (e) => {
                 if (!(e.target?.result instanceof ArrayBuffer)) return
-                const geo = loader.parse(e.target.result)
+                let geo: THREE.BufferGeometry
+                try {
+                    geo = loader.parse(e.target.result)
+                } catch (err) {
+                    console.error(`STL overlay parse failed for "${stlOverlayFile.name}"`, err)
+                    useViewerStore.getState().setNotification({
+                        message: `"${stlOverlayFile.name}" is not a valid STL file`,
+                        severity: 'error',
+                    })
+                    return
+                }
                 geo.computeVertexNormals()
                 geo.computeBoundingBox()
                 const center = new THREE.Vector3()
@@ -262,7 +283,8 @@ export default function H5Viewer({
             lights.forEach((l) => scene.remove(l))
             needsRenderRef.current = true
         }
-    }, [stlOverlayFile])
+        // sceneVersion re-attaches the overlay after the main effect rebuilds the scene.
+    }, [stlOverlayFile, sceneVersion])
 
     const {
         volumeSpacing,

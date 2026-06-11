@@ -25,7 +25,9 @@ const MIN_STITCH_VOLUMES = 2
 
 function inferGridPos(filename: string): { row: number; col: number } {
     const m = filename.match(/_(\d+)_(\d+)(?:\.\w+)?$/)
-    if (m) return { row: parseInt(m[1]) - 1, col: parseInt(m[2]) - 1 }
+    // Filenames may be 0-based (`_0_0`) or 1-based (`_1_1`); clamp so 0-based
+    // names don't produce a negative grid position.
+    if (m) return { row: Math.max(0, parseInt(m[1]) - 1), col: Math.max(0, parseInt(m[2]) - 1) }
     return { row: 0, col: 0 }
 }
 
@@ -106,9 +108,17 @@ export default function StitcherPanel() {
     const handleReset = () => {
         setConfigs([])
         reset()
-        cleanupUploads().catch(() => {
-            /* ignore cleanup errors — uploads folder may already be empty */
-        })
+        // /cleanup wipes the ENTIRE server uploads dir — viewer tabs may still
+        // reference backend volumes (e.g. a stitched result), so only purge
+        // when nothing references one anymore.
+        const stillReferenced = useViewerStore
+            .getState()
+            .tabs.some((t) => t.type === 'h5' && (t.backendVolumeId || t.registeredVolumeId))
+        if (!stillReferenced) {
+            cleanupUploads().catch(() => {
+                /* ignore cleanup errors — uploads folder may already be empty */
+            })
+        }
     }
 
     const isBusy = phase === 'uploading' || phase === 'processing' || phase === 'downloading'
@@ -243,7 +253,9 @@ export default function StitcherPanel() {
                                     type="number"
                                     value={cfg.row}
                                     onChange={(e) =>
-                                        updateConfig(i, { row: parseInt(e.target.value) || 0 })
+                                        updateConfig(i, {
+                                            row: Math.max(0, parseInt(e.target.value) || 0),
+                                        })
                                     }
                                     disabled={isBusy}
                                     inputProps={{ min: 0 }}
@@ -255,7 +267,9 @@ export default function StitcherPanel() {
                                     type="number"
                                     value={cfg.col}
                                     onChange={(e) =>
-                                        updateConfig(i, { col: parseInt(e.target.value) || 0 })
+                                        updateConfig(i, {
+                                            col: Math.max(0, parseInt(e.target.value) || 0),
+                                        })
                                     }
                                     disabled={isBusy}
                                     inputProps={{ min: 0 }}

@@ -1,40 +1,60 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import type { DragEvent } from 'react'
 import { Box, CircularProgress, Stack } from '@mui/material'
-import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from './app/store/viewerSlice'
-import STLViewer from './features/stl/STLViewer'
-import H5Viewer from './features/h5/H5Viewer'
-import H5SliceViewer from './features/h5/H5SliceViewer'
+import {
+    useActiveTab,
+    useActiveViewMode,
+    useHasTabs,
+    useStlOverlayTab,
+} from './app/store/selectors'
 import H5FileTabs from './features/h5/H5FileTabs'
 import Toolbar from './features/toolbar/Toolbar'
 import { useFileLoad } from './features/toolbar/useFileLoad'
 import AppSnackbar from './features/notifications/AppSnackbar'
 import ControlsPanel from './features/controls/ControlsPanel'
-import { StitcherPanel } from './features/stitcher'
 import { EmptyState } from './features/onboarding'
 import { palette } from './shared/theme/palette'
 
+// The viewers statically import three.js (~150 KB gz) and the stitcher panel
+// is closed by default — none of them are needed for first paint (EmptyState).
+// Lazy chunks keep them out of the startup bundle.
+const STLViewer = lazy(() => import('./features/stl/STLViewer'))
+const H5Viewer = lazy(() => import('./features/h5/H5Viewer'))
+const H5SliceViewer = lazy(() => import('./features/h5/H5SliceViewer'))
+const StitcherPanel = lazy(() => import('./features/stitcher/StitcherPanel'))
+
+function ViewerFallback() {
+    return (
+        <Box
+            sx={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+            }}
+        >
+            <CircularProgress size={28} />
+        </Box>
+    )
+}
+
 export default function App() {
-    const { tabs, activeTabIndex, h5PerFileStates, stlOverlayIndex, stitchPanelOpen } =
-        useViewerStore(
-            useShallow((s) => ({
-                tabs: s.tabs,
-                activeTabIndex: s.activeTabIndex,
-                h5PerFileStates: s.h5PerFileStates,
-                stlOverlayIndex: s.stlOverlayIndex,
-                stitchPanelOpen: s.stitchPanelOpen,
-            })),
-        )
+    // Narrow subscriptions — subscribing to the whole tabs/h5PerFileStates here
+    // re-rendered the entire app tree on every render-control slider tick.
+    const activeTab = useActiveTab()
+    const stlOverlayTab = useStlOverlayTab()
+    const stitchPanelOpen = useViewerStore((s) => s.stitchPanelOpen)
+    const hasFiles = useHasTabs()
+    const activeViewMode = useActiveViewMode()
     const setNotification = useViewerStore((s) => s.setNotification)
     const ensureHydrated = useViewerStore((s) => s.ensureHydrated)
     const { loadDroppedFiles } = useFileLoad()
     const [dragActive, setDragActive] = useState(false)
 
-    const activeTab = tabs[activeTabIndex]
     const activeH5 = activeTab?.type === 'h5' ? activeTab : null
     const activeStl = activeTab?.type === 'stl' ? activeTab : null
-    const hasFiles = tabs.length > 0
 
     // When the active H5 tab's buffers have been evicted to IndexedDB, pull them
     // back before rendering its viewer.
@@ -43,14 +63,6 @@ export default function App() {
     useEffect(() => {
         if (activeH5Name && !activeH5Hydrated) void ensureHydrated(activeH5Name)
     }, [activeH5Name, activeH5Hydrated, ensureHydrated])
-
-    // Bind once so the `type` discriminant narrows the union — no cast needed.
-    const overlayTab = stlOverlayIndex !== null ? tabs[stlOverlayIndex] : undefined
-    const stlOverlayTab = overlayTab?.type === 'stl' ? overlayTab : null
-
-    const activeViewMode = activeH5
-        ? (h5PerFileStates[activeH5.name]?.viewMode ?? 'pointcloud')
-        : 'pointcloud'
 
     const handleViewerError = useCallback(
         (msg: string) => setNotification({ message: msg, severity: 'error' }),
@@ -95,48 +107,56 @@ export default function App() {
                 >
                     {!hasFiles && <EmptyState />}
 
-                    {/* STL tab — standalone viewer */}
-                    {activeStl && <STLViewer file={activeStl.file} onError={handleViewerError} />}
+                    <Suspense fallback={<ViewerFallback />}>
+                        {/* STL tab — standalone viewer */}
+                        {activeStl && (
+                            <STLViewer file={activeStl.file} onError={handleViewerError} />
+                        )}
 
-                    {/* Active H5 tab whose buffers are still being restored from IndexedDB */}
-                    {activeH5 && !activeH5.data && (
-                        <Box
-                            sx={{
-                                position: 'absolute',
-                                inset: 0,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                            }}
-                        >
-                            <CircularProgress size={28} />
-                        </Box>
-                    )}
+                        {/* Active H5 tab whose buffers are still being restored from IndexedDB */}
+                        {activeH5 && !activeH5.data && (
+                            <Box
+                                sx={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                }}
+                            >
+                                <CircularProgress size={28} />
+                            </Box>
+                        )}
 
-                    {/* H5 point-cloud view (optionally with STL overlay in same scene) */}
-                    {activeH5 && activeH5.data && activeViewMode === 'pointcloud' && (
-                        <H5Viewer
-                            vIndices={activeH5.data.vIndices}
-                            vIntensities={activeH5.data.vIntensities}
-                            meta={activeH5.meta}
-                            fileKey={activeH5.name}
-                            stlOverlayFile={stlOverlayTab?.file}
-                        />
-                    )}
-
-                    {/* H5 2-D slice view */}
-                    {activeH5 &&
-                        activeH5.data &&
-                        activeViewMode === 'slice' &&
-                        activeH5.data.normalizedVolume && (
-                            <H5SliceViewer
-                                normalizedVolume={activeH5.data.normalizedVolume}
+                        {/* H5 point-cloud view (optionally with STL overlay in same scene) */}
+                        {activeH5 && activeH5.data && activeViewMode === 'pointcloud' && (
+                            <H5Viewer
+                                vIndices={activeH5.data.vIndices}
+                                vIntensities={activeH5.data.vIntensities}
                                 meta={activeH5.meta}
                                 fileKey={activeH5.name}
+                                stlOverlayFile={stlOverlayTab?.file}
                             />
                         )}
+
+                        {/* H5 2-D slice view */}
+                        {activeH5 &&
+                            activeH5.data &&
+                            activeViewMode === 'slice' &&
+                            activeH5.data.normalizedVolume && (
+                                <H5SliceViewer
+                                    normalizedVolume={activeH5.data.normalizedVolume}
+                                    meta={activeH5.meta}
+                                    fileKey={activeH5.name}
+                                />
+                            )}
+                    </Suspense>
                 </Box>
-                {stitchPanelOpen && <StitcherPanel />}
+                {stitchPanelOpen && (
+                    <Suspense fallback={null}>
+                        <StitcherPanel />
+                    </Suspense>
+                )}
             </Stack>
             <AppSnackbar />
         </Stack>

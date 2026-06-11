@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button, CircularProgress, Menu, MenuItem, Stack } from '@mui/material'
 import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from '../../app/store/viewerSlice'
+import { useActiveTabName, useHasTabs } from '../../app/store/selectors'
 import { cleanupUploads } from '../../shared/api'
 import { useFileLoad } from './useFileLoad'
 import { ServerVolumeDialog, useServerVolumes } from '../../shared/components'
@@ -19,17 +20,18 @@ import {
 } from './Toolbar.styles'
 
 export default function Toolbar() {
-    const { isLoading, tabs, activeTabIndex, reset, stitchPanelOpen, toggleStitchPanel } =
-        useViewerStore(
-            useShallow((s) => ({
-                isLoading: s.isLoading,
-                tabs: s.tabs,
-                activeTabIndex: s.activeTabIndex,
-                reset: s.reset,
-                stitchPanelOpen: s.stitchPanelOpen,
-                toggleStitchPanel: s.toggleStitchPanel,
-            })),
-        )
+    const { isLoading, reset, stitchPanelOpen, toggleStitchPanel } = useViewerStore(
+        useShallow((s) => ({
+            isLoading: s.isLoading,
+            reset: s.reset,
+            stitchPanelOpen: s.stitchPanelOpen,
+            toggleStitchPanel: s.toggleStitchPanel,
+        })),
+    )
+    // Derived primitives — subscribing to the whole tabs array re-rendered the
+    // toolbar on every hydration/eviction cycle without anything visible changing.
+    const activeFileName = useActiveTabName()
+    const hasFiles = useHasTabs()
     const {
         stlInputRef,
         h5InputRef,
@@ -48,9 +50,6 @@ export default function Toolbar() {
 
     const [h5MenuAnchor, setH5MenuAnchor] = useState<HTMLElement | null>(null)
     const [serverDialogOpen, setServerDialogOpen] = useState(false)
-
-    const activeFileName = tabs[activeTabIndex]?.name ?? ''
-    const hasFiles = tabs.length > 0
 
     const handleFileLoad = () => {
         setH5MenuAnchor(null)
@@ -155,7 +154,7 @@ export default function Toolbar() {
                 </>
             )}
 
-            {activeFileName && <FileNameText>{activeFileName}</FileNameText>}
+            {activeFileName ? <FileNameText>{activeFileName}</FileNameText> : null}
 
             <ServerVolumeDialog
                 open={serverDialogOpen}

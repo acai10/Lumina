@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { putVolume, getVolume, deleteVolume, clearVolumes } from '../../shared/h5'
-import { VOLUME_DIMS } from '../../shared/h5/h5Reader'
+import { VOLUME_DIMS } from '../../shared/h5/h5Constants'
 import type {
     H5FileEntry,
     H5PerFileState,
@@ -68,7 +68,10 @@ interface ViewerState {
     h5PerFileStates: Record<string, H5PerFileState>
     /** LRU order of H5 file keys by last access; tail = most recently used. */
     hydrationOrder: string[]
+    /** Derived from `loadingCount` — true while any load pipeline is in flight. */
     isLoading: boolean
+    /** Reference count: several hook instances can load concurrently. */
+    loadingCount: number
     notification: AppNotification | null
     stlOpacity: number
     stitchPanelOpen: boolean
@@ -104,7 +107,8 @@ interface ViewerState {
     ) => void
     resetSlicePanelControls: (fileKey: string) => void
     // Global actions
-    setIsLoading: (v: boolean) => void
+    beginLoading: () => void
+    endLoading: () => void
     setNotification: (n: AppNotification) => void
     clearNotification: () => void
     setStlOpacity: (v: number) => void
@@ -118,6 +122,7 @@ const initialState = {
     h5PerFileStates: {} as Record<string, H5PerFileState>,
     hydrationOrder: [] as string[],
     isLoading: false,
+    loadingCount: 0,
     notification: null,
     stlOpacity: DEFAULT_STL_OPACITY,
     stitchPanelOpen: false,
@@ -146,10 +151,14 @@ export const useViewerStore = create<ViewerState>((set, get) => {
         )
 
         for (const candidate of candidates) {
-            // Re-read live state — the active tab may have changed during an await.
+            // Re-read live state — the active tab AND the LRU order may have
+            // changed during an await; a tab the user just bumped to MRU must
+            // not be evicted based on the stale snapshot.
             const cur = get()
             const curActive = cur.tabs[cur.activeTabIndex]
-            if (curActive?.type === 'h5' && curActive.name === candidate.name) continue
+            const curKeep = new Set(cur.hydrationOrder.slice(-MAX_HYDRATED_FILES))
+            if (curActive?.type === 'h5') curKeep.add(curActive.name)
+            if (curKeep.has(candidate.name)) continue
             const tab = cur.tabs.find(
                 (t): t is H5TabEntry => t.type === 'h5' && t.name === candidate.name,
             )
@@ -182,41 +191,45 @@ export const useViewerStore = create<ViewerState>((set, get) => {
         toggleControlsPanel: () => set((s) => ({ controlsPanelOpen: !s.controlsPanelOpen })),
 
         loadH5: async (entries) => {
-            const { tabs, h5PerFileStates, hydrationOrder } = get()
-            const existingNames = new Set(tabs.map((t) => t.name))
-            const fresh = entries.filter((e) => !existingNames.has(e.name))
-            if (fresh.length === 0) return
+            // Functional update — a concurrent loadH5/loadStlFiles between a state
+            // snapshot and the write would otherwise lose tabs.
+            let fresh: H5FileEntry[] = []
+            set((s) => {
+                const existingNames = new Set(s.tabs.map((t) => t.name))
+                fresh = entries.filter((e) => !existingNames.has(e.name))
+                if (fresh.length === 0) return {}
 
-            const newTabs: H5TabEntry[] = fresh.map((e) => ({
-                type: 'h5' as const,
-                name: e.name,
-                meta: { nSlices: e.data.nSlices, height: e.data.height, width: e.data.width },
-                data: e.data,
-                hasSlices: e.data.normalizedVolume !== null,
-                sourceFile: e.sourceFile,
-                backendVolumeId: e.backendVolumeId,
-                registeredVolumeId: e.registeredVolumeId,
-            }))
-            const newActiveIndex = tabs.length // first new entry position
+                const newTabs: H5TabEntry[] = fresh.map((e) => ({
+                    type: 'h5' as const,
+                    name: e.name,
+                    meta: { nSlices: e.data.nSlices, height: e.data.height, width: e.data.width },
+                    data: e.data,
+                    hasSlices: e.data.normalizedVolume !== null,
+                    sourceFile: e.sourceFile,
+                    backendVolumeId: e.backendVolumeId,
+                    registeredVolumeId: e.registeredVolumeId,
+                }))
 
-            const newStates = { ...h5PerFileStates }
-            fresh.forEach((e) => {
-                newStates[e.name] = {
-                    renderControls: {
-                        ...defaultRenderControls,
-                        h5SliceRange: [0, e.data.nSlices] as [number, number],
-                        h5HeightRange: [0, e.data.height] as [number, number],
-                        h5WidthRange: [0, e.data.width] as [number, number],
-                    },
+                const newStates = { ...s.h5PerFileStates }
+                fresh.forEach((e) => {
+                    newStates[e.name] = {
+                        renderControls: {
+                            ...defaultRenderControls,
+                            h5SliceRange: [0, e.data.nSlices] as [number, number],
+                            h5HeightRange: [0, e.data.height] as [number, number],
+                            h5WidthRange: [0, e.data.width] as [number, number],
+                        },
+                    }
+                })
+
+                return {
+                    tabs: [...s.tabs, ...newTabs],
+                    activeTabIndex: s.tabs.length, // first new entry position
+                    h5PerFileStates: newStates,
+                    hydrationOrder: [...s.hydrationOrder, ...fresh.map((e) => e.name)],
                 }
             })
-
-            set({
-                tabs: [...tabs, ...newTabs],
-                activeTabIndex: newActiveIndex,
-                h5PerFileStates: newStates,
-                hydrationOrder: [...hydrationOrder, ...fresh.map((e) => e.name)],
-            })
+            if (fresh.length === 0) return
 
             // Persist freshly loaded buffers so the cap can safely evict older volumes.
             for (const e of fresh) {
@@ -243,7 +256,18 @@ export const useViewerStore = create<ViewerState>((set, get) => {
             inFlight.add(fileKey)
             try {
                 const data = await getVolume(fileKey)
-                if (!data) return
+                if (!data) {
+                    // The cache entry is gone (storage cleared / failed write) — without
+                    // this the tab shows an infinite spinner with no explanation.
+                    persisted.delete(fileKey)
+                    set({
+                        notification: {
+                            message: `Could not restore "${fileKey}" from the local cache — please reload the file`,
+                            severity: 'error',
+                        },
+                    })
+                    return
+                }
                 set((state) => ({
                     tabs: state.tabs.map((t) =>
                         t.type === 'h5' && t.name === fileKey ? { ...t, data } : t,
@@ -253,6 +277,12 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 await enforceCap()
             } catch (err) {
                 console.error(`volumeCache: cannot rehydrate "${fileKey}"`, err)
+                set({
+                    notification: {
+                        message: `Could not restore "${fileKey}" from the local cache — please reload the file`,
+                        severity: 'error',
+                    },
+                })
             } finally {
                 inFlight.delete(fileKey)
             }
@@ -286,12 +316,15 @@ export const useViewerStore = create<ViewerState>((set, get) => {
         closeTab: (index) => {
             const { tabs, activeTabIndex, h5PerFileStates, stlOverlayIndex, hydrationOrder } = get()
             const closing = tabs[index]
+            if (!closing) return
             const newTabs = tabs.filter((_, i) => i !== index)
 
             // Drop the closed H5 volume's off-heap buffers and bookkeeping.
             let newHydrationOrder = hydrationOrder
             if (closing.type === 'h5') {
-                void deleteVolume(closing.name)
+                deleteVolume(closing.name).catch((err) =>
+                    console.error(`volumeCache: cannot delete "${closing.name}"`, err),
+                )
                 persisted.delete(closing.name)
                 newHydrationOrder = hydrationOrder.filter((n) => n !== closing.name)
             }
@@ -339,6 +372,7 @@ export const useViewerStore = create<ViewerState>((set, get) => {
             const { tabs, activeTabIndex, stlOverlayIndex } = get()
             const newTabs = [...tabs]
             const [moved] = newTabs.splice(from, 1)
+            if (!moved) return
             newTabs.splice(to, 0, moved)
 
             // Track where the active tab ended up.
@@ -420,7 +454,14 @@ export const useViewerStore = create<ViewerState>((set, get) => {
             // later eviction restores the *filtered* result rather than the original.
             persisted.delete(fileKey)
             putVolume(fileKey, newData)
-                .then(() => persisted.add(fileKey))
+                .then(() => {
+                    // The tab may have been closed (or the store reset) while the
+                    // write was in flight — don't resurrect bookkeeping or strand
+                    // an orphaned ~200 MB record in IndexedDB.
+                    const stillOpen = get().tabs.some((t) => t.type === 'h5' && t.name === fileKey)
+                    if (stillOpen) persisted.add(fileKey)
+                    else deleteVolume(fileKey).catch(() => {})
+                })
                 .catch((err) =>
                     console.error(`volumeCache: cannot persist filtered "${fileKey}"`, err),
                 )
@@ -495,12 +536,20 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 },
             })),
 
-        setIsLoading: (isLoading) => set({ isLoading }),
+        // Reference-counted: with multiple useFileLoad instances live (toolbar,
+        // drop zone, empty state), one pipeline finishing must not clear the
+        // global spinner while another is still in flight.
+        beginLoading: () => set((s) => ({ loadingCount: s.loadingCount + 1, isLoading: true })),
+        endLoading: () =>
+            set((s) => {
+                const loadingCount = Math.max(0, s.loadingCount - 1)
+                return { loadingCount, isLoading: loadingCount > 0 }
+            }),
         setNotification: (notification) => set({ notification }),
         clearNotification: () => set({ notification: null }),
         setStlOpacity: (stlOpacity) => set({ stlOpacity }),
         reset: () => {
-            void clearVolumes()
+            clearVolumes().catch((err) => console.error('volumeCache: cannot clear', err))
             persisted.clear()
             inFlight.clear()
             set(initialState)

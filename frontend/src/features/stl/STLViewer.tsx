@@ -50,6 +50,7 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null)
     const meshRef = useRef<THREE.Mesh | null>(null)
     const materialRef = useRef<THREE.MeshStandardMaterial | null>(null)
+    const needsRenderRef = useRef(true)
 
     const stlOpacity = useViewerStore((s) => s.stlOpacity)
 
@@ -133,6 +134,7 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
             camera.far = maxDim * CAMERA_FAR_FACTOR
             camera.updateProjectionMatrix()
             controls.update()
+            needsRenderRef.current = true
         }
 
         reader.onerror = () => {
@@ -142,15 +144,27 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
 
         reader.readAsArrayBuffer(file)
 
+        // Demand rendering (same pattern as H5Viewer): controls.update() can miss
+        // sub-EPS trackpad wheel ticks, so the wheel listener forces one frame.
+        const onWheel = () => {
+            needsRenderRef.current = true
+        }
+        renderer.domElement.addEventListener('wheel', onWheel, { passive: true })
+
+        needsRenderRef.current = true
         let animId: number
         const animate = () => {
             animId = requestAnimationFrame(animate)
-            controls.update()
-            renderer.render(scene, camera)
+            const changed = controls.update()
+            if (changed || needsRenderRef.current) {
+                renderer.render(scene, camera)
+                needsRenderRef.current = false
+            }
         }
         animate()
 
         return () => {
+            renderer.domElement.removeEventListener('wheel', onWheel)
             reader.abort()
             cancelAnimationFrame(animId)
             meshRef.current = null
@@ -164,6 +178,7 @@ export default function STLViewer({ file, onError }: STLViewerProps) {
         if (materialRef.current) {
             materialRef.current.opacity = stlOpacity
             materialRef.current.needsUpdate = true
+            needsRenderRef.current = true
         }
     }, [stlOpacity])
 

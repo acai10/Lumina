@@ -92,13 +92,24 @@ export function createScene(
     const handleResize = () => {
         const rw = container.clientWidth
         const rh = container.clientHeight
+        // A hidden/collapsed container reports 0×0 — skip rather than set NaN aspect.
+        if (rw === 0 || rh === 0) return
         camera.aspect = rw / rh
         camera.updateProjectionMatrix()
         renderer.setSize(rw, rh)
+        // setSize blanks the canvas; demand-rendered viewers (H5Viewer) would
+        // otherwise show nothing until the next interaction.
+        renderer.render(scene, camera)
     }
+    // Window resizes are not enough: collapsing the controls panel or toggling
+    // the stitcher panel changes the container size without a window event,
+    // leaving a stretched viewport. Observe the container itself.
+    const resizeObserver = new ResizeObserver(handleResize)
+    resizeObserver.observe(container)
     window.addEventListener('resize', handleResize)
 
     const disposeBase = () => {
+        resizeObserver.disconnect()
         window.removeEventListener('resize', handleResize)
         controls.dispose()
         // forceContextLoss is intentionally omitted — the caller's canvas ref keeps

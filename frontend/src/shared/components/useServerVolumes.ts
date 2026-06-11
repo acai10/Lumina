@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { listLocalVolumes } from '../api'
 import type { LocalVolume } from '../api'
 
@@ -13,16 +13,23 @@ export function useServerVolumes() {
     const [volumes, setVolumes] = useState<LocalVolume[]>([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    // Overlapping refreshes can resolve out of order — only the latest request
+    // may write state, so a stale response never overwrites a fresher list.
+    const requestIdRef = useRef(0)
 
     const refresh = async () => {
+        const id = ++requestIdRef.current
         setLoading(true)
         setError(null)
         try {
-            setVolumes(await listLocalVolumes())
+            const list = await listLocalVolumes()
+            if (id !== requestIdRef.current) return
+            setVolumes(list)
         } catch (err) {
+            if (id !== requestIdRef.current) return
             setError(err instanceof Error ? err.message : String(err))
         } finally {
-            setLoading(false)
+            if (id === requestIdRef.current) setLoading(false)
         }
     }
 

@@ -1,18 +1,19 @@
 import { useRef } from 'react'
 import type { ChangeEvent } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { loadH5FileInWorker, VOLUME_DIMS } from '../../shared/h5/h5Reader'
+import { loadH5FileInWorker, VOLUME_DIMS } from '../../shared/h5'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import { registerLocalVolume, fetchNormalizedVolume } from '../../shared/api'
 import type { LocalVolume } from '../../shared/api'
 import type { H5FileEntry } from '../../shared/types/viewer.types'
 
 export function useFileLoad() {
-    const { loadStlFiles, loadH5, setIsLoading, setNotification } = useViewerStore(
+    const { loadStlFiles, loadH5, beginLoading, endLoading, setNotification } = useViewerStore(
         useShallow((s) => ({
             loadStlFiles: s.loadStlFiles,
             loadH5: s.loadH5,
-            setIsLoading: s.setIsLoading,
+            beginLoading: s.beginLoading,
+            endLoading: s.endLoading,
             setNotification: s.setNotification,
         })),
     )
@@ -22,7 +23,7 @@ export function useFileLoad() {
     const h5FolderInputRef = useRef<HTMLInputElement>(null)
 
     const processH5Files = async (files: File[]) => {
-        setIsLoading(true)
+        beginLoading()
         let loaded = 0
         for (const f of files) {
             try {
@@ -40,7 +41,7 @@ export function useFileLoad() {
                 })
             }
         }
-        setIsLoading(false)
+        endLoading()
         if (loaded > 0) {
             setNotification({
                 message: loaded === 1 ? 'File loaded' : `${loaded} files loaded`,
@@ -50,7 +51,7 @@ export function useFileLoad() {
     }
 
     const loadServerVolume = async (local: LocalVolume) => {
-        setIsLoading(true)
+        beginLoading()
         try {
             // Register the file by path (zero-copy symlink) — no bytes uploaded — then
             // fetch the backend-normalised, render-ready volume (no h5wasm worker).
@@ -65,7 +66,7 @@ export function useFileLoad() {
                 severity: 'error',
             })
         } finally {
-            setIsLoading(false)
+            endLoading()
         }
     }
 

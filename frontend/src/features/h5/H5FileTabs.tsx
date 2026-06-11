@@ -18,7 +18,12 @@ const TabLabel = memo(function TabLabel({ name, index, onClose }: TabLabelProps)
         (e: React.MouseEvent) => {
             e.stopPropagation()
             onClose(index)
-            cleanupUploads().catch(() => {})
+            // /cleanup wipes the ENTIRE server uploads dir — only safe once no
+            // remaining tab still references a backend volume.
+            const stillReferenced = useViewerStore
+                .getState()
+                .tabs.some((t) => t.type === 'h5' && (t.backendVolumeId || t.registeredVolumeId))
+            if (!stillReferenced) cleanupUploads().catch(() => {})
         },
         [index, onClose],
     )

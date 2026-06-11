@@ -8,8 +8,7 @@ import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import { useShallow } from 'zustand/react/shallow'
-import { useViewerStore } from '../../app/store/viewerSlice'
+import { useActiveH5Tab } from '../../app/store/selectors'
 import { RENDER_CONTROL_LIMITS } from './renderControlLimits'
 import { SliderRow } from './SliderRow'
 import { useFilterJob } from './useFilterJob'
@@ -48,12 +47,9 @@ const PHASE_LABEL: Partial<Record<FilterPhase, string>> = {
 }
 
 export function PreprocessingSection() {
-    const { tabs, activeTabIndex } = useViewerStore(
-        useShallow((s) => ({ tabs: s.tabs, activeTabIndex: s.activeTabIndex })),
-    )
-
-    const activeTab = tabs[activeTabIndex]
-    const activeEntry = activeTab?.type === 'h5' ? activeTab : null
+    // Narrow subscription — the whole tabs array changes identity on every
+    // hydration/eviction cycle; this section only needs the active H5 tab.
+    const activeEntry = useActiveH5Tab()
     const fileKey = activeEntry?.name ?? ''
 
     // Hooks must be called unconditionally — derive args defensively above the early return

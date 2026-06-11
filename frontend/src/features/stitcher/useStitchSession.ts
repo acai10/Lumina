@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createSession, pollSession, fetchSessionMerged, uploadVolume } from '../../shared/api'
+import { pollUntilDone } from '../../shared/api/pollUntilDone'
+import type { CancelToken } from '../../shared/api/pollUntilDone'
 import { JOB_STATUS } from '../../shared/api/types'
 import type { RegistrationMethod, SessionStatus } from '../../shared/api'
 import { useViewerStore } from '../../app/store/viewerSlice'
@@ -17,15 +19,29 @@ export interface VolumeConfig {
     volumeId?: string
 }
 
-const POLL_INTERVAL_MS = 2_000
+const BUSY_PHASES: ReadonlySet<StitchPhase> = new Set(['uploading', 'processing', 'downloading'])
+
+/** Disambiguates result-tab names when two runs finish within the same second. */
+let stitchRunCounter = 0
 
 export function useStitchSession() {
     const loadH5 = useViewerStore((s) => s.loadH5)
     const [phase, setPhase] = useState<StitchPhase>('idle')
     const [sessionStatus, setSessionStatus] = useState<SessionStatus | null>(null)
     const [error, setError] = useState<string | null>(null)
+    const tokenRef = useRef<CancelToken | null>(null)
+
+    // Stop the poll loop and all state writes when the panel unmounts.
+    useEffect(() => {
+        return () => {
+            if (tokenRef.current) tokenRef.current.cancelled = true
+        }
+    }, [])
 
     const run = async (configs: VolumeConfig[], method: RegistrationMethod): Promise<void> => {
+        if (BUSY_PHASES.has(phase)) return
+        const token: CancelToken = { cancelled: false }
+        tokenRef.current = token
         setError(null)
         setSessionStatus(null)
 
@@ -46,6 +62,7 @@ export function useStitchSession() {
                     return { volume_id, row: cfg.row, col: cfg.col }
                 }),
             )
+            if (token.cancelled) return
 
             setPhase('processing')
             const { session_id } = await createSession({
@@ -54,11 +71,8 @@ export function useStitchSession() {
                 method_params: {},
             })
 
-            let status = await pollSession(session_id)
-            while (status.status === JOB_STATUS.PENDING || status.status === JOB_STATUS.RUNNING) {
-                await new Promise<void>((res) => setTimeout(res, POLL_INTERVAL_MS))
-                status = await pollSession(session_id)
-            }
+            const status = await pollUntilDone(() => pollSession(session_id), token)
+            if (!status) return // cancelled
             setSessionStatus(status)
 
             if (status.status === JOB_STATUS.ERROR) {
@@ -69,21 +83,24 @@ export function useStitchSession() {
             // no Web Worker or JS normalization step needed.
             setPhase('downloading')
             const volumeData = await fetchSessionMerged(session_id)
+            if (token.cancelled) return
 
             const entry: H5FileEntry = {
-                name: `Stitched (${new Date().toLocaleTimeString()})`,
+                name: `Stitched #${++stitchRunCounter} (${new Date().toLocaleTimeString()})`,
                 data: volumeData,
                 backendVolumeId: session_id,
             }
             await loadH5([entry])
             setPhase('done')
         } catch (err) {
+            if (token.cancelled) return
             setError(err instanceof Error ? err.message : String(err))
             setPhase('error')
         }
     }
 
     const reset = () => {
+        if (tokenRef.current) tokenRef.current.cancelled = true
         setPhase('idle')
         setSessionStatus(null)
         setError(null)

@@ -25,7 +25,8 @@ export default defineConfig({
         // bust its cache, and chunks load in parallel with the main bundle.
         manualChunks: {
           three: ['three'],
-          h5wasm: ['h5wasm'],
+          // h5wasm intentionally NOT listed: it is worker-only (h5.worker.ts);
+          // a main-thread manualChunk for it would just emit an empty chunk.
           mui: ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
           vendor: ['react', 'react-dom', 'zustand'],
         },

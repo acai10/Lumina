@@ -1,5 +1,5 @@
 import { loadH5File } from './h5Reader'
-import type { WorkerResponse } from './h5Reader'
+import type { WorkerResponse } from './h5WorkerClient'
 import { normalizeVolume } from './h5Normalizer'
 
 type WorkerInput =

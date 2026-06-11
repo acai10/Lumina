@@ -22,6 +22,8 @@ import {
     defaultRenderControls,
     DEFAULT_STL_OPACITY,
 } from '../../app/store/viewerSlice'
+import { useActiveTab, useHasTabs } from '../../app/store/selectors'
+import type { StlTabEntry } from '../../shared/types/viewer.types'
 import {
     panelSx,
     railSx,
@@ -64,9 +66,6 @@ function Section({
 
 export default function ControlsPanel() {
     const {
-        tabs,
-        activeTabIndex,
-        h5PerFileStates,
         updateActiveRenderState,
         stlOpacity,
         setStlOpacity,
@@ -78,9 +77,6 @@ export default function ControlsPanel() {
         toggleControlsPanel,
     } = useViewerStore(
         useShallow((s) => ({
-            tabs: s.tabs,
-            activeTabIndex: s.activeTabIndex,
-            h5PerFileStates: s.h5PerFileStates,
             updateActiveRenderState: s.updateActiveRenderState,
             stlOpacity: s.stlOpacity,
             setStlOpacity: s.setStlOpacity,
@@ -93,21 +89,36 @@ export default function ControlsPanel() {
         })),
     )
 
-    const activeTab = tabs[activeTabIndex]
+    // Narrow subscriptions: only the ACTIVE file's per-file state — subscribing
+    // to the whole map re-rendered this panel when inactive files changed
+    // (background filters, hydration/eviction, camera saves).
+    const activeTab = useActiveTab()
+    const hasTabs = useHasTabs()
+    const activeFileState = useViewerStore((s) => {
+        const t = s.tabs[s.activeTabIndex]
+        return t?.type === 'h5' ? s.h5PerFileStates[t.name] : undefined
+    })
     const activeH5 = activeTab?.type === 'h5' ? activeTab : null
     const activeStl = activeTab?.type === 'stl' ? activeTab : null
     const activeKey = activeH5?.name
 
     const renderControls: H5RenderControls =
-        (activeKey ? h5PerFileStates[activeKey]?.renderControls : undefined) ??
-        defaultRenderControls
-    const viewMode = (activeKey ? h5PerFileStates[activeKey]?.viewMode : undefined) ?? 'pointcloud'
+        activeFileState?.renderControls ?? defaultRenderControls
+    const viewMode = activeFileState?.viewMode ?? 'pointcloud'
     const limits = getRenderControlLimits(activeH5?.meta)
     const hasSliceView = !!activeH5?.hasSlices
 
+    // Two shallow-comparable subscriptions (stable tab refs + primitive indices)
+    // so unrelated tabs-array identity changes don't re-render the panel.
+    const stlTabEntries = useViewerStore(
+        useShallow((s) => s.tabs.filter((t): t is StlTabEntry => t.type === 'stl')),
+    )
+    const stlTabIndices = useViewerStore(
+        useShallow((s) => s.tabs.flatMap((t, i) => (t.type === 'stl' ? [i] : []))),
+    )
     const stlTabs = useMemo(
-        () => tabs.flatMap((t, i) => (t.type === 'stl' ? [{ tab: t, index: i }] : [])),
-        [tabs],
+        () => stlTabEntries.map((tab, k) => ({ tab, index: stlTabIndices[k] })),
+        [stlTabEntries, stlTabIndices],
     )
 
     const updateControls = useCallback(
@@ -131,7 +142,7 @@ export default function ControlsPanel() {
         setStlOpacity,
     ])
 
-    if (tabs.length === 0) return null
+    if (!hasTabs) return null
 
     // Collapsed: thin rail with an expand affordance, hands the width back to the scene.
     if (!controlsPanelOpen) {

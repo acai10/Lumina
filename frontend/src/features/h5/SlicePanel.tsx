@@ -49,8 +49,13 @@ export const SlicePanel = memo(function SlicePanel({
 }: SlicePanelProps) {
     const { nSlices, height, width } = meta
     const maxSlice = axis === 'z' ? nSlices - 1 : axis === 'y' ? height - 1 : width - 1
+    // A backend filter can replace the volume with different dims while the
+    // stored per-file slice index still points past the new extent — clamp so
+    // the pixel loop never reads out of bounds (and the slider never exceeds max).
+    const clampedSliceIndex = Math.min(sliceIndex, maxSlice)
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
+    const controlsRef = useRef<HTMLDivElement>(null)
     const zoomRef = useRef(MIN_ZOOM)
     const panRef = useRef({ x: 0, y: 0 })
     // cursor is the only piece of zoom/pan state that must trigger a re-render
@@ -117,11 +122,11 @@ export const SlicePanel = memo(function SlicePanel({
 
                     let volIdx: number
                     if (axis === 'z') {
-                        volIdx = sliceIndex * sliceStride + oy * width + ox
+                        volIdx = clampedSliceIndex * sliceStride + oy * width + ox
                     } else if (axis === 'y') {
-                        volIdx = oy * sliceStride + sliceIndex * width + ox
+                        volIdx = oy * sliceStride + clampedSliceIndex * width + ox
                     } else {
-                        volIdx = ox * sliceStride + oy * width + sliceIndex
+                        volIdx = ox * sliceStride + oy * width + clampedSliceIndex
                     }
 
                     const byte = lut[normalizedVolume[volIdx]]
@@ -140,7 +145,7 @@ export const SlicePanel = memo(function SlicePanel({
         normalizedVolume,
         axis,
         orient,
-        sliceIndex,
+        clampedSliceIndex,
         lut,
         height,
         width,
@@ -157,7 +162,9 @@ export const SlicePanel = memo(function SlicePanel({
     }, [])
 
     const handleWheel = useCallback(
-        (e: React.WheelEvent) => {
+        (e: WheelEvent) => {
+            // Wheel events over the controls overlay (sliders) must not zoom.
+            if (controlsRef.current?.contains(e.target as Node)) return
             e.preventDefault()
             const container = containerRef.current
             if (!container) return
@@ -177,6 +184,16 @@ export const SlicePanel = memo(function SlicePanel({
         },
         [applyTransform],
     )
+
+    // React 18 delegates `wheel` as a passive listener, so preventDefault() in a
+    // synthetic onWheel handler is a no-op (the page scrolls while zooming).
+    // Attach a native non-passive listener instead.
+    useEffect(() => {
+        const el = containerRef.current
+        if (!el) return
+        el.addEventListener('wheel', handleWheel, { passive: false })
+        return () => el.removeEventListener('wheel', handleWheel)
+    }, [handleWheel])
 
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
         isDragging.current = true
@@ -222,7 +239,6 @@ export const SlicePanel = memo(function SlicePanel({
                 display: 'flex',
                 flexDirection: 'column',
             }}
-            onWheel={handleWheel}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -273,6 +289,7 @@ export const SlicePanel = memo(function SlicePanel({
 
             {/* Per-panel controls overlay */}
             <Box
+                ref={controlsRef}
                 sx={{
                     flexShrink: 0,
                     zIndex: 2,
@@ -283,7 +300,6 @@ export const SlicePanel = memo(function SlicePanel({
                     borderTop: `1px solid ${palette.sceneHairlineDim}`,
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
-                onWheel={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => e.stopPropagation()}
             >
                 <Stack spacing={0.25}>
@@ -291,14 +307,14 @@ export const SlicePanel = memo(function SlicePanel({
                         <Typography sx={sliceRowLabelSx}>{label}</Typography>
                         <Slider
                             size="small"
-                            value={sliceIndex}
+                            value={clampedSliceIndex}
                             min={0}
                             max={maxSlice}
                             step={1}
                             onChange={(_, v) => onSliceChange(typeof v === 'number' ? v : v[0])}
                             sx={slicePanelSliderSx}
                         />
-                        <Typography sx={sliceRowValueSx}>{sliceIndex}</Typography>
+                        <Typography sx={sliceRowValueSx}>{clampedSliceIndex}</Typography>
                     </Stack>
                     <Stack direction="row" alignItems="center" spacing={1}>
                         <Typography sx={sliceRowLabelSx}>☀</Typography>
