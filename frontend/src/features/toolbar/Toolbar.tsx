@@ -19,7 +19,7 @@ import {
 } from './Toolbar.styles'
 
 export default function Toolbar() {
-    const { isLoading, tabs, activeTabIndex, reset, stitchPanelOpen, toggleStitchPanel } =
+    const { isLoading, tabs, activeTabIndex, reset, stitchPanelOpen, toggleStitchPanel, fileListPanelOpen, toggleFileListPanel } =
         useViewerStore(
             useShallow((s) => ({
                 isLoading: s.isLoading,
@@ -28,6 +28,8 @@ export default function Toolbar() {
                 reset: s.reset,
                 stitchPanelOpen: s.stitchPanelOpen,
                 toggleStitchPanel: s.toggleStitchPanel,
+                fileListPanelOpen: s.fileListPanelOpen,
+                toggleFileListPanel: s.toggleFileListPanel,
             })),
         )
     const {
@@ -114,6 +116,14 @@ export default function Toolbar() {
                         onClick={(e) => setH5MenuAnchor(e.currentTarget)}
                     >
                         Load H5
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        sx={[h5ButtonSx, { opacity: fileListPanelOpen ? 1 : 0.7 }]}
+                        onClick={toggleFileListPanel}
+                    >
+                        Dateien {serverVolumes.length > 0 ? `(${serverVolumes.length})` : ''}
                     </Button>
                     <Button
                         variant="outlined"

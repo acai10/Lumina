@@ -16,7 +16,6 @@ def volume() -> np.ndarray:
 def test_empty_chain_returns_copy(volume: np.ndarray) -> None:
     result = apply_filter_chain(volume, [])
     np.testing.assert_array_equal(result, volume)
-    # Must be a copy, not the same object
     assert result is not volume
 
 
@@ -31,15 +30,23 @@ def test_median_preserves_shape(volume: np.ndarray) -> None:
     assert result.shape == volume.shape
 
 
-def test_lee_preserves_shape(volume: np.ndarray) -> None:
-    result = apply_filter_chain(volume, [{"type": "lee", "params": {"window": 3}}])
+def test_mean_preserves_shape(volume: np.ndarray) -> None:
+    result = apply_filter_chain(volume, [{"type": "mean", "params": {"size": 3}}])
     assert result.shape == volume.shape
+    assert result.dtype == np.float32
 
 
 def test_normalize_clamps_to_unit_range(volume: np.ndarray) -> None:
     result = apply_filter_chain(volume, [{"type": "normalize", "params": {}}])
     assert float(result.min()) >= 0.0
     assert float(result.max()) <= 1.0
+
+
+def test_edge_highlight_range(volume: np.ndarray) -> None:
+    result = apply_filter_chain(volume, [{"type": "edge", "params": {}}])
+    assert result.shape == volume.shape
+    assert float(result.min()) >= 0.0
+    assert float(result.max()) <= 1.0 + 1e-5
 
 
 def test_chained_filters_preserve_shape(volume: np.ndarray) -> None:

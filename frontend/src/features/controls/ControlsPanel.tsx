@@ -1,12 +1,15 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import Accordion from '@mui/material/Accordion'
 import AccordionDetails from '@mui/material/AccordionDetails'
 import AccordionSummary from '@mui/material/AccordionSummary'
 import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import CircularProgress from '@mui/material/CircularProgress'
 import IconButton from '@mui/material/IconButton'
 import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
+import Slider from '@mui/material/Slider'
 import Stack from '@mui/material/Stack'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
@@ -16,6 +19,7 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import TuneIcon from '@mui/icons-material/Tune'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import DeleteIcon from '@mui/icons-material/Delete'
 import { useShallow } from 'zustand/react/shallow'
 import {
     useViewerStore,
@@ -31,16 +35,25 @@ import {
     controlFontSx,
     accordionSx,
     accordionTitleSx,
+    labelSx,
 } from './ControlsPanel.styles'
 import { RENDER_CONTROL_LIMITS, getRenderControlLimits } from './renderControlLimits'
 import { PreprocessingSection } from './PreprocessingSection'
 import { SliderRow, RangeSliderRow } from './SliderRow'
-import type { H5RenderControls } from '../../shared/types/viewer.types'
+import type { ColormapType, H5RenderControls } from '../../shared/types/viewer.types'
+import { segmentVolume, measureVolume, uploadVolume } from '../../shared/api/client'
 
-// MUI Select cannot hold null as a value, so -1 is the sentinel for "no overlay selected"
 const NO_OVERLAY_SENTINEL = -1
 
-/** Compact, collapsible section grouping a set of controls. */
+const OVERLAY_COLORS: [number, number, number][] = [
+    [255, 80, 80],
+    [80, 200, 120],
+    [80, 160, 255],
+    [255, 180, 50],
+    [200, 80, 255],
+    [80, 230, 230],
+]
+
 function Section({
     title,
     defaultExpanded = true,
@@ -76,6 +89,16 @@ export default function ControlsPanel() {
         setStlOverlayIndex,
         controlsPanelOpen,
         toggleControlsPanel,
+        addSegmentationOverlay,
+        removeSegmentationOverlay,
+        clearSegmentationOverlays,
+        setSliceColormap,
+        setSliceColormapRange,
+        setColorByDepth,
+        setSliceVoxelSizeUm,
+        setMeasurementResult,
+        setBackendVolumeId,
+        setNotification,
     } = useViewerStore(
         useShallow((s) => ({
             tabs: s.tabs,
@@ -90,8 +113,23 @@ export default function ControlsPanel() {
             setStlOverlayIndex: s.setStlOverlayIndex,
             controlsPanelOpen: s.controlsPanelOpen,
             toggleControlsPanel: s.toggleControlsPanel,
+            setSliceColormapRange: s.setSliceColormapRange,
+            setColorByDepth: s.setColorByDepth,
+            addSegmentationOverlay: s.addSegmentationOverlay,
+            removeSegmentationOverlay: s.removeSegmentationOverlay,
+            clearSegmentationOverlays: s.clearSegmentationOverlays,
+            setSliceColormap: s.setSliceColormap,
+            setSliceVoxelSizeUm: s.setSliceVoxelSizeUm,
+            setMeasurementResult: s.setMeasurementResult,
+            setBackendVolumeId: s.setBackendVolumeId,
+            setNotification: s.setNotification,
         })),
     )
+
+    const [isSegmenting, setIsSegmenting] = useState(false)
+    const [isMeasuring, setIsMeasuring] = useState(false)
+    const [voxelSize, setVoxelSize] = useState<[number, number, number]>([1.0, 1.0, 1.0])
+    const [segThreshold, setSegThreshold] = useState(0.5)
 
     const activeTab = tabs[activeTabIndex]
     const activeH5 = activeTab?.type === 'h5' ? activeTab : null
@@ -104,6 +142,20 @@ export default function ControlsPanel() {
     const viewMode = (activeKey ? h5PerFileStates[activeKey]?.viewMode : undefined) ?? 'pointcloud'
     const limits = getRenderControlLimits(activeH5?.meta)
     const hasSliceView = !!activeH5?.hasSlices
+    const hasVolumeSource = !!(
+        activeH5?.registeredVolumeId ||
+        activeH5?.backendVolumeId ||
+        activeH5?.sourceFile
+    )
+
+    const sliceColormap: ColormapType =
+        (activeKey ? h5PerFileStates[activeKey]?.sliceColormap : undefined) ?? 'gray'
+    const colormapRange: [number, number] =
+        (activeKey ? h5PerFileStates[activeKey]?.sliceColormapRange : undefined) ?? [0, 1]
+    const colorByDepth = (activeKey ? h5PerFileStates[activeKey]?.colorByDepth : undefined) ?? false
+    const segmentationOverlays = activeKey
+        ? (h5PerFileStates[activeKey]?.segmentationOverlays ?? [])
+        : []
 
     const stlTabs = useMemo(
         () => tabs.flatMap((t, i) => (t.type === 'stl' ? [{ tab: t, index: i }] : [])),
@@ -114,6 +166,16 @@ export default function ControlsPanel() {
         (patch: Partial<H5RenderControls>) => updateActiveRenderState(patch),
         [updateActiveRenderState],
     )
+
+    const resolveVolumeId = useCallback(async (): Promise<string | null> => {
+        if (!activeH5 || !activeKey) return null
+        const existing = activeH5.registeredVolumeId ?? activeH5.backendVolumeId
+        if (existing) return existing
+        if (!activeH5.sourceFile) return null
+        const { volume_id } = await uploadVolume(activeH5.sourceFile)
+        setBackendVolumeId(activeKey, volume_id)
+        return volume_id
+    }, [activeH5, activeKey, setBackendVolumeId])
 
     const handleReset = useCallback(() => {
         if (activeH5) {
@@ -133,7 +195,6 @@ export default function ControlsPanel() {
 
     if (tabs.length === 0) return null
 
-    // Collapsed: thin rail with an expand affordance, hands the width back to the scene.
     if (!controlsPanelOpen) {
         return (
             <Box sx={railSx}>
@@ -181,6 +242,7 @@ export default function ControlsPanel() {
 
             {activeH5 && (
                 <>
+                    {/* View mode: 3D / Slices */}
                     <ToggleButtonGroup
                         value={viewMode}
                         exclusive
@@ -193,7 +255,312 @@ export default function ControlsPanel() {
                         <ToggleButton value="pointcloud">3D</ToggleButton>
                         {hasSliceView && <ToggleButton value="slice">Slices</ToggleButton>}
                     </ToggleButtonGroup>
+
+                    {/* Colormap selector — applies to both 3D and slice view */}
+                    <Stack spacing={0.5}>
+                        <Typography sx={{ ...labelSx, letterSpacing: '0.08em', opacity: 0.7 }}>
+                            COLORMAP
+                        </Typography>
+                        <ToggleButtonGroup
+                            value={sliceColormap}
+                            exclusive
+                            size="small"
+                            onChange={(_, v) => {
+                                if (v && activeKey) setSliceColormap(activeKey, v as ColormapType)
+                            }}
+                            sx={{ alignSelf: 'flex-start' }}
+                        >
+                            <ToggleButton value="gray">GRAY</ToggleButton>
+                            <ToggleButton value="jet">JET</ToggleButton>
+                            <ToggleButton value="hot">HOT</ToggleButton>
+                        </ToggleButtonGroup>
+                        <RangeSliderRow
+                            label="Intensität"
+                            value={colormapRange}
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            onChange={(v) => activeKey && setSliceColormapRange(activeKey, v)}
+                        />
+                        {/* Depth coloring — 3D only: maps slice position → full colormap */}
+                        {viewMode === 'pointcloud' && (
+                            <ToggleButtonGroup
+                                value={colorByDepth ? 'depth' : 'intensity'}
+                                exclusive
+                                size="small"
+                                onChange={(_, v) => {
+                                    if (v && activeKey) setColorByDepth(activeKey, v === 'depth')
+                                }}
+                                sx={{ alignSelf: 'flex-start' }}
+                            >
+                                <ToggleButton value="intensity">Intensität</ToggleButton>
+                                <ToggleButton value="depth">Tiefe</ToggleButton>
+                            </ToggleButtonGroup>
+                        )}
+                    </Stack>
+
                     <PreprocessingSection />
+
+                    {/* Segmentation */}
+                    {hasVolumeSource && (
+                        <Stack spacing={0.75}>
+                            <Typography sx={{ ...labelSx, letterSpacing: '0.08em', opacity: 0.7 }}>
+                                SEGMENTIERUNG
+                            </Typography>
+
+                            {/* Threshold slider */}
+                            <Stack direction="row" alignItems="center" spacing={1}>
+                                <Typography sx={{ ...labelSx, minWidth: 60 }}>Threshold</Typography>
+                                <Slider
+                                    size="small"
+                                    value={segThreshold}
+                                    min={0}
+                                    max={1}
+                                    step={0.01}
+                                    onChange={(_, v) =>
+                                        setSegThreshold(typeof v === 'number' ? v : v[0])
+                                    }
+                                    sx={{ flex: 1 }}
+                                />
+                                <Typography sx={{ ...labelSx, minWidth: 30, textAlign: 'right' }}>
+                                    {segThreshold.toFixed(2)}
+                                </Typography>
+                            </Stack>
+
+                            {/* Segment + Clear buttons */}
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    disabled={isSegmenting}
+                                    onClick={async () => {
+                                        if (!activeKey) return
+                                        setIsSegmenting(true)
+                                        try {
+                                            const volumeId = await resolveVolumeId()
+                                            if (!volumeId) return
+                                            const { data } = await segmentVolume(volumeId, segThreshold)
+                                            const colorIdx = segmentationOverlays.length % OVERLAY_COLORS.length
+                                            addSegmentationOverlay(activeKey, {
+                                                id: `${Date.now()}`,
+                                                threshold: segThreshold,
+                                                map: data,
+                                                color: OVERLAY_COLORS[colorIdx],
+                                                label: `t=${segThreshold.toFixed(2)}`,
+                                            })
+                                            setNotification({
+                                                message: 'Segmentierung abgeschlossen — Slices-Ansicht öffnen',
+                                                severity: 'success',
+                                            })
+                                        } catch (err) {
+                                            setNotification({
+                                                message:
+                                                    err instanceof Error
+                                                        ? err.message
+                                                        : 'Segmentierung fehlgeschlagen',
+                                                severity: 'error',
+                                            })
+                                        } finally {
+                                            setIsSegmenting(false)
+                                        }
+                                    }}
+                                    sx={{ fontSize: '0.65rem', py: 0.4 }}
+                                >
+                                    Segmentierung starten
+                                </Button>
+                                {segmentationOverlays.length > 0 && (
+                                    <Button
+                                        size="small"
+                                        variant="outlined"
+                                        color="error"
+                                        onClick={() => activeKey && clearSegmentationOverlays(activeKey)}
+                                        disabled={isSegmenting}
+                                        sx={{ fontSize: '0.65rem', py: 0.4 }}
+                                    >
+                                        Alle löschen
+                                    </Button>
+                                )}
+                                {isSegmenting && <CircularProgress size={12} thickness={5} />}
+                            </Box>
+
+                            {/* Per-overlay list */}
+                            {segmentationOverlays.length > 0 && (
+                                <Stack spacing={0.4}>
+                                    {segmentationOverlays.map((ov) => (
+                                        <Stack
+                                            key={ov.id}
+                                            direction="row"
+                                            alignItems="center"
+                                            spacing={0.75}
+                                        >
+                                            <Box
+                                                sx={{
+                                                    width: 12,
+                                                    height: 12,
+                                                    borderRadius: 0.5,
+                                                    flexShrink: 0,
+                                                    background: `rgb(${ov.color[0]},${ov.color[1]},${ov.color[2]})`,
+                                                }}
+                                            />
+                                            <Typography sx={{ ...labelSx, flex: 1 }}>
+                                                {ov.label}
+                                            </Typography>
+                                            <IconButton
+                                                size="small"
+                                                onClick={() =>
+                                                    activeKey &&
+                                                    removeSegmentationOverlay(activeKey, ov.id)
+                                                }
+                                                sx={{ p: 0.25, color: 'error.main', opacity: 0.7 }}
+                                            >
+                                                <DeleteIcon sx={{ fontSize: 12 }} />
+                                            </IconButton>
+                                        </Stack>
+                                    ))}
+                                </Stack>
+                            )}
+                        </Stack>
+                    )}
+
+                    {/* Measurements */}
+                    {hasVolumeSource && (
+                        <Stack spacing={0.75}>
+                            <Typography sx={{ ...labelSx, letterSpacing: '0.08em', opacity: 0.7 }}>
+                                MESSUNGEN
+                            </Typography>
+                            {/* Voxel spacing inputs (dz, dy, dx) in µm */}
+                            <Stack direction="row" spacing={0.5} alignItems="center">
+                                <Typography sx={{ ...labelSx, minWidth: 56 }}>µm/vox</Typography>
+                                {(['dz', 'dy', 'dx'] as const).map((label, i) => (
+                                    <Box
+                                        key={label}
+                                        sx={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            gap: 0.25,
+                                        }}
+                                    >
+                                        <Typography
+                                            sx={{ ...labelSx, fontSize: '0.6rem', opacity: 0.6 }}
+                                        >
+                                            {label}
+                                        </Typography>
+                                        <input
+                                            type="number"
+                                            min={0.001}
+                                            step={0.1}
+                                            value={voxelSize[i]}
+                                            onChange={(e) => {
+                                                const v = parseFloat(e.target.value)
+                                                if (!isNaN(v) && v > 0) {
+                                                    const next: [number, number, number] = [
+                                                        ...voxelSize,
+                                                    ]
+                                                    next[i] = v
+                                                    setVoxelSize(next)
+                                                    if (activeKey) setSliceVoxelSizeUm(activeKey, next)
+                                                }
+                                            }}
+                                            style={{
+                                                width: 52,
+                                                fontSize: '0.72rem',
+                                                padding: '2px 4px',
+                                                borderRadius: 4,
+                                                border: '1px solid rgba(120,160,210,0.4)',
+                                                background: '#f4f8fd',
+                                                color: 'rgba(18,32,54,0.92)',
+                                                textAlign: 'right',
+                                            }}
+                                        />
+                                    </Box>
+                                ))}
+                            </Stack>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    disabled={isMeasuring}
+                                    onClick={async () => {
+                                        if (!activeKey) return
+                                        setIsMeasuring(true)
+                                        try {
+                                            const volumeId = await resolveVolumeId()
+                                            if (!volumeId) return
+                                            const result = await measureVolume(volumeId, {
+                                                threshold: renderControls.h5Threshold,
+                                                voxel_size_um: voxelSize,
+                                            })
+                                            setMeasurementResult(activeKey, result)
+                                        } catch (err) {
+                                            setNotification({
+                                                message:
+                                                    err instanceof Error
+                                                        ? err.message
+                                                        : 'Messung fehlgeschlagen',
+                                                severity: 'error',
+                                            })
+                                        } finally {
+                                            setIsMeasuring(false)
+                                        }
+                                    }}
+                                    sx={{ fontSize: '0.65rem', py: 0.4 }}
+                                >
+                                    Messung starten
+                                </Button>
+                                {isMeasuring && <CircularProgress size={12} thickness={5} />}
+                            </Box>
+                            {activeKey &&
+                                h5PerFileStates[activeKey]?.measurementResult &&
+                                (() => {
+                                    const r = h5PerFileStates[activeKey].measurementResult!
+                                    const rows: [string, string][] = [
+                                        [
+                                            'Volumen',
+                                            `${(r.volume_um3 / 1e9).toFixed(4)} mm³`,
+                                        ],
+                                        [
+                                            'Oberfläche',
+                                            `${(r.surface_area_um2 / 1e6).toFixed(4)} mm²`,
+                                        ],
+                                        [
+                                            'Ø Dicke',
+                                            `${(r.mean_thickness_um / 1000).toFixed(3)} mm`,
+                                        ],
+                                        [
+                                            'Max Dicke',
+                                            `${(r.max_thickness_um / 1000).toFixed(3)} mm`,
+                                        ],
+                                        [
+                                            'Lat. Durchm.',
+                                            `${(r.lateral_diameter_um / 1000).toFixed(3)} mm`,
+                                        ],
+                                        ['Voxel', r.voxel_count.toLocaleString()],
+                                    ]
+                                    return (
+                                        <Stack spacing={0.25}>
+                                            {rows.map(([k, v]) => (
+                                                <Stack
+                                                    key={k}
+                                                    direction="row"
+                                                    justifyContent="space-between"
+                                                >
+                                                    <Typography sx={{ ...labelSx, opacity: 0.65 }}>
+                                                        {k}
+                                                    </Typography>
+                                                    <Typography
+                                                        sx={{ ...labelSx, fontWeight: 600 }}
+                                                    >
+                                                        {v}
+                                                    </Typography>
+                                                </Stack>
+                                            ))}
+                                        </Stack>
+                                    )
+                                })()}
+                        </Stack>
+                    )}
+
                     {viewMode === 'pointcloud' && (
                         <>
                             <Section title="APPEARANCE">

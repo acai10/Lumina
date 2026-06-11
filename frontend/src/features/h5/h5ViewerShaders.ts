@@ -50,15 +50,56 @@ uniform float uWidthMin;
 uniform float uWidthMax;
 uniform float uHeightMin;
 uniform float uHeightMax;
+// 0 = gray, 1 = jet, 2 = hot
+uniform int uColormap;
+uniform float uColormapMin;
+uniform float uColormapMax;
+// 0 = color by intensity, 1 = color by depth (slice position)
+uniform int uColorByDepth;
+
+vec3 applyColormap(float t) {
+    if (uColormap == 1) {
+        // JET
+        float r = clamp(1.5 - abs(4.0 * t - 3.0), 0.0, 1.0);
+        float g = clamp(1.5 - abs(4.0 * t - 2.0), 0.0, 1.0);
+        float b = clamp(1.5 - abs(4.0 * t - 1.0), 0.0, 1.0);
+        return vec3(r, g, b);
+    }
+    if (uColormap == 2) {
+        // HOT
+        return vec3(
+            clamp(t * 3.0,       0.0, 1.0),
+            clamp(t * 3.0 - 1.0, 0.0, 1.0),
+            clamp(t * 3.0 - 2.0, 0.0, 1.0)
+        );
+    }
+    // GRAY (default)
+    return vec3(t, t, t);
+}
 
 void main() {
     if (fIntensity < uThreshold) discard;
     if (fS < uSliceMin || fS >= uSliceMax) discard;
     if (fW < uWidthMin || fW >= uWidthMax) discard;
     if (fH < uHeightMin || fH >= uHeightMax) discard;
-    float c = clamp(fIntensity * uBrightness, 0.0, 1.0);
-    if (c < 0.5) c = 0.5 * pow(2.0 * c, uContrast);
-    else         c = 1.0 - 0.5 * pow(2.0 * (1.0 - c), uContrast);
-    fragColor = vec4(c, c, c, uOpacity);
+    float t;
+    if (uColorByDepth == 1) {
+        // Map slice position within the visible clip range → full colormap gradient.
+        float depthSpan = max(uSliceMax - uSliceMin, 1.0);
+        t = clamp((fS - uSliceMin) / depthSpan, 0.0, 1.0);
+        // Still apply the intensity range so the user can compress/expand depth bands.
+        float span = max(uColormapMax - uColormapMin, 0.001);
+        t = clamp((t - uColormapMin) / span, 0.0, 1.0);
+    } else {
+        // Remap [uThreshold, 1.0] → [0, 1] so the full colormap gradient covers
+        // the visible intensity range, not just the narrow band above threshold.
+        float visible = clamp((fIntensity - uThreshold) / max(1.0 - uThreshold, 0.001), 0.0, 1.0);
+        float c = clamp(visible * uBrightness, 0.0, 1.0);
+        if (c < 0.5) c = 0.5 * pow(2.0 * c, uContrast);
+        else         c = 1.0 - 0.5 * pow(2.0 * (1.0 - c), uContrast);
+        float span = max(uColormapMax - uColormapMin, 0.001);
+        t = clamp((c - uColormapMin) / span, 0.0, 1.0);
+    }
+    fragColor = vec4(applyColormap(t), uOpacity);
 }
 `

@@ -1,4 +1,4 @@
-export type FilterType = 'gaussian' | 'median' | 'lee' | 'bm3d' | 'normalize' | 'anisotropy'
+export type FilterType = 'gaussian' | 'median' | 'mean' | 'normalize' | 'edge'
 
 /**
  * A single preprocessing step. Discriminated on `type` so each filter's `params`
@@ -7,10 +7,9 @@ export type FilterType = 'gaussian' | 'median' | 'lee' | 'bm3d' | 'normalize' | 
 export type FilterStep =
     | { type: 'gaussian'; params: { sigma: number } }
     | { type: 'median'; params: { size: number } }
-    | { type: 'lee'; params: { window: number } }
-    | { type: 'bm3d'; params: { sigma_psd: number } }
+    | { type: 'mean'; params: { size: number } }
     | { type: 'normalize'; params: { low_percentile: number; high_percentile: number } }
-    | { type: 'anisotropy'; params: Record<string, never> }
+    | { type: 'edge'; params: Record<string, never> }
 
 export interface JobRequest {
     volume_id: string

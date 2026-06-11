@@ -2,11 +2,13 @@ import { create } from 'zustand'
 import { putVolume, getVolume, deleteVolume, clearVolumes } from '../../shared/h5'
 import { VOLUME_DIMS } from '../../shared/h5/h5Reader'
 import type {
+    ColormapType,
     H5FileEntry,
     H5PerFileState,
     H5RenderControls,
     H5TabEntry,
     H5VolumeData,
+    SegmentationOverlay,
     SlicePanelControl,
     StlTabEntry,
     TabEntry,
@@ -73,9 +75,11 @@ interface ViewerState {
     stlOpacity: number
     stitchPanelOpen: boolean
     controlsPanelOpen: boolean
+    fileListPanelOpen: boolean
     // Actions — unified tab management
     toggleStitchPanel: () => void
     toggleControlsPanel: () => void
+    toggleFileListPanel: () => void
     loadH5: (entries: H5FileEntry[]) => Promise<void>
     /** Restore an evicted tab's buffers from IndexedDB; no-op if already resident. */
     ensureHydrated: (fileKey: string) => Promise<void>
@@ -91,7 +95,19 @@ interface ViewerState {
     ) => void
     updateActiveRenderState: (patch: Partial<H5RenderControls>) => void
     setNormalizedVolume: (fileKey: string, normalizedVolume: Uint8Array) => void
+    /** Cache the server-side volume id obtained from a lazy upload of a local file. */
+    setBackendVolumeId: (fileKey: string, volumeId: string) => void
     applyBackendFilter: (fileKey: string, newData: H5VolumeData) => void
+    saveFilterSnapshot: (fileKey: string) => void
+    setShowingComparison: (fileKey: string, value: boolean) => void
+    setSliceColormap: (fileKey: string, colormap: ColormapType) => void
+    setSliceColormapRange: (fileKey: string, range: [number, number]) => void
+    setColorByDepth: (fileKey: string, value: boolean) => void
+    setSliceVoxelSizeUm: (fileKey: string, size: [number, number, number]) => void
+    addSegmentationOverlay: (fileKey: string, overlay: SegmentationOverlay) => void
+    removeSegmentationOverlay: (fileKey: string, id: string) => void
+    clearSegmentationOverlays: (fileKey: string) => void
+    setMeasurementResult: (fileKey: string, result: H5PerFileState['measurementResult']) => void
     setFilteringState: (fileKey: string, value: boolean) => void
     setH5ViewMode: (fileKey: string, mode: 'pointcloud' | 'slice') => void
     setH5SliceIndex: (fileKey: string, index: number) => void
@@ -121,6 +137,7 @@ const initialState = {
     notification: null,
     stlOpacity: DEFAULT_STL_OPACITY,
     stitchPanelOpen: false,
+    fileListPanelOpen: false,
     controlsPanelOpen: true,
 }
 
@@ -180,6 +197,7 @@ export const useViewerStore = create<ViewerState>((set, get) => {
 
         toggleStitchPanel: () => set((s) => ({ stitchPanelOpen: !s.stitchPanelOpen })),
         toggleControlsPanel: () => set((s) => ({ controlsPanelOpen: !s.controlsPanelOpen })),
+        toggleFileListPanel: () => set((s) => ({ fileListPanelOpen: !s.fileListPanelOpen })),
 
         loadH5: async (entries) => {
             const { tabs, h5PerFileStates, hydrationOrder } = get()
@@ -398,6 +416,15 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 ),
             })),
 
+        setBackendVolumeId: (fileKey, volumeId) =>
+            set((state) => ({
+                tabs: state.tabs.map((t) =>
+                    t.type === 'h5' && t.name === fileKey
+                        ? { ...t, backendVolumeId: volumeId }
+                        : t,
+                ),
+            })),
+
         applyBackendFilter: (fileKey, newData) => {
             set((state) => ({
                 tabs: state.tabs.map((t) =>
@@ -425,6 +452,110 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                     console.error(`volumeCache: cannot persist filtered "${fileKey}"`, err),
                 )
         },
+
+        saveFilterSnapshot: (fileKey) => {
+            const tab = get().tabs.find(
+                (t): t is H5TabEntry => t.type === 'h5' && t.name === fileKey,
+            )
+            if (!tab?.data) return
+            const snapshot = { ...tab.data }
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: {
+                        ...state.h5PerFileStates[fileKey],
+                        filterSnapshot: snapshot,
+                        showingComparison: false,
+                    },
+                },
+            }))
+        },
+
+        setShowingComparison: (fileKey, value) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], showingComparison: value },
+                },
+            })),
+
+        setSliceColormap: (fileKey, colormap) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], sliceColormap: colormap },
+                },
+            })),
+
+        setSliceColormapRange: (fileKey, range) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], sliceColormapRange: range },
+                },
+            })),
+
+        setColorByDepth: (fileKey, value) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], colorByDepth: value },
+                },
+            })),
+
+        setSliceVoxelSizeUm: (fileKey, size) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], sliceVoxelSizeUm: size },
+                },
+            })),
+
+        addSegmentationOverlay: (fileKey, overlay) =>
+            set((state) => {
+                const prev = state.h5PerFileStates[fileKey]
+                return {
+                    h5PerFileStates: {
+                        ...state.h5PerFileStates,
+                        [fileKey]: {
+                            ...prev,
+                            segmentationOverlays: [...(prev?.segmentationOverlays ?? []), overlay],
+                        },
+                    },
+                }
+            }),
+
+        removeSegmentationOverlay: (fileKey, id) =>
+            set((state) => {
+                const prev = state.h5PerFileStates[fileKey]
+                return {
+                    h5PerFileStates: {
+                        ...state.h5PerFileStates,
+                        [fileKey]: {
+                            ...prev,
+                            segmentationOverlays: (prev?.segmentationOverlays ?? []).filter(
+                                (o) => o.id !== id,
+                            ),
+                        },
+                    },
+                }
+            }),
+
+        clearSegmentationOverlays: (fileKey) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], segmentationOverlays: [] },
+                },
+            })),
+
+        setMeasurementResult: (fileKey, result) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], measurementResult: result },
+                },
+            })),
 
         setFilteringState: (fileKey, value) =>
             set((state) => ({

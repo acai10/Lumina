@@ -4,6 +4,9 @@
 /** Width of the docked controls sidebar when expanded. */
 export const CONTROLS_WIDTH = 248
 
+/** Width of the file-browser sidebar panel (left side). */
+export const FILE_LIST_WIDTH = 220
+
 /** Width of the collapsed controls rail (just the expand affordance). */
 export const RAIL_WIDTH = 40
 

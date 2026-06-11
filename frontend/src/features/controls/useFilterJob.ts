@@ -26,13 +26,15 @@ export function useFilterJob(
     backendVolumeId?: string,
     registeredVolumeId?: string,
 ) {
-    const { setFilteringState, applyBackendFilter, setNotification } = useViewerStore(
-        useShallow((s) => ({
-            setFilteringState: s.setFilteringState,
-            applyBackendFilter: s.applyBackendFilter,
-            setNotification: s.setNotification,
-        })),
-    )
+    const { setFilteringState, applyBackendFilter, saveFilterSnapshot, setNotification } =
+        useViewerStore(
+            useShallow((s) => ({
+                setFilteringState: s.setFilteringState,
+                applyBackendFilter: s.applyBackendFilter,
+                saveFilterSnapshot: s.saveFilterSnapshot,
+                setNotification: s.setNotification,
+            })),
+        )
 
     const [phase, setPhase] = useState<FilterPhase>('idle')
     const [error, setError] = useState<string | null>(null)
@@ -42,6 +44,8 @@ export function useFilterJob(
     const run = async (filterChain: FilterStep[]): Promise<void> => {
         setError(null)
         setFilteringState(fileKey, true)
+        // Snapshot before the filter so before/after comparison is always available.
+        saveFilterSnapshot(fileKey)
 
         try {
             // ── Merged-result path: backend normalises, no worker needed ──────

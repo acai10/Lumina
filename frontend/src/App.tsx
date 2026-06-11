@@ -11,12 +11,13 @@ import Toolbar from './features/toolbar/Toolbar'
 import { useFileLoad } from './features/toolbar/useFileLoad'
 import AppSnackbar from './features/notifications/AppSnackbar'
 import ControlsPanel from './features/controls/ControlsPanel'
+import { FileListPanel } from './features/files/FileListPanel'
 import { StitcherPanel } from './features/stitcher'
 import { EmptyState } from './features/onboarding'
 import { palette } from './shared/theme/palette'
 
 export default function App() {
-    const { tabs, activeTabIndex, h5PerFileStates, stlOverlayIndex, stitchPanelOpen } =
+    const { tabs, activeTabIndex, h5PerFileStates, stlOverlayIndex, stitchPanelOpen, fileListPanelOpen } =
         useViewerStore(
             useShallow((s) => ({
                 tabs: s.tabs,
@@ -24,6 +25,7 @@ export default function App() {
                 h5PerFileStates: s.h5PerFileStates,
                 stlOverlayIndex: s.stlOverlayIndex,
                 stitchPanelOpen: s.stitchPanelOpen,
+                fileListPanelOpen: s.fileListPanelOpen,
             })),
         )
     const setNotification = useViewerStore((s) => s.setNotification)
@@ -52,6 +54,14 @@ export default function App() {
         ? (h5PerFileStates[activeH5.name]?.viewMode ?? 'pointcloud')
         : 'pointcloud'
 
+    // When the user has toggled comparison mode, render the pre-filter snapshot
+    // instead of the current (filtered) data so they can see the before/after diff.
+    const activeH5PerState = activeH5 ? h5PerFileStates[activeH5.name] : undefined
+    const renderData =
+        activeH5PerState?.showingComparison && activeH5PerState.filterSnapshot
+            ? activeH5PerState.filterSnapshot
+            : activeH5?.data
+
     const handleViewerError = useCallback(
         (msg: string) => setNotification({ message: msg, severity: 'error' }),
         [setNotification],
@@ -71,6 +81,7 @@ export default function App() {
             <Toolbar />
             {hasFiles && <H5FileTabs />}
             <Stack direction="row" sx={{ flex: 1, overflow: 'hidden' }}>
+                {fileListPanelOpen && <FileListPanel />}
                 <ControlsPanel />
                 {/* Dedicated central viewer window — black for high model contrast. */}
                 <Box
@@ -114,10 +125,10 @@ export default function App() {
                     )}
 
                     {/* H5 point-cloud view (optionally with STL overlay in same scene) */}
-                    {activeH5 && activeH5.data && activeViewMode === 'pointcloud' && (
+                    {activeH5 && renderData && activeViewMode === 'pointcloud' && (
                         <H5Viewer
-                            vIndices={activeH5.data.vIndices}
-                            vIntensities={activeH5.data.vIntensities}
+                            vIndices={renderData.vIndices}
+                            vIntensities={renderData.vIntensities}
                             meta={activeH5.meta}
                             fileKey={activeH5.name}
                             stlOverlayFile={stlOverlayTab?.file}
@@ -126,11 +137,11 @@ export default function App() {
 
                     {/* H5 2-D slice view */}
                     {activeH5 &&
-                        activeH5.data &&
+                        renderData &&
                         activeViewMode === 'slice' &&
-                        activeH5.data.normalizedVolume && (
+                        renderData.normalizedVolume && (
                             <H5SliceViewer
-                                normalizedVolume={activeH5.data.normalizedVolume}
+                                normalizedVolume={renderData.normalizedVolume}
                                 meta={activeH5.meta}
                                 fileKey={activeH5.name}
                             />

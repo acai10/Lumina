@@ -13,6 +13,10 @@ import { applyDrawRanges } from './h5DrawUtils'
 // Firefox caps drawArraysInstanced at 30 M vertices per draw call; leave headroom
 const MAX_VERTS_PER_DRAW = 28_000_000
 
+// Stable fallback constants — inline `?? [0,1]` creates a new array every render
+// and breaks Zustand's snapshot cache check, causing an infinite re-render loop.
+const DEFAULT_COLORMAP_RANGE: [number, number] = [0, 1]
+
 // STL overlay appearance: a semi-transparent blue mesh lit by its own ambient + key light.
 const STL_OVERLAY_COLOR = 0x88aaff
 const STL_OVERLAY_OPACITY = 0.4
@@ -58,6 +62,15 @@ export default function H5Viewer({
     const renderControls = useViewerStore(
         (s) => s.h5PerFileStates[fileKey]?.renderControls ?? defaultRenderControls,
     )
+    const sliceColormap = useViewerStore(
+        (s) => s.h5PerFileStates[fileKey]?.sliceColormap ?? 'gray',
+    )
+    const colormapRange = useViewerStore(
+        (s) => s.h5PerFileStates[fileKey]?.sliceColormapRange ?? DEFAULT_COLORMAP_RANGE,
+    )
+    const colorByDepth = useViewerStore(
+        (s) => s.h5PerFileStates[fileKey]?.colorByDepth ?? false,
+    )
 
     useEffect(() => {
         const container = containerRef.current
@@ -102,6 +115,10 @@ export default function H5Viewer({
                 uWidthMax: { value: initialRc.h5WidthRange[1] },
                 uHeightMin: { value: initialRc.h5HeightRange[0] },
                 uHeightMax: { value: initialRc.h5HeightRange[1] },
+                uColormap: { value: 0 },
+                uColormapMin: { value: 0 },
+                uColormapMax: { value: 1 },
+                uColorByDepth: { value: 0 },
             },
             vertexShader,
             fragmentShader,
@@ -289,20 +306,54 @@ export default function H5Viewer({
         needsRenderRef.current = true
     }, [h5Threshold, vIntensities])
 
-    // volumeSpacing also mutates bounding-box geometry — keep isolated from pure uniform updates.
+    // volumeSpacing + clip ranges both affect the bounding box. Keep isolated from pure
+    // uniform updates so only these expensive box mutations trigger this effect.
     useEffect(() => {
         const mat = materialRef.current
         if (!mat) return
         mat.uniforms.uVolumeSpacing.value = volumeSpacing
-        // Keep the green bounding box in sync with the model's Y extent, which the
-        // vertex shader scales to ±volumeSpacing/2.
         const boxHelper = boxHelperRef.current
         if (boxHelper) {
-            boxHelper.box.min.y = -volumeSpacing / 2
-            boxHelper.box.max.y = volumeSpacing / 2
+            const { nSlices, height, width } = meta
+            // Mirror the vertex-shader coordinate transform:
+            //   x = w  - width/2          (uWidthRange  → pixel coords)
+            //   y = (s - nSlices/2) * (volumeSpacing / nSlices)
+            //   z = h  - height/2         (uHeightRange → pixel coords)
+            boxHelper.box.min.set(
+                widthMin - width / 2,
+                (sliceMin - nSlices / 2) * (volumeSpacing / nSlices),
+                heightMin - height / 2,
+            )
+            boxHelper.box.max.set(
+                widthMax - width / 2,
+                (sliceMax - nSlices / 2) * (volumeSpacing / nSlices),
+                heightMax - height / 2,
+            )
         }
         needsRenderRef.current = true
-    }, [volumeSpacing])
+    }, [volumeSpacing, sliceMin, sliceMax, widthMin, widthMax, heightMin, heightMax, meta])
+
+    useEffect(() => {
+        const mat = materialRef.current
+        if (!mat) return
+        mat.uniforms.uColormap.value = sliceColormap === 'jet' ? 1 : sliceColormap === 'hot' ? 2 : 0
+        needsRenderRef.current = true
+    }, [sliceColormap])
+
+    useEffect(() => {
+        const mat = materialRef.current
+        if (!mat) return
+        mat.uniforms.uColormapMin.value = colormapRange[0]
+        mat.uniforms.uColormapMax.value = colormapRange[1]
+        needsRenderRef.current = true
+    }, [colormapRange])
+
+    useEffect(() => {
+        const mat = materialRef.current
+        if (!mat) return
+        mat.uniforms.uColorByDepth.value = colorByDepth ? 1 : 0
+        needsRenderRef.current = true
+    }, [colorByDepth])
 
     useEffect(() => {
         const mat = materialRef.current

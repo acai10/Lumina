@@ -162,3 +162,53 @@ export async function filterSessionVolume(
     })
     return parseNormalizedVolume(res)
 }
+
+/**
+ * Request a surface segmentation height map for `volumeId`.
+ *
+ * Returns an `Int32Array` of shape `(height × width)` — each value is the
+ * depth (slice) index of the first above-threshold voxel at that lateral
+ * position. The caller receives the 2-D shape separately.
+ */
+export interface MeasureRequest {
+    threshold?: number
+    voxel_size_um?: [number, number, number]
+}
+
+export interface MeasureResult {
+    voxel_count: number
+    volume_um3: number
+    surface_area_um2: number
+    mean_thickness_um: number
+    max_thickness_um: number
+    lateral_diameter_um: number
+}
+
+/** Request geometric measurements (area, volume, thickness, diameter) for a volume. */
+export async function measureVolume(
+    volumeId: string,
+    req: MeasureRequest = {},
+): Promise<MeasureResult> {
+    const res = await fetch(`${BASE_URL}/volumes/${volumeId}/measure`, {
+        method: 'POST',
+        headers: { 'Content-Type': CONTENT_TYPE_JSON },
+        body: JSON.stringify(req),
+    })
+    if (!res.ok) throw new Error(`Measurement failed: ${await res.text()}`)
+    return getJson<MeasureResult>(res)
+}
+
+export async function segmentVolume(
+    volumeId: string,
+    threshold = 0.05,
+): Promise<{ data: Int32Array; height: number; width: number }> {
+    const res = await fetch(`${BASE_URL}/volumes/${volumeId}/segment?threshold=${threshold}`, {
+        method: 'POST',
+    })
+    if (!res.ok) throw new Error(`Segmentation failed: ${await res.text()}`)
+    const shapeHeader = res.headers.get(HEADER_X_SHAPE)
+    if (!shapeHeader) throw new Error('Missing X-Shape header in segment response')
+    const [height, width] = shapeHeader.split(',').map(Number)
+    const buf = await res.arrayBuffer()
+    return { data: new Int32Array(buf), height, width }
+}
