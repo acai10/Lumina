@@ -31,7 +31,7 @@ const BLANK_STEP = (): PipelineStep => ({
 })
 
 /** Build a `FilterStep` from a `PipelineStep`, or `null` for type === 'none'. */
-export function buildStep(step: PipelineStep): FilterStep | null {
+function buildStep(step: PipelineStep): FilterStep | null {
     switch (step.type) {
         case 'gaussian':
             return { type: 'gaussian', params: { sigma: step.params.gaussianSigma } }
@@ -48,7 +48,7 @@ export function buildStep(step: PipelineStep): FilterStep | null {
                 },
             }
         case 'edge':
-            return { type: 'edge', params: {} as Record<string, never> }
+            return { type: 'edge', params: {} }
         default:
             return null
     }

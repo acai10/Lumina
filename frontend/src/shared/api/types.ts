@@ -11,12 +11,6 @@ export type FilterStep =
     | { type: 'normalize'; params: { low_percentile: number; high_percentile: number } }
     | { type: 'edge'; params: Record<string, never> }
 
-export interface JobRequest {
-    volume_id: string
-    filter_chain: FilterStep[]
-    stitchers: string[]
-}
-
 export const JOB_STATUS = {
     PENDING: 'pending',
     RUNNING: 'running',
@@ -25,12 +19,6 @@ export const JOB_STATUS = {
 } as const
 
 export type JobStatusValue = (typeof JOB_STATUS)[keyof typeof JOB_STATUS]
-
-export interface JobStatus {
-    status: JobStatusValue
-    results: Record<string, Record<string, number>>
-    error?: string
-}
 
 export interface UploadResponse {
     volume_id: string

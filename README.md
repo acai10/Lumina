@@ -72,8 +72,7 @@ fallback regardless of this setting.
      files or tick an entire folder to add all volumes inside it at once.
 2. Set each volume's grid position (row, col). Grid positions are auto-detected
    from filenames ending in `_row_col.h5`.
-3. Choose a registration method: **Phase Correlation**, **Cross-Correlation**,
-   or **ICP (point-cloud)**.
+3. Choose a registration method: **Phase Correlation** or **Cross-Correlation**.
 4. Backend registers adjacent pairs, computes global offsets via BFS, and merges
    with max-intensity blending.
 5. The merged result loads as a new tab — full 3-D and 2-D slice views,
@@ -101,8 +100,8 @@ fallback regardless of this setting.
 
 ### Preprocessing filters
 
-All filters run on the backend per-slice (or globally for normalize/anisotropy),
-then return a render-ready binary to the frontend.
+All filters run on the backend per-slice (normalize scales globally from
+per-volume percentiles), then return a render-ready binary to the frontend.
 
 #### Gaussian blur
 
@@ -111,34 +110,19 @@ Convolves each 2-D slice with a Gaussian kernel of standard deviation σ:
 $$G(x,y) = \frac{1}{2\pi\sigma^2}\,\exp\!\left(-\frac{x^2+y^2}{2\sigma^2}\right)$$
 
 Smooth, isotropic noise reduction. Larger σ → more blur.
-**Parameter:** `sigma` (default 1.5, range 0.5–5.0)
+**Parameter:** `sigma` (default 1.0)
 
 #### Median filter
 
 Replaces each pixel with the median of its n×n neighbourhood.
 Non-linear — excellent at removing salt-and-pepper noise without blurring edges.
-**Parameter:** `size` (odd integer: 3, 5, or 7)
+**Parameter:** `size` (default 3)
 
-#### Lee speckle filter
+#### Mean filter
 
-Adaptive variance-based filter designed for coherent (speckle) noise.
-Computes local mean μ and local variance σ²_local in a sliding window,
-estimates noise variance σ²_noise as the global mean of local variances,
-then blends:
-
-$$\hat{I} = \mu + \underbrace{\frac{\sigma^2_\text{local}}{\sigma^2_\text{local}+\sigma^2_\text{noise}}}_{w}\,(I - \mu)$$
-
-w → 1 in textured regions (preserves detail); w → 0 in flat regions (smooths noise).
-**Parameter:** `window` (odd integer: 3, 5, 7, or 9)
-
-#### BM3D (Block-Matching 3D)
-
-State-of-the-art patch-based denoiser. Groups similar 2-D patches from a slice
-into a 3-D stack, applies a collaborative transform (e.g. Wiener filter in the
-transform domain), then aggregates back. Achieves the best PSNR among classical
-methods at the cost of runtime.
-Requires optional `bm3d` dependency: `uv sync --extra bm3d`.
-**Parameter:** `sigma_psd` — estimated noise power spectral density (default 0.1)
+Replaces each pixel with the average of its n×n neighbourhood (`scipy.ndimage.uniform_filter`).
+Simple linear smoothing.
+**Parameter:** `size` (default 3)
 
 #### Percentile normalise
 
@@ -147,13 +131,13 @@ Clips intensities to the [p_low, p_high] percentile range, then scales to [0, 1]
 $$x_\text{norm} = \text{clip}\!\left(\frac{x - p_\text{low}}{p_\text{high} - p_\text{low}},\ 0,\ 1\right)$$
 
 Removes outlier intensities that would otherwise dominate the display range.
-**Parameters:** `low_percentile` (default 2), `high_percentile` (default 98)
+**Parameters:** `low_percentile` (default 1.0), `high_percentile` (default 99.0)
 
-#### Anisotropy correction
+#### Edge highlight
 
-Resamples the 3-D volume with `scipy.ndimage.zoom` using per-axis zoom factors
-to correct physical voxel anisotropy (e.g. when z-spacing differs from x/y-spacing).
-**Parameter:** `zoom_factors` — list of three floats, one per axis (default [1, 1, 1])
+Per-slice Sobel gradient magnitude, normalised to [0, 1]. Highlights structural
+boundaries; can be stacked in a pipeline alongside the other filters.
+**Parameter:** none
 
 ---
 
@@ -172,19 +156,6 @@ is *linear* (not circular). Without padding, the standard approach aliases shift
 larger than N/2 pixels to the wrong direction — a common bug in large-field stitching.
 Cross-correlation omits the magnitude normalisation in the denominator, making it
 more sensitive to intensity differences between tiles.
-
-#### ICP — Iterative Closest Point (translation only)
-
-Uses surface point clouds instead of MIP images.
-Each iteration:
-
-1. For every point **p** in the source cloud find its nearest neighbour in the target.
-2. Compute the mean offset: `Δt = mean(target[nn] − source)`.
-3. Shift all source points by Δt; accumulate into total translation T.
-4. Stop when `‖Δt‖ < tolerance` (default 1e-4 px).
-
-Well-suited when lateral intensity profiles are similar (same brightness) but the
-MIP-based methods struggle.
 
 #### Global offset computation
 
@@ -206,15 +177,15 @@ OCT data where high intensity = signal.
 
 #### Quality metrics
 
-After stitching, two metrics are computed on each pair's overlapping region
-and averaged across all pairs:
+After stitching, **RMSE** is computed on each pair's overlapping region and
+averaged across all pairs:
 
 | Metric       | Formula                       | Meaning                          |
 | ------------ | ----------------------------- | -------------------------------- |
 | **RMSE**     | √(mean((A−B)²))               | Intensity agreement in overlap   |
-| **Hausdorff**| max(d(A→B), d(B→A))           | Surface alignment accuracy       |
 
-Lower is better for both.
+Lower is better. (The job-pipeline `compute_all` additionally reports NCC, MI,
+MSE, and Dice when segmentation masks are supplied.)
 
 ---
 
@@ -241,8 +212,12 @@ sliders and slice indices adapt automatically.
 | `POST` | `/volumes/upload` | Upload `.h5` → `{ volume_id, n_slices, height, width }` |
 | `GET` | `/volumes/local` | List `.h5` files under `DATA_DIR` (relative paths + names) |
 | `POST` | `/volumes/register` | Register a local file by path → `{ volume_id, … }` (zero-copy symlink, no upload) |
+| `POST` | `/volumes/register-batch` | Register many local files by path in one round-trip |
 | `GET` | `/volumes/{id}/info` | Shape/dtype of a stored/registered volume |
 | `GET` | `/volumes/{id}/normalized` | Render-ready binary of a stored/registered volume (same format as job results) |
+| `POST` | `/volumes/{id}/filter` | Apply a filter chain (no stitcher, no metrics) → render-ready binary |
+| `POST` | `/volumes/{id}/measure` | Geometric measurements (area, volume, thickness, diameter) |
+| `POST` | `/volumes/{id}/segment` | Surface height-map segmentation → `Int32` depth map |
 
 ### Filter jobs
 
@@ -294,7 +269,7 @@ The frontend parses this as three zero-copy typed-array views into a single
 # Backend
 cd backend
 uv sync                      # CPU-only (default)
-uv sync --extra bm3d         # + BM3D denoising
+uv sync --extra elastix      # + itk-elastix B-spline stitcher (optional)
 uv run uvicorn main:app --reload --port 8000
 
 # Frontend
@@ -323,7 +298,7 @@ Lumina/
 ├── backend/
 │   ├── Dockerfile
 │   ├── main.py                   # FastAPI app, CORS, router registration
-│   ├── pyproject.toml            # deps + optional extras: bm3d, elastix
+│   ├── pyproject.toml            # deps + optional extra: elastix
 │   └── src/
 │       ├── config.py             # Pydantic BaseSettings (uploads_dir, cors_origins)
 │       ├── schemas/
@@ -332,17 +307,20 @@ Lumina/
 │       │   ├── sessions.py       # VolumeEntry, SessionRequest, …
 │       │   └── volumes.py        # UploadResponse, VolumeInfo
 │       ├── routers/
-│       │   ├── volumes.py        # POST /volumes/upload, GET /volumes/{id}/info
+│       │   ├── volumes.py        # upload, register(-batch), info, normalized, filter
 │       │   ├── jobs.py           # POST /jobs/
 │       │   ├── results.py        # GET /jobs/{id}/volume/{stitcher}
-│       │   ├── sessions.py       # POST+GET /sessions/, GET /merged, POST /filter
+│       │   ├── sessions.py       # POST+GET /sessions/, GET /merged, /mip, POST /filter
+│       │   ├── measurements.py   # POST /volumes/{id}/measure
+│       │   ├── segmentation.py   # POST /volumes/{id}/segment
 │       │   └── cleanup.py        # DELETE /cleanup
 │       └── processing/
 │           ├── h5_reader.py      # load_volume(), load_volume_flexible()
-│           ├── filters.py        # apply_filter_chain() — Gaussian/Median/Lee/BM3D/…
+│           ├── filters.py        # apply_filter_chain() — Gaussian/Median/Mean/Normalize/Edge
 │           ├── normalizer.py     # normalize_for_frontend(); save/load_packed
-│           ├── multi_volume.py   # MIP, surface seg, ICP, phase correlation, merge
-│           ├── metrics.py        # RMSE, Hausdorff
+│           ├── multi_volume.py   # MIP, surface seg, phase/cross correlation, merge
+│           ├── metrics.py        # NCC, MI, MSE, RMSE, Dice
+│           ├── measurements.py   # geometric measurements (area, volume, thickness)
 │           ├── runner.py         # JobStore, async run_job
 │           └── session_runner.py # SessionStore, async run_session
 │
@@ -363,7 +341,7 @@ Lumina/
             ├── h5/               # H5Viewer (3-D), H5SliceViewer (2-D), H5FileTabs
             ├── stl/              # STLViewer
             ├── controls/         # ControlsPanel, PreprocessingSection, SliderRow (LUT)
-            ├── stitcher/         # StitcherPanel, useStitchSession, MipViewer
+            ├── stitcher/         # StitcherPanel, useStitchSession, StitchResults
             ├── toolbar/          # Toolbar, useFileLoad
             └── notifications/    # AppSnackbar
 ```
@@ -375,7 +353,7 @@ Lumina/
 | Layer | Technology |
 | ----- | ---------- |
 | Backend | Python 3.11 · FastAPI · h5py · NumPy · SciPy · scikit-image · SimpleITK |
-| Backend (optional) | BM3D · itk-elastix |
+| Backend (optional) | itk-elastix |
 | Frontend | React 18 · TypeScript · Three.js · MUI v6 · Zustand · Vite |
 | Infra | Docker Compose · uv · Node 20 |
 

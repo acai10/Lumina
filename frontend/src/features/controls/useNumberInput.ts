@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-export const fmt = (v: number) => (v % 1 === 0 ? String(v) : v.toFixed(2))
+const fmt = (v: number) => (v % 1 === 0 ? String(v) : v.toFixed(2))
 
 export function useNumberInput(
     value: number,

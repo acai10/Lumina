@@ -14,7 +14,7 @@ import type {
     TabEntry,
 } from '../../shared/types/viewer.types'
 
-export interface AppNotification {
+interface AppNotification {
     message: string
     severity: 'error' | 'success' | 'info'
 }
@@ -25,7 +25,7 @@ export interface AppNotification {
  * on demand. Two keeps the active tab plus one recently-viewed neighbour resident
  * for snappy A/B switching while bounding peak memory to ~3 volumes during loads.
  */
-export const MAX_HYDRATED_FILES = 2
+const MAX_HYDRATED_FILES = 2
 
 // `persisted` tracks which volumes are known to be safely written to IndexedDB,
 // so eviction can drop their in-memory buffers without re-writing. A filter result

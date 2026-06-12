@@ -89,7 +89,7 @@ def normalize_for_frontend(
         np.subtract(sl, mn, out=tmp)
         np.multiply(tmp, scale, out=tmp)
         np.clip(tmp, 0, 255, out=tmp)
-        norm_u8[s] = tmp  # implicit cast float32 → uint8
+        norm_u8[s] = tmp
 
     # ── Chunked above-threshold extraction ───────────────────────────────────
     # Building a single bool mask over the full volume (e.g. 248 MB for a

@@ -5,7 +5,12 @@ import CloseIcon from '@mui/icons-material/Close'
 import { useViewerStore, DEFAULT_SLICE_PANEL_CONTROL } from '../../app/store/viewerSlice'
 import type { ColormapType, H5Meta, SegmentationOverlay } from '../../shared/types/viewer.types'
 import { palette } from '../../shared/theme/palette'
-import { UM_PER_MM, DEFAULT_VOXEL_SIZE_UM } from '../../shared/constants'
+import {
+    UM_PER_MM,
+    DEFAULT_VOXEL_SIZE_UM,
+    DEFAULT_COLORMAP_RANGE,
+    UINT8_MAX,
+} from '../../shared/constants'
 import { slicePanelSliderSx, sliceRowLabelSx, sliceRowValueSx } from './H5SliceViewer.styles'
 import { RENDER_CONTROL_LIMITS } from '../controls/renderControlLimits'
 
@@ -24,7 +29,6 @@ export interface SlicePanelProps {
     voxelSizeUm?: [number, number, number]
 }
 
-const UINT8_MAX = 255
 const LUT_SIZE = 256
 const TONE_MAP_PIVOT = 0.5
 const SEG_A = 210
@@ -209,8 +213,6 @@ function drawScaleBars(
 
     ctx.restore()
 }
-
-const DEFAULT_COLORMAP_RANGE: [number, number] = [0, 1]
 
 export const SlicePanel = memo(function SlicePanel({
     normalizedVolume,

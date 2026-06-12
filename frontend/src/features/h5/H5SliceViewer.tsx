@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5Meta, SegmentationOverlay } from '../../shared/types/viewer.types'
 import { SlicePanel } from './SlicePanel'
-import { DEFAULT_VOXEL_SIZE_UM } from '../../shared/constants'
+import { DEFAULT_VOXEL_SIZE_UM, DEFAULT_COLORMAP_RANGE } from '../../shared/constants'
 
 interface H5SliceViewerProps {
     normalizedVolume: Uint8Array
@@ -15,7 +15,6 @@ interface H5SliceViewerProps {
 // Stable reference — prevents useShallow from seeing a new array every render
 // when segmentationOverlays is undefined in the store (?? [] creates a fresh []).
 const EMPTY_OVERLAYS: SegmentationOverlay[] = []
-const DEFAULT_COLORMAP_RANGE: [number, number] = [0, 1]
 
 export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5SliceViewerProps) {
     const {

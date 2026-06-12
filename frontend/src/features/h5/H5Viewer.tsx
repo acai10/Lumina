@@ -11,16 +11,12 @@ import { palette } from '../../shared/theme/palette'
 import { ZoomModeButton } from '../../shared/components'
 import type { H5Meta } from '../../shared/types/viewer.types'
 import { createAxisLabels, createAxisTickLabels } from './createAxisLabels'
-import { DEFAULT_VOXEL_SIZE_UM } from '../../shared/constants'
+import { DEFAULT_VOXEL_SIZE_UM, DEFAULT_COLORMAP_RANGE } from '../../shared/constants'
 import { vertexShader, fragmentShader } from './h5ViewerShaders'
 import { applyDrawRanges, countAboveThreshold } from './h5DrawUtils'
 
 // Firefox caps drawArraysInstanced at 30 M vertices per draw call; leave headroom
 const MAX_VERTS_PER_DRAW = 28_000_000
-
-// Stable fallback constants — inline `?? [0,1]` creates a new array every render
-// and breaks Zustand's snapshot cache check, causing an infinite re-render loop.
-const DEFAULT_COLORMAP_RANGE: [number, number] = [0, 1]
 
 // Percentiles used to build the auto-fit colour window. Above-threshold OCT
 // intensities are heavily skewed toward the top, so a plain min/max window maps

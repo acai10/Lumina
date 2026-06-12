@@ -87,21 +87,30 @@ backend/
 │   ├── test_metrics.py       # Unit tests for NCC/MI/MSE/Dice
 │   └── test_job_store.py     # Unit tests for JobStore
 └── src/
-    ├── config.py             # Pydantic BaseSettings: uploads_dir, cors_origins (env vars)
+    ├── config.py             # Pydantic BaseSettings: uploads_dir, cors_origins, data_dir (env vars)
     ├── schemas/
     │   ├── enums.py          # JobStatus (str Enum): PENDING, RUNNING, DONE, ERROR
-    │   ├── jobs.py           # FilterStep, JobRequest, JobCreated, JobStatusResponse
+    │   ├── jobs.py           # FilterStep, FilterRequest, JobRequest, JobCreated, JobStatusResponse
+    │   ├── sessions.py       # VolumeEntry, SessionRequest, SessionStatusResponse
     │   └── volumes.py        # UploadResponse, VolumeInfo
     ├── routers/
-    │   ├── volumes.py        # POST /volumes/upload, GET /volumes/{id}/info
+    │   ├── volumes.py        # upload, register(-batch), info, normalized, filter
     │   ├── jobs.py           # POST /jobs/ (201), GET /jobs/{id}
-    │   └── results.py        # GET /jobs/{id}/volume/{stitcher} → raw float32
+    │   ├── results.py        # GET /jobs/{id}/volume/{stitcher} → normalised binary
+    │   ├── sessions.py       # POST+GET /sessions/, /merged, /mip, POST /filter
+    │   ├── measurements.py   # POST /volumes/{id}/measure
+    │   ├── segmentation.py   # POST /volumes/{id}/segment
+    │   └── cleanup.py        # DELETE /cleanup
     └── processing/
-        ├── h5_reader.py      # load_volume(), OCT_DIMS constant
+        ├── h5_reader.py      # load_volume(), load_volume_flexible(), OCT_DIMS constant
         ├── filters.py        # apply_filter_chain(); _FILTER_REGISTRY
         ├── stitchers.py      # STITCHER_REGISTRY: phase_correlation, simpleitk_affine, elastix_bspline, bigstitcher
-        ├── metrics.py        # compute_all() -> dict[str, float]: NCC, MI, MSE, Dice
-        └── runner.py         # JobStore class + job_store singleton; async run_job; shutdown_executor()
+        ├── multi_volume.py   # MIP, surface seg, phase/cross correlation, global offsets, merge
+        ├── normalizer.py     # normalize_for_frontend(); pack/save/load_packed
+        ├── measurements.py   # compute_measurements(): area, volume, thickness, diameter
+        ├── metrics.py        # compute_all() -> dict[str, float]: NCC, MI, MSE, RMSE, Dice
+        ├── runner.py         # JobStore class + job_store singleton; async run_job
+        └── session_runner.py # SessionStore + session_store singleton; async run_session
 ```
 
 ### Backend conventions
@@ -110,7 +119,7 @@ backend/
 - **Job status**: Always use `JobStatus.PENDING` / `.RUNNING` / `.DONE` / `.ERROR` from `src.schemas.enums`. Never compare against raw strings.
 - **Type hints**: Always use `list[dict[str, Any]]` and `dict[str, dict[str, Any]]` — never bare `list[dict]` or `dict[str, dict]`.
 - **Pydantic mutable defaults**: Always `Field(default_factory=dict)` / `Field(default_factory=list)`, never `{}` / `[]`.
-- **Optional heavy dependencies** (`bm3d`, `itk-elastix`): listed under `[project.optional-dependencies]`; guarded with `try: import X except (ImportError, OSError)` inside the function.
+- **Optional heavy dependencies** (`itk-elastix`): listed under `[project.optional-dependencies]`; guarded with `try: import X except (ImportError, OSError)` inside the function.
 - **Logging**: Every module in `src/processing/` uses `logger = logging.getLogger(__name__)`. No `print()` anywhere — ruff rule T201 catches this.
 - **Docstrings**: Google style for all public functions. Sections: Args, Returns, Raises.
 - **Background tasks**: Pass async `run_job` directly to `background_tasks.add_task(run_job, ...)` — Starlette awaits coroutines automatically.
@@ -120,10 +129,19 @@ backend/
 | Method | Path | Status | Description |
 | --- | --- | --- | --- |
 | POST | `/volumes/upload` | 200 | Upload `.h5` → `{ volume_id, n_slices, height, width }` |
+| POST | `/volumes/register` · `/volumes/register-batch` | 200 | Register local file(s) by path (zero-copy, no upload) |
 | GET | `/volumes/{id}/info` | 200 | Volume shape/dtype |
+| GET | `/volumes/{id}/normalized` | 200 | Render-ready normalised binary |
+| POST | `/volumes/{id}/filter` | 200 | Apply filter chain → normalised binary (no stitch/metrics) |
+| POST | `/volumes/{id}/measure` | 200 | Geometric measurements |
+| POST | `/volumes/{id}/segment` | 200 | Surface height-map segmentation |
 | POST | `/jobs/` | **201** | Start job → `{ job_id }` (immediate) |
 | GET | `/jobs/{id}` | 200 | Poll status + metric results |
-| GET | `/jobs/{id}/volume/{stitcher}` | 200 | Raw float32 result volume |
+| GET | `/jobs/{id}/volume/{stitcher}` | 200 | Normalised binary result volume |
+| POST/GET | `/sessions/` · `/sessions/{id}` | 200/201 | Multi-volume stitch session + poll |
+| GET | `/sessions/{id}/merged` · `/mip` | 200 | Merged volume / MIP |
+| POST | `/sessions/{id}/filter` | 200 | Filter the merged volume |
+| DELETE | `/cleanup` | 200 | Delete all files in `uploads/` |
 
 ### Job request body
 
@@ -131,7 +149,7 @@ backend/
 {
   "volume_id": "uuid",
   "filter_chain": [
-    { "type": "gaussian", "params": { "sigma": 1.5 } },
+    { "type": "gaussian", "params": { "sigma": 1.0 } },
     { "type": "normalize", "params": {} }
   ],
   "stitchers": ["phase_correlation", "simpleitk_affine"],
@@ -139,8 +157,9 @@ backend/
 }
 ```
 
-Filter types: `"gaussian"`, `"median"`, `"lee"`, `"bm3d"`, `"normalize"`, `"anisotropy"`.
+Filter types: `"gaussian"`, `"median"`, `"mean"`, `"normalize"`, `"edge"`.
 Stitcher names: `"phase_correlation"`, `"simpleitk_affine"`, `"elastix_bspline"`, `"bigstitcher"`.
+Session registration methods: `"phase_correlation"`, `"cross_correlation"`.
 
 ---
 
@@ -154,7 +173,7 @@ Complex component styles with pseudo-selectors go in co-located `.styles.ts` fil
 
 **Off-heap volume eviction** (memory): each volume's heavy buffers (`vIndices`, `vIntensities`, `normalizedVolume`, ~150–210 MB) are mirrored to IndexedDB via `shared/h5/volumeCache.ts`. The store keeps at most `MAX_HYDRATED_FILES` (2) hydrated on the JS heap (LRU); inactive tabs carry `data: null` and are rehydrated on activation (`ensureHydrated`). This bounds heap growth so loading many files / whole folders no longer crashes the tab. `H5TabEntry` therefore always carries lightweight `meta` + `hasSlices`, and `data` only when hydrated. Backend filter results are re-persisted on `applyBackendFilter`, so eviction never loses a filtered volume.
 
-**Backend filter flow**: `PreprocessingSection` → `useFilterJob(fileKey, sourceFile)` → upload via `/volumes/upload` → POST `/jobs/` → poll `/jobs/{id}` every 2 s → GET `/jobs/{id}/volume/{stitcher}` → `normalizeVolume` → `applyBackendFilter` in Zustand.
+**Backend filter flow**: `PreprocessingSection` → `useFilterJob` → (upload via `/volumes/upload` only if the volume isn't already server-side) → single POST `/volumes/{id}/filter` (or `/sessions/{id}/filter` for merged volumes) → `parseNormalizedVolume` → `applyBackendFilter` in Zustand. This lean endpoint applies the chain and returns the render-ready normalised binary in one request — no stitcher, no metrics, no polling. (The `/jobs/` create-and-poll pipeline still exists for stitcher comparison runs but is no longer used by the preprocessing UI.)
 
 Stitcher-comparison UI lives in `frontend/src/features/stitcher/`.
 
@@ -169,7 +188,7 @@ frontend/src/
 ├── shared/
 │   ├── api/
 │   │   ├── index.ts                  # barrel — public API surface
-│   │   ├── client.ts                 # uploadVolume, createJob, pollJob, fetchResultVolume
+│   │   ├── client.ts                 # uploadVolume, register*, filterVolume, session helpers
 │   │   └── types.ts                  # FilterStep, JobRequest, JobStatus, UploadResponse
 │   ├── h5/
 │   │   ├── index.ts                  # barrel
@@ -183,7 +202,7 @@ frontend/src/
 │   └── theme/
 │       ├── index.ts                  # barrel
 │       ├── palette.ts                # all colour tokens
-│       └── theme.ts                  # MUI darkTheme
+│       └── theme.ts                  # MUI medicalTheme (light mode)
 └── features/
     ├── controls/
     │   ├── index.ts                  # barrel
@@ -191,7 +210,7 @@ frontend/src/
     │   ├── PreprocessingSection.tsx  # filter UI; uses useFilterJob + useFilterParams
     │   ├── SliderRow.tsx             # SliderRow + RangeSliderRow (named exports)
     │   ├── renderControlLimits.ts    # RENDER_CONTROL_LIMITS; derived from VOLUME_DIMS
-    │   ├── useFilterJob.ts           # Hook: full upload→job→poll→download pipeline
+    │   ├── useFilterJob.ts           # Hook: lean filter apply/revert (single request, no polling)
     │   ├── useFilterParams.ts        # Hook: filter type + param state + buildFilterStep()
     │   └── useNumberInput.ts         # Hook: controlled number input with clamping
     ├── h5/

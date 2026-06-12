@@ -97,7 +97,8 @@ def compute_all(
         mask_b: Optional binary segmentation mask for *b* (enables Dice).
 
     Returns:
-        Dict with keys ``"ncc"``, ``"mi"``, ``"mse"``, and optionally ``"dice"``.
+        Dict with keys ``"ncc"``, ``"mi"``, ``"mse"``, ``"rmse"``, and optionally
+        ``"dice"`` (when both masks are supplied).
     """
     result: dict[str, float] = {
         "ncc": compute_ncc(a, b),

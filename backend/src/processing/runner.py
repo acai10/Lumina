@@ -43,17 +43,13 @@ job_store = JobStore()
 
 
 def get_job(job_id: str) -> JobState | None:
-    """Public accessor kept for backward compatibility with routers."""
+    """Return the JobState for *job_id*, or None if unknown."""
     return job_store.get(job_id)
 
 
 def create_job(job_id: str) -> JobState:
-    """Public factory kept for backward compatibility with routers."""
+    """Initialise a new job in PENDING state and return it."""
     return job_store.create(job_id)
-
-
-def shutdown_executor() -> None:
-    """No-op — kept for backward compatibility with the lifespan handler."""
 
 
 def _execute_pipeline(
@@ -109,7 +105,6 @@ async def run_job(
     filter_chain: list[dict[str, Any]],
     stitchers: list[str],
     stitcher_params: dict[str, dict[str, Any]] | None = None,
-    seg_mask_id: str | None = None,
 ) -> None:
     """Execute the full filter + stitch pipeline for *job_id* as a background task.
 
@@ -123,7 +118,6 @@ async def run_job(
         filter_chain: Ordered list of ``{"type": str, "params": dict}`` dicts.
         stitchers: Names of stitchers to run (must be in STITCHER_REGISTRY).
         stitcher_params: Per-stitcher kwarg overrides.
-        seg_mask_id: Unused; reserved for future segmentation-mask Dice metric.
     """
     state = job_store.get(job_id)
     if state is None:

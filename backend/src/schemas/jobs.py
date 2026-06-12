@@ -19,7 +19,6 @@ class JobRequest(BaseModel):
     filter_chain: list[FilterStep] = Field(default_factory=list)
     stitchers: list[str]
     stitcher_params: dict[str, dict[str, Any]] = Field(default_factory=dict)
-    segmentation_mask_id: str | None = None
 
 
 class JobCreated(BaseModel):

@@ -13,7 +13,7 @@ import Typography from '@mui/material/Typography'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import { palette } from '../../shared/theme/palette'
 import { cleanupUploads, registerLocalVolume, registerLocalVolumesBatch } from '../../shared/api'
-import { REGISTRATION_METHOD } from '../../shared/api/types'
+import { JOB_STATUS, REGISTRATION_METHOD } from '../../shared/api/types'
 import type { LocalVolume, RegistrationMethod } from '../../shared/api'
 import { ServerVolumeDialog, useServerVolumes } from '../../shared/components'
 import { useViewerStore } from '../../app/store/viewerSlice'
@@ -436,7 +436,7 @@ export default function StitcherPanel() {
             )}
 
             {/* Results */}
-            {sessionStatus?.status === 'done' && <StitchResults status={sessionStatus} />}
+            {sessionStatus?.status === JOB_STATUS.DONE && <StitchResults status={sessionStatus} />}
 
             <ServerVolumeDialog
                 open={serverDialogOpen}

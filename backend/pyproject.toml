@@ -18,9 +18,6 @@ dependencies = [
 elastix = [
     "itk-elastix>=0.20.0",
 ]
-bm3d = [
-    "bm3d>=4.0.0",
-]
 
 [dependency-groups]
 dev = [
