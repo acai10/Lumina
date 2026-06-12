@@ -2,9 +2,9 @@ import { useCallback } from 'react'
 import { Box } from '@mui/material'
 import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from '../../app/store/viewerSlice'
-import type { H5Meta } from '../../shared/types/viewer.types'
+import type { H5Meta, SegmentationOverlay } from '../../shared/types/viewer.types'
 import { SlicePanel } from './SlicePanel'
-import { SLICE_GRID_LEFT_INSET } from '../../shared/theme/layout'
+import { DEFAULT_VOXEL_SIZE_UM, DEFAULT_COLORMAP_RANGE } from '../../shared/constants'
 
 interface H5SliceViewerProps {
     normalizedVolume: Uint8Array
@@ -12,8 +12,23 @@ interface H5SliceViewerProps {
     fileKey: string
 }
 
+// Stable reference — prevents useShallow from seeing a new array every render
+// when segmentationOverlays is undefined in the store (?? [] creates a fresh []).
+const EMPTY_OVERLAYS: SegmentationOverlay[] = []
+
 export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5SliceViewerProps) {
-    const { sliceZ, sliceY, sliceX, setH5SliceIndex, setH5SliceY, setH5SliceX } = useViewerStore(
+    const {
+        sliceZ,
+        sliceY,
+        sliceX,
+        setH5SliceIndex,
+        setH5SliceY,
+        setH5SliceX,
+        segmentationOverlays,
+        sliceColormap,
+        colormapRange,
+        voxelSizeUm,
+    } = useViewerStore(
         useShallow((s) => ({
             sliceZ: s.h5PerFileStates[fileKey]?.sliceIndex ?? Math.floor(meta.nSlices / 2),
             sliceY: s.h5PerFileStates[fileKey]?.sliceY ?? Math.floor(meta.height / 2),
@@ -21,11 +36,14 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
             setH5SliceIndex: s.setH5SliceIndex,
             setH5SliceY: s.setH5SliceY,
             setH5SliceX: s.setH5SliceX,
+            segmentationOverlays:
+                s.h5PerFileStates[fileKey]?.segmentationOverlays ?? EMPTY_OVERLAYS,
+            sliceColormap: s.h5PerFileStates[fileKey]?.sliceColormap ?? 'gray',
+            colormapRange: s.h5PerFileStates[fileKey]?.sliceColormapRange ?? DEFAULT_COLORMAP_RANGE,
+            voxelSizeUm: s.h5PerFileStates[fileKey]?.sliceVoxelSizeUm ?? DEFAULT_VOXEL_SIZE_UM,
         })),
     )
 
-    // Stable per-axis callbacks so the memoized SlicePanels don't re-render (and
-    // re-run their ~500k-pixel repaint) when a sibling panel's slider fires.
     const onSliceChangeZ = useCallback(
         (v: number) => setH5SliceIndex(fileKey, v),
         [setH5SliceIndex, fileKey],
@@ -45,50 +63,55 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
                 width: '100%',
                 height: '100%',
                 display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gridTemplateRows: '1fr 1fr',
+                gridTemplateColumns: '1fr 1fr 1fr',
+                gridTemplateRows: '1fr',
                 gap: 0.5,
-                pt: 0.5,
-                pr: 0.5,
-                pb: 0.5,
-                pl: `${SLICE_GRID_LEFT_INSET}px`,
+                p: 0.5,
             }}
         >
-            {/* axis="z" navigates s → maps to Y-axis in 3D space */}
+            {/* XZ — navigates slices (z-axis in data space) */}
             <SlicePanel
                 normalizedVolume={normalizedVolume}
                 meta={meta}
                 fileKey={fileKey}
                 axis="z"
                 sliceIndex={sliceZ}
-                label="Y"
+                label="XZ"
                 orient="ccw90"
                 onSliceChange={onSliceChangeZ}
+                colormap={sliceColormap}
+                colormapRange={colormapRange}
+                segmentationOverlays={segmentationOverlays}
+                voxelSizeUm={voxelSizeUm}
             />
-            {/* axis="y" navigates h → maps to Z-axis in 3D space */}
+            {/* XY — navigates height (y-axis in data space) */}
             <SlicePanel
                 normalizedVolume={normalizedVolume}
                 meta={meta}
                 fileKey={fileKey}
                 axis="y"
                 sliceIndex={sliceY}
-                label="Z"
+                label="XY"
                 orient="flip180"
                 onSliceChange={onSliceChangeY}
+                colormap={sliceColormap}
+                colormapRange={colormapRange}
+                voxelSizeUm={voxelSizeUm}
             />
-            {/* axis="x" navigates w → X-axis */}
-            <Box sx={{ gridColumn: '1 / -1', overflow: 'hidden', height: '100%' }}>
-                <SlicePanel
-                    normalizedVolume={normalizedVolume}
-                    meta={meta}
-                    fileKey={fileKey}
-                    axis="x"
-                    sliceIndex={sliceX}
-                    label="X"
-                    orient="ccw90"
-                    onSliceChange={onSliceChangeX}
-                />
-            </Box>
+            {/* YZ — navigates width (x-axis in data space) */}
+            <SlicePanel
+                normalizedVolume={normalizedVolume}
+                meta={meta}
+                fileKey={fileKey}
+                axis="x"
+                sliceIndex={sliceX}
+                label="YZ"
+                orient="ccw90"
+                onSliceChange={onSliceChangeX}
+                colormap={sliceColormap}
+                colormapRange={colormapRange}
+                voxelSizeUm={voxelSizeUm}
+            />
         </Box>
     )
 }

@@ -80,4 +80,9 @@ export const palette = {
 
     // Light scrollbar thumb for the app chrome.
     scrollbarThumb: 'rgba(90,130,180,0.45)',
+
+    // Accent blue used for interactive overlays on dark scenes (measurement tool,
+    // zoom-to-cursor toggle). Shared across SlicePanel, H5Viewer, STLViewer.
+    accentBlue: '#4fa3ff',
+    accentBlueHoverBg: 'rgba(79,163,255,0.18)',
 } as const

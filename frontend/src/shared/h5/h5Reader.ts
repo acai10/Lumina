@@ -1,12 +1,12 @@
 import { ready, File as H5File } from 'h5wasm'
 import type { H5VolumeData } from '../types/viewer.types'
 import { normalizeVolume } from './h5Normalizer'
+import { VOLUME_DIMS, PRE_FILTER_THRESHOLD, H5_DATASET_NAME } from './h5Constants'
 
-export const VOLUME_DIMS: [number, number, number] = [512, 250, 250]
-export const PRE_FILTER_THRESHOLD = 0.05
-
-// Fixed H5 dataset name — the backend writes the OCT volume under this key, no guessing.
-const H5_DATASET_NAME = 'OCT'
+// NOTE: This module statically imports `h5wasm` and must therefore only be
+// imported by `h5.worker.ts` (the Web Worker), never from the main-thread
+// graph — otherwise Vite ships h5wasm twice. Main-thread callers use
+// `loadH5FileInWorker` from `h5WorkerClient.ts`.
 
 export async function loadH5File(
     file: File,
@@ -66,26 +66,4 @@ export async function loadH5File(
             // ignore cleanup errors
         }
     }
-}
-
-/** Reply shape posted back by h5.worker — discriminated on `ok`. */
-export type WorkerResponse = { ok: true; result: H5VolumeData } | { ok: false; error: string }
-
-export function loadH5FileInWorker(
-    file: File,
-    dims: [number, number, number] = VOLUME_DIMS,
-): Promise<H5VolumeData> {
-    return new Promise((resolve, reject) => {
-        const worker = new Worker(new URL('./h5.worker.ts', import.meta.url), { type: 'module' })
-        worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
-            worker.terminate()
-            if (e.data.ok) resolve(e.data.result)
-            else reject(new Error(e.data.error))
-        }
-        worker.onerror = (err) => {
-            worker.terminate()
-            reject(new Error(err.message))
-        }
-        worker.postMessage({ file, dims })
-    })
 }

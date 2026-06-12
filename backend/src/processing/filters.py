@@ -6,8 +6,6 @@ import scipy.ndimage as ndi
 
 logger = logging.getLogger(__name__)
 
-_LEE_EPSILON = 1e-10
-
 
 def apply_gaussian(volume: np.ndarray, params: dict) -> np.ndarray:
     """Apply per-slice Gaussian blur.
@@ -43,56 +41,20 @@ def apply_median(volume: np.ndarray, params: dict) -> np.ndarray:
     return out
 
 
-def apply_lee(volume: np.ndarray, params: dict) -> np.ndarray:
-    """Lee speckle filter — variance-based per slice.
+def apply_mean(volume: np.ndarray, params: dict) -> np.ndarray:
+    """Apply per-slice uniform (mean) filter.
 
     Args:
         volume: Float32 array of shape (n_slices, height, width).
-        params: Accepts ``window`` (int, default 7).
+        params: Accepts ``size`` (int, default 3).
 
     Returns:
-        Speckle-filtered volume of the same shape and dtype.
+        Filtered volume of the same shape and dtype.
     """
-    window = int(params.get("window", 7))
+    size = int(params.get("size", 3))
     out = np.empty_like(volume)
     for i in range(volume.shape[0]):
-        s = volume[i].astype(np.float32)
-        local_mean = ndi.uniform_filter(s, size=window)
-        local_sq_mean = ndi.uniform_filter(s**2, size=window)
-        local_var = local_sq_mean - local_mean**2
-        noise_var = float(np.mean(local_var))
-        weight = local_var / (local_var + noise_var + _LEE_EPSILON)
-        out[i] = local_mean + weight * (s - local_mean)
-    return out
-
-
-def apply_bm3d(volume: np.ndarray, params: dict) -> np.ndarray:
-    """Apply BM3D denoising per slice.
-
-    Requires the optional ``bm3d`` package (``uv sync --extra bm3d``).
-
-    Args:
-        volume: Float32 array of shape (n_slices, height, width).
-        params: Accepts ``sigma_psd`` (float, default 0.1).
-
-    Returns:
-        Denoised volume of the same shape and dtype.
-
-    Raises:
-        RuntimeError: If ``bm3d`` is not installed on this platform.
-    """
-    try:
-        import bm3d
-    except (ImportError, OSError) as exc:
-        raise RuntimeError(
-            "bm3d is not installed or unavailable on this platform. "
-            "Install with: uv sync --extra bm3d"
-        ) from exc
-
-    sigma_psd = float(params.get("sigma_psd", 0.1))
-    out = np.empty_like(volume)
-    for i in range(volume.shape[0]):
-        out[i] = bm3d.bm3d(volume[i].astype(np.float32), sigma_psd=sigma_psd)
+        out[i] = ndi.uniform_filter(volume[i], size=size)
     return out
 
 
@@ -116,27 +78,36 @@ def apply_normalize(volume: np.ndarray, params: dict) -> np.ndarray:
     return np.zeros_like(volume)
 
 
-def apply_anisotropy_correction(volume: np.ndarray, params: dict) -> np.ndarray:
-    """Resample the volume along each axis to correct voxel anisotropy.
+def apply_edge_highlight(volume: np.ndarray, params: dict) -> np.ndarray:
+    """Per-slice Sobel edge magnitude, normalised to [0, 1].
+
+    Computes the gradient magnitude using Sobel operators along both in-plane
+    axes and clips the result to the original intensity range so that edge maps
+    can be stacked in a pipeline alongside other filters.
 
     Args:
         volume: Float32 array of shape (n_slices, height, width).
-        params: Accepts ``zoom_factors`` (list[float], default [1.0, 1.0, 1.0]).
+        params: No parameters required (reserved for future use).
 
     Returns:
-        Resampled float32 array; shape depends on zoom_factors.
+        Edge-magnitude volume of the same shape and dtype, values in [0, 1].
     """
-    zoom_factors = params.get("zoom_factors", [1.0, 1.0, 1.0])
-    return ndi.zoom(volume, zoom=zoom_factors, order=1).astype(np.float32)
+    out = np.empty_like(volume)
+    for i in range(volume.shape[0]):
+        sx = ndi.sobel(volume[i], axis=0)
+        sy = ndi.sobel(volume[i], axis=1)
+        mag = np.hypot(sx, sy)
+        max_val = float(mag.max())
+        out[i] = (mag / max_val).astype(np.float32) if max_val > 0 else mag.astype(np.float32)
+    return out
 
 
 _FILTER_REGISTRY = {
     "gaussian": apply_gaussian,
     "median": apply_median,
-    "lee": apply_lee,
-    "bm3d": apply_bm3d,
+    "mean": apply_mean,
     "normalize": apply_normalize,
-    "anisotropy": apply_anisotropy_correction,
+    "edge": apply_edge_highlight,
 }
 
 
@@ -157,7 +128,7 @@ def apply_filter_chain(
             e.g. when *volume* was just loaded from disk for this call only.
 
     Returns:
-        Filtered volume (may differ in shape if anisotropy zoom is applied).
+        Filtered volume (same shape unless a future filter changes it).
 
     Raises:
         ValueError: If any step references an unknown filter type.

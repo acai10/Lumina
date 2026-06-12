@@ -3,63 +3,91 @@ import type { FilterStep, FilterType } from '../../shared/api/types'
 
 export type FilterTypeOrNone = FilterType | 'none'
 
-export interface FilterParams {
+/** Per-step mutable param bag — only the fields relevant to the chosen type are used. */
+export interface StepParams {
     gaussianSigma: number
     medianRadius: number
-    leeWindow: number
-    bm3dSigma: number
+    meanSize: number
     normalizeLow: number
     normalizeHigh: number
 }
 
-// Default filter parameters. Sizes align with the slider minima in
-// RENDER_CONTROL_LIMITS (median/lee size must be >= 3 or the filter is a no-op).
-const DEFAULT_PARAMS: FilterParams = {
+const DEFAULT_STEP_PARAMS: StepParams = {
     gaussianSigma: 1.5,
     medianRadius: 3,
-    leeWindow: 3,
-    bm3dSigma: 0.1,
+    meanSize: 3,
     normalizeLow: 2.0,
     normalizeHigh: 98.0,
 }
 
-export function useFilterParams() {
-    const [type, setType] = useState<FilterTypeOrNone>('none')
-    // One object holding every param value: switching `type` keeps previously
-    // entered values for the other filters (they are simply not read).
-    const [params, setParams] = useState<FilterParams>(DEFAULT_PARAMS)
+export interface PipelineStep {
+    type: FilterTypeOrNone
+    params: StepParams
+}
 
-    const updateParam = <K extends keyof FilterParams>(key: K, value: number) =>
-        setParams((prev) => ({ ...prev, [key]: value }))
+const BLANK_STEP = (): PipelineStep => ({
+    type: 'none',
+    params: { ...DEFAULT_STEP_PARAMS },
+})
 
-    const buildFilterStep = (): FilterStep[] => {
-        switch (type) {
-            case 'gaussian':
-                return [{ type: 'gaussian', params: { sigma: params.gaussianSigma } }]
-            case 'median':
-                return [{ type: 'median', params: { size: params.medianRadius } }]
-            case 'lee':
-                return [{ type: 'lee', params: { window: params.leeWindow } }]
-            case 'bm3d':
-                return [{ type: 'bm3d', params: { sigma_psd: params.bm3dSigma } }]
-            case 'normalize':
-                return [
-                    {
-                        type: 'normalize',
-                        params: {
-                            low_percentile: params.normalizeLow,
-                            high_percentile: params.normalizeHigh,
-                        },
-                    },
-                ]
-            case 'anisotropy':
-                return [{ type: 'anisotropy', params: {} }]
-            default:
-                return []
-        }
+/** Build a `FilterStep` from a `PipelineStep`, or `null` for type === 'none'. */
+function buildStep(step: PipelineStep): FilterStep | null {
+    switch (step.type) {
+        case 'gaussian':
+            return { type: 'gaussian', params: { sigma: step.params.gaussianSigma } }
+        case 'median':
+            return { type: 'median', params: { size: step.params.medianRadius } }
+        case 'mean':
+            return { type: 'mean', params: { size: step.params.meanSize } }
+        case 'normalize':
+            return {
+                type: 'normalize',
+                params: {
+                    low_percentile: step.params.normalizeLow,
+                    high_percentile: step.params.normalizeHigh,
+                },
+            }
+        case 'edge':
+            return { type: 'edge', params: {} }
+        default:
+            return null
     }
+}
 
-    const selectType = (value: FilterTypeOrNone) => setType(value)
+export function usePipeline() {
+    const [steps, setSteps] = useState<PipelineStep[]>([BLANK_STEP()])
 
-    return { type, setType: selectType, params, updateParam, buildFilterStep }
+    const addStep = () => setSteps((prev) => [...prev, BLANK_STEP()])
+
+    const removeStep = (index: number) => setSteps((prev) => prev.filter((_, i) => i !== index))
+
+    const moveStep = (index: number, direction: 'up' | 'down') =>
+        setSteps((prev) => {
+            const next = [...prev]
+            const target = direction === 'up' ? index - 1 : index + 1
+            if (target < 0 || target >= next.length) return prev
+            ;[next[index], next[target]] = [next[target], next[index]]
+            return next
+        })
+
+    const updateStepType = (index: number, type: FilterTypeOrNone) =>
+        setSteps((prev) => prev.map((s, i) => (i === index ? { ...s, type } : s)))
+
+    const updateStepParam = (index: number, key: keyof StepParams, value: number) =>
+        setSteps((prev) =>
+            prev.map((s, i) => (i === index ? { ...s, params: { ...s.params, [key]: value } } : s)),
+        )
+
+    const buildFilterChain = (): FilterStep[] =>
+        steps.flatMap((s) => {
+            const step = buildStep(s)
+            return step ? [step] : []
+        })
+
+    const reset = () => setSteps([BLANK_STEP()])
+
+    return {
+        pipeline: { steps, addStep, removeStep, moveStep, updateStepType, updateStepParam, reset },
+        buildFilterChain,
+    }
 }

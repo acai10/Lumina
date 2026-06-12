@@ -1,8 +1,13 @@
 import * as THREE from 'three'
 import { palette } from '../../shared/theme/palette'
+import { UM_PER_MM } from '../../shared/constants'
 
 const AXIS_LABEL_CANVAS_SIZE = 64
 const AXIS_LABEL_FONT = 'bold 52px sans-serif'
+
+const TICK_CANVAS_W = 96
+const TICK_CANVAS_H = 40
+const TICK_FONT = 'bold 26px sans-serif'
 
 const AXIS_DEFINITIONS = [
     { text: 'X', color: palette.axisX, pos: [1, 0, 0] },
@@ -10,17 +15,60 @@ const AXIS_DEFINITIONS = [
     { text: 'Z', color: palette.axisZ, pos: [0, 0, 1] },
 ] as const
 
+const TICK_NICE_UM = [25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000]
+
+function niceIntervalUm(fullExtentUm: number): number {
+    const raw = fullExtentUm / 6
+    return TICK_NICE_UM.find((v) => v >= raw) ?? TICK_NICE_UM[TICK_NICE_UM.length - 1]
+}
+
+function formatTickLabel(um: number): string {
+    if (um >= UM_PER_MM)
+        return `${Number.isInteger(um / UM_PER_MM) ? um / UM_PER_MM : (um / UM_PER_MM).toFixed(1)}mm`
+    return `${um}µm`
+}
+
+function makeTickSprite(
+    scene: THREE.Object3D,
+    pos: THREE.Vector3,
+    text: string,
+    spriteScale: number,
+    color: string,
+): THREE.Sprite[] {
+    const canvas = document.createElement('canvas')
+    canvas.width = TICK_CANVAS_W
+    canvas.height = TICK_CANVAS_H
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return []
+    ctx.fillStyle = color
+    ctx.font = TICK_FONT
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(text, TICK_CANVAS_W / 2, TICK_CANVAS_H / 2)
+    const texture = new THREE.CanvasTexture(canvas)
+    const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false })
+    const sprite = new THREE.Sprite(mat)
+    sprite.position.copy(pos)
+    sprite.scale.set(spriteScale * (TICK_CANVAS_W / TICK_CANVAS_H), spriteScale, 1)
+    scene.add(sprite)
+    return [sprite]
+}
+
+/** Place each axis label a little beyond the end of its own edge. */
+const AXIS_LABEL_OVERSHOOT = 1.06
+
 /**
  * Create X/Y/Z axis label sprites and add them to *scene*.
  *
  * @param scene  - Three.js scene to add sprites to.
- * @param axisLen - Distance from origin to place each label.
+ * @param axisLengths - Per-axis edge lengths ``[lenX, lenY, lenZ]`` in scene units;
+ *   each label is placed just past the end of its corresponding edge.
  * @param labelScale - Uniform sprite scale in world units.
  * @returns Array of created sprites (caller is responsible for disposal on unmount).
  */
 export function createAxisLabels(
-    scene: THREE.Scene,
-    axisLen: number,
+    scene: THREE.Object3D,
+    axisLengths: readonly [number, number, number],
     labelScale: number,
 ): THREE.Sprite[] {
     return AXIS_DEFINITIONS.flatMap(({ text, color, pos }) => {
@@ -37,9 +85,93 @@ export function createAxisLabels(
         const texture = new THREE.CanvasTexture(canvas)
         const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false })
         const sprite = new THREE.Sprite(mat)
-        sprite.position.set(pos[0] * axisLen, pos[1] * axisLen, pos[2] * axisLen)
+        sprite.position.set(
+            pos[0] * axisLengths[0] * AXIS_LABEL_OVERSHOOT,
+            pos[1] * axisLengths[1] * AXIS_LABEL_OVERSHOOT,
+            pos[2] * axisLengths[2] * AXIS_LABEL_OVERSHOOT,
+        )
         sprite.scale.setScalar(labelScale)
         scene.add(sprite)
         return [sprite]
     })
+}
+
+/**
+ * Create numeric tick label sprites along X, Y, Z axes and add them to *scene*.
+ *
+ * Ticks are placed along the full length of each axis (the origin sits at the
+ * box's min corner) at physically meaningful intervals derived from voxelSizeUm
+ * and the volume dimensions.
+ *
+ * @param scene          - Three.js scene to add sprites to.
+ * @param meta           - Volume dimensions {nSlices, height, width}.
+ * @param voxelSizeUm    - [dz, dy, dx] in µm/voxel.
+ * @param labelScale     - Sprite scale in world units (same unit as axis coordinates).
+ * @param volumeSpacing  - Y-axis stretch in scene units (uniform = isotropic display).
+ * @returns Array of created sprites (caller is responsible for disposal on unmount).
+ */
+export function createAxisTickLabels(
+    scene: THREE.Object3D,
+    meta: { nSlices: number; height: number; width: number },
+    voxelSizeUm: [number, number, number],
+    labelScale: number,
+    volumeSpacing: number,
+): THREE.Sprite[] {
+    const [dz, dy, dx] = voxelSizeUm
+    const { nSlices, height, width } = meta
+    const tickScale = labelScale * 0.55
+    // Perpendicular offset so ticks don't sit on the axis line
+    const off = labelScale * 0.9
+    const sprites: THREE.Sprite[] = []
+
+    // X axis: scene units = pixels, 1 su = dx µm; range [0, width]
+    const xFullUm = width * dx
+    const xInterval = niceIntervalUm(xFullUm)
+    for (let um = xInterval; um <= xFullUm + 1; um += xInterval) {
+        const su = um / dx
+        sprites.push(
+            ...makeTickSprite(
+                scene,
+                new THREE.Vector3(su, 0, off),
+                formatTickLabel(um),
+                tickScale,
+                palette.axisX,
+            ),
+        )
+    }
+
+    // Z axis: scene units = pixels, 1 su = dy µm; range [0, height]
+    const zFullUm = height * dy
+    const zInterval = niceIntervalUm(zFullUm)
+    for (let um = zInterval; um <= zFullUm + 1; um += zInterval) {
+        const su = um / dy
+        sprites.push(
+            ...makeTickSprite(
+                scene,
+                new THREE.Vector3(off, 0, su),
+                formatTickLabel(um),
+                tickScale,
+                palette.axisZ,
+            ),
+        )
+    }
+
+    // Y axis: 1 su = (dz * nSlices / volumeSpacing) µm; range [0, volumeSpacing]
+    const yUmPerSU = (dz * nSlices) / volumeSpacing
+    const yFullUm = volumeSpacing * yUmPerSU
+    const yInterval = niceIntervalUm(yFullUm)
+    for (let um = yInterval; um <= yFullUm + 1; um += yInterval) {
+        const su = um / yUmPerSU
+        sprites.push(
+            ...makeTickSprite(
+                scene,
+                new THREE.Vector3(off, su, 0),
+                formatTickLabel(um),
+                tickScale,
+                palette.axisY,
+            ),
+        )
+    }
+
+    return sprites
 }

@@ -1,4 +1,4 @@
-export type FilterType = 'gaussian' | 'median' | 'lee' | 'bm3d' | 'normalize' | 'anisotropy'
+export type FilterType = 'gaussian' | 'median' | 'mean' | 'normalize' | 'edge'
 
 /**
  * A single preprocessing step. Discriminated on `type` so each filter's `params`
@@ -7,16 +7,9 @@ export type FilterType = 'gaussian' | 'median' | 'lee' | 'bm3d' | 'normalize' | 
 export type FilterStep =
     | { type: 'gaussian'; params: { sigma: number } }
     | { type: 'median'; params: { size: number } }
-    | { type: 'lee'; params: { window: number } }
-    | { type: 'bm3d'; params: { sigma_psd: number } }
+    | { type: 'mean'; params: { size: number } }
     | { type: 'normalize'; params: { low_percentile: number; high_percentile: number } }
-    | { type: 'anisotropy'; params: Record<string, never> }
-
-export interface JobRequest {
-    volume_id: string
-    filter_chain: FilterStep[]
-    stitchers: string[]
-}
+    | { type: 'edge'; params: Record<string, never> }
 
 export const JOB_STATUS = {
     PENDING: 'pending',
@@ -25,11 +18,7 @@ export const JOB_STATUS = {
     ERROR: 'error',
 } as const
 
-export interface JobStatus {
-    status: 'pending' | 'running' | 'done' | 'error'
-    results: Record<string, Record<string, number>>
-    error?: string
-}
+export type JobStatusValue = (typeof JOB_STATUS)[keyof typeof JOB_STATUS]
 
 export interface UploadResponse {
     volume_id: string
@@ -49,10 +38,9 @@ export interface LocalVolume {
 export const REGISTRATION_METHOD = {
     PHASE_CORRELATION: 'phase_correlation',
     CROSS_CORRELATION: 'cross_correlation',
-    ICP: 'icp',
 } as const
 
-export type RegistrationMethod = 'phase_correlation' | 'cross_correlation' | 'icp'
+export type RegistrationMethod = (typeof REGISTRATION_METHOD)[keyof typeof REGISTRATION_METHOD]
 
 export interface VolumeEntry {
     volume_id: string
@@ -67,7 +55,7 @@ export interface SessionRequest {
 }
 
 export interface SessionStatus {
-    status: 'pending' | 'running' | 'done' | 'error'
+    status: JobStatusValue
     offsets: Record<string, [number, number]>
     metrics: Record<string, number>
     merged_volume_id?: string

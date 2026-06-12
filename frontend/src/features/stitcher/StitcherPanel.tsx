@@ -1,17 +1,19 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import IconButton from '@mui/material/IconButton'
+import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import { palette } from '../../shared/theme/palette'
-import { cleanupUploads, registerLocalVolume } from '../../shared/api'
-import { REGISTRATION_METHOD } from '../../shared/api/types'
+import { cleanupUploads, registerLocalVolume, registerLocalVolumesBatch } from '../../shared/api'
+import { JOB_STATUS, REGISTRATION_METHOD } from '../../shared/api/types'
 import type { LocalVolume, RegistrationMethod } from '../../shared/api'
 import { ServerVolumeDialog, useServerVolumes } from '../../shared/components'
 import { useViewerStore } from '../../app/store/viewerSlice'
@@ -32,7 +34,6 @@ function inferGridPos(filename: string): { row: number; col: number } {
 const METHOD_LABELS: Record<RegistrationMethod, string> = {
     phase_correlation: 'Phase Correlation',
     cross_correlation: 'Cross Correlation',
-    icp: 'ICP (Point Cloud)',
 }
 
 const isRegistrationMethod = (v: unknown): v is RegistrationMethod =>
@@ -54,13 +55,47 @@ export default function StitcherPanel() {
     const [method, setMethod] = useState<RegistrationMethod>(REGISTRATION_METHOD.PHASE_CORRELATION)
     const [serverDialogOpen, setServerDialogOpen] = useState(false)
     const { phase, sessionStatus, error, run, reset } = useStitchSession()
+    const toggleStitchPanel = useViewerStore((s) => s.toggleStitchPanel)
     const {
         volumes: serverVolumes,
         loading: serverVolumesLoading,
         error: serverVolumesError,
         refresh: refreshServerVolumes,
     } = useServerVolumes()
+    const tabs = useViewerStore((s) => s.tabs)
     const setNotification = useViewerStore((s) => s.setNotification)
+
+    const [loadedMenuAnchor, setLoadedMenuAnchor] = useState<HTMLElement | null>(null)
+
+    // H5 tabs that can be used as stitcher inputs:
+    // - sourceFile → will be uploaded fresh (local file, not yet on backend)
+    // - registeredVolumeId → zero-copy path reference already on backend
+    // - backendVolumeId with registeredVolumeId → stitched result, uses merged .h5
+    // Tabs that only have backendVolumeId (old stitched tabs before the fix, or
+    // sessions without a merged_volume_id) cannot be added as stitcher inputs.
+    const loadableH5Tabs = useMemo(
+        () =>
+            tabs.filter(
+                (t) =>
+                    t.type === 'h5' &&
+                    (t.sourceFile !== undefined || t.registeredVolumeId !== undefined),
+            ),
+        [tabs],
+    )
+
+    const handleAddFromLoaded = (tabName: string) => {
+        setLoadedMenuAnchor(null)
+        const tab = tabs.find((t) => t.type === 'h5' && t.name === tabName)
+        if (!tab || tab.type !== 'h5') return
+        const cfg: VolumeConfig = {
+            name: tab.name,
+            ...inferGridPos(tab.name),
+            ...(tab.registeredVolumeId
+                ? { volumeId: tab.registeredVolumeId }
+                : { file: tab.sourceFile }),
+        }
+        addConfigs([cfg])
+    }
 
     const addConfigs = (entries: VolumeConfig[]) => {
         setConfigs((prev) => {
@@ -90,6 +125,26 @@ export default function StitcherPanel() {
         } catch (err) {
             setNotification({
                 message: `Failed to add "${local.name}": ${err instanceof Error ? err.message : String(err)}`,
+                severity: 'error',
+            })
+        }
+    }
+
+    const handleServerPickMany = async (locals: LocalVolume[]) => {
+        if (locals.length === 0) return
+        try {
+            // One round-trip registers every selected tile (vs N+1 per-file calls).
+            const responses = await registerLocalVolumesBatch(locals.map((l) => l.path))
+            addConfigs(
+                responses.map((r, i) => ({
+                    name: locals[i].name,
+                    volumeId: r.volume_id,
+                    ...inferGridPos(locals[i].name),
+                })),
+            )
+        } catch (err) {
+            setNotification({
+                message: `Failed to add volumes: ${err instanceof Error ? err.message : String(err)}`,
                 severity: 'error',
             })
         }
@@ -143,16 +198,33 @@ export default function StitcherPanel() {
                 >
                     Volume Stitching
                 </Typography>
-                {(configs.length > 0 || phase !== 'idle') && (
-                    <Button
-                        size="small"
-                        variant="text"
-                        onClick={handleReset}
-                        sx={{ color: palette.danger, fontSize: '0.72rem', minWidth: 0 }}
-                    >
-                        Clear
-                    </Button>
-                )}
+                <Stack direction="row" alignItems="center" spacing={0.5}>
+                    {(configs.length > 0 || phase !== 'idle') && (
+                        <Button
+                            size="small"
+                            variant="text"
+                            onClick={handleReset}
+                            sx={{ color: palette.danger, fontSize: '0.72rem', minWidth: 0 }}
+                        >
+                            Clear
+                        </Button>
+                    )}
+                    <Tooltip title="Einklappen">
+                        <IconButton
+                            size="small"
+                            onClick={toggleStitchPanel}
+                            sx={{
+                                color: palette.textMuted,
+                                '&:hover': {
+                                    color: palette.primary,
+                                    background: palette.primarySoft,
+                                },
+                            }}
+                        >
+                            <ChevronRightIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                    </Tooltip>
+                </Stack>
             </Stack>
 
             {/* File upload */}
@@ -179,11 +251,10 @@ export default function StitcherPanel() {
                         e.target.value = ''
                     }}
                 />
-                <Stack direction="row" spacing={1}>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     <Button
                         variant="outlined"
                         size="small"
-                        fullWidth
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isBusy}
                         sx={tealOutlineButtonSx}
@@ -193,7 +264,6 @@ export default function StitcherPanel() {
                     <Button
                         variant="outlined"
                         size="small"
-                        fullWidth
                         onClick={() => folderInputRef.current?.click()}
                         disabled={isBusy}
                         sx={tealOutlineButtonSx}
@@ -203,14 +273,47 @@ export default function StitcherPanel() {
                     <Button
                         variant="outlined"
                         size="small"
-                        fullWidth
                         onClick={handleServerOpen}
                         disabled={isBusy}
                         sx={tealOutlineButtonSx}
                     >
                         From Server
                     </Button>
+                    <Tooltip
+                        title={
+                            loadableH5Tabs.length === 0
+                                ? 'Keine geladenen H5-Dateien verfügbar'
+                                : 'Geladene H5-Datei hinzufügen'
+                        }
+                    >
+                        <span>
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                disabled={isBusy || loadableH5Tabs.length === 0}
+                                onClick={(e) => setLoadedMenuAnchor(e.currentTarget)}
+                                sx={tealOutlineButtonSx}
+                            >
+                                From Loaded
+                            </Button>
+                        </span>
+                    </Tooltip>
                 </Stack>
+                <Menu
+                    anchorEl={loadedMenuAnchor}
+                    open={Boolean(loadedMenuAnchor)}
+                    onClose={() => setLoadedMenuAnchor(null)}
+                >
+                    {loadableH5Tabs.map((t) => (
+                        <MenuItem
+                            key={t.name}
+                            onClick={() => handleAddFromLoaded(t.name)}
+                            sx={{ fontSize: '0.8rem' }}
+                        >
+                            {t.name}
+                        </MenuItem>
+                    ))}
+                </Menu>
             </Box>
 
             {/* Volume list */}
@@ -296,11 +399,13 @@ export default function StitcherPanel() {
                         '& .MuiSvgIcon-root': { color: palette.textMuted },
                     }}
                 >
-                    {(Object.keys(METHOD_LABELS) as RegistrationMethod[]).map((m) => (
-                        <MenuItem key={m} value={m} sx={{ fontSize: '0.82rem' }}>
-                            {METHOD_LABELS[m]}
-                        </MenuItem>
-                    ))}
+                    {(Object.keys(METHOD_LABELS) as string[])
+                        .filter(isRegistrationMethod)
+                        .map((m) => (
+                            <MenuItem key={m} value={m} sx={{ fontSize: '0.82rem' }}>
+                                {METHOD_LABELS[m]}
+                            </MenuItem>
+                        ))}
                 </Select>
             </Box>
 
@@ -331,7 +436,7 @@ export default function StitcherPanel() {
             )}
 
             {/* Results */}
-            {sessionStatus?.status === 'done' && <StitchResults status={sessionStatus} />}
+            {sessionStatus?.status === JOB_STATUS.DONE && <StitchResults status={sessionStatus} />}
 
             <ServerVolumeDialog
                 open={serverDialogOpen}
@@ -340,6 +445,7 @@ export default function StitcherPanel() {
                 error={serverVolumesError}
                 onClose={() => setServerDialogOpen(false)}
                 onPick={handleServerPick}
+                onPickMany={handleServerPickMany}
                 multiple
             />
         </Box>

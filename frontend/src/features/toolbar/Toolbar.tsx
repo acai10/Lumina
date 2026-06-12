@@ -13,23 +13,33 @@ import {
     h5ButtonSx,
     clearButtonSx,
     stitchButtonSx,
-    menuPaperSx,
     menuItemSx,
     loadingSpinnerSx,
 } from './Toolbar.styles'
 
 export default function Toolbar() {
-    const { isLoading, tabs, activeTabIndex, reset, stitchPanelOpen, toggleStitchPanel } =
-        useViewerStore(
-            useShallow((s) => ({
-                isLoading: s.isLoading,
-                tabs: s.tabs,
-                activeTabIndex: s.activeTabIndex,
-                reset: s.reset,
-                stitchPanelOpen: s.stitchPanelOpen,
-                toggleStitchPanel: s.toggleStitchPanel,
-            })),
-        )
+    const {
+        isLoading,
+        tabs,
+        activeTabIndex,
+        reset,
+        stitchPanelOpen,
+        toggleStitchPanel,
+        fileListPanelOpen,
+        toggleFileListPanel,
+    } = useViewerStore(
+        useShallow((s) => ({
+            isLoading: s.isLoading,
+            tabs: s.tabs,
+            activeTabIndex: s.activeTabIndex,
+            reset: s.reset,
+            stitchPanelOpen: s.stitchPanelOpen,
+            toggleStitchPanel: s.toggleStitchPanel,
+            fileListPanelOpen: s.fileListPanelOpen,
+            toggleFileListPanel: s.toggleFileListPanel,
+        })),
+    )
+    const { pickers, loaders } = useFileLoad()
     const {
         stlInputRef,
         h5InputRef,
@@ -37,8 +47,8 @@ export default function Toolbar() {
         handleSTLLoad,
         handleH5Load,
         handleH5FolderLoad,
-        loadServerVolume,
-    } = useFileLoad()
+    } = pickers
+    const { loadServerVolume } = loaders
     const {
         volumes: serverVolumes,
         loading: serverVolumesLoading,
@@ -123,11 +133,18 @@ export default function Toolbar() {
                     >
                         Stitch
                     </Button>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        sx={[h5ButtonSx, { opacity: fileListPanelOpen ? 1 : 0.7 }]}
+                        onClick={toggleFileListPanel}
+                    >
+                        Dateien {serverVolumes.length > 0 ? `(${serverVolumes.length})` : ''}
+                    </Button>
                     <Menu
                         anchorEl={h5MenuAnchor}
                         open={Boolean(h5MenuAnchor)}
                         onClose={() => setH5MenuAnchor(null)}
-                        slotProps={{ paper: { sx: menuPaperSx } }}
                     >
                         <MenuItem onClick={handleFileLoad} sx={menuItemSx}>
                             File

@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.spatial.distance import directed_hausdorff
 from skimage.metrics import normalized_mutual_information
 
 _NCC_EPSILON = 1e-10
@@ -83,21 +82,6 @@ def compute_rmse(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.sqrt(np.mean((a.astype(np.float64) - b.astype(np.float64)) ** 2)))
 
 
-def compute_hausdorff(pts_a: np.ndarray, pts_b: np.ndarray) -> float:
-    """Compute symmetric Hausdorff distance between two point clouds.
-
-    Args:
-        pts_a: Float array of shape (N, D).
-        pts_b: Float array of shape (M, D).
-
-    Returns:
-        Symmetric Hausdorff distance (maximum of both directed distances).
-    """
-    d_ab = directed_hausdorff(pts_a, pts_b)[0]
-    d_ba = directed_hausdorff(pts_b, pts_a)[0]
-    return float(max(d_ab, d_ba))
-
-
 def compute_all(
     a: np.ndarray,
     b: np.ndarray,
@@ -113,7 +97,8 @@ def compute_all(
         mask_b: Optional binary segmentation mask for *b* (enables Dice).
 
     Returns:
-        Dict with keys ``"ncc"``, ``"mi"``, ``"mse"``, and optionally ``"dice"``.
+        Dict with keys ``"ncc"``, ``"mi"``, ``"mse"``, ``"rmse"``, and optionally
+        ``"dice"`` (when both masks are supplied).
     """
     result: dict[str, float] = {
         "ncc": compute_ncc(a, b),

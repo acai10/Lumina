@@ -7,22 +7,34 @@ OCT_DIMS = (512, 250, 250)  # nSlices, height, width — fixed for all files
 
 
 def load_volume_flexible(path: Path) -> np.ndarray:
-    """Load an OCT volume without shape constraints (for merged results).
+    """Load an OCT volume without strict shape constraints (for merged results).
+
+    Accepts any 3D shape. Flat or 2D datasets whose total element count matches
+    :data:`OCT_DIMS` are automatically reshaped to ``(512, 250, 250)``.
 
     Args:
         path: Path to the ``.h5`` file containing an ``"OCT"`` dataset.
 
     Returns:
-        Float32 array with the dataset's native shape.
+        Float32 array, guaranteed to be 3-dimensional.
 
     Raises:
-        ValueError: If the ``"OCT"`` dataset is missing.
+        ValueError: If the ``"OCT"`` dataset is missing or cannot be made 3D.
     """
     with h5py.File(path, "r") as f:
         ds = f.get("OCT")
         if ds is None:
             raise ValueError('Dataset "OCT" not found in file')
-        return np.asarray(ds, dtype=np.float32)
+        arr = np.asarray(ds, dtype=np.float32)
+    if arr.ndim != 3:
+        expected = OCT_DIMS[0] * OCT_DIMS[1] * OCT_DIMS[2]
+        if arr.size == expected:
+            arr = arr.reshape(OCT_DIMS)
+        else:
+            raise ValueError(
+                f'Dataset "OCT" has shape {arr.shape} and cannot be interpreted as a 3D volume'
+            )
+    return arr
 
 
 def validate_volume_file(path: Path) -> None:

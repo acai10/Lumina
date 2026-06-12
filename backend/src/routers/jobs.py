@@ -43,7 +43,6 @@ async def create_job_endpoint(
         filter_chain,
         request.stitchers,
         request.stitcher_params,
-        request.segmentation_mask_id,
     )
 
     return JobCreated(job_id=job_id)

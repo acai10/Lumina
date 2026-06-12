@@ -1,24 +1,17 @@
 import { useState } from 'react'
 import {
     uploadVolume,
-    createJob,
-    pollJob,
-    fetchResultVolume,
     fetchNormalizedVolume,
     filterSessionVolume,
+    filterVolume,
     fetchSessionMerged,
 } from '../../shared/api/client'
 import { useShallow } from 'zustand/react/shallow'
-import { loadH5FileInWorker } from '../../shared/h5/h5Reader'
+import { loadH5FileInWorker } from '../../shared/h5'
 import { useViewerStore } from '../../app/store/viewerSlice'
-import { JOB_STATUS, REGISTRATION_METHOD } from '../../shared/api/types'
 import type { FilterStep } from '../../shared/api/types'
 
 export type FilterPhase = 'idle' | 'uploading' | 'processing' | 'downloading' | 'reverting'
-
-const POLL_INTERVAL_MS = 2_000
-/** Stitcher used for the single-volume filter pipeline (no real stitching happens). */
-const DEFAULT_STITCHER = REGISTRATION_METHOD.PHASE_CORRELATION
 
 export function useFilterJob(
     fileKey: string,
@@ -26,10 +19,18 @@ export function useFilterJob(
     backendVolumeId?: string,
     registeredVolumeId?: string,
 ) {
-    const { setFilteringState, applyBackendFilter, setNotification } = useViewerStore(
+    const {
+        setFilteringState,
+        applyBackendFilter,
+        saveFilterSnapshot,
+        setFilterApplied,
+        setNotification,
+    } = useViewerStore(
         useShallow((s) => ({
             setFilteringState: s.setFilteringState,
             applyBackendFilter: s.applyBackendFilter,
+            saveFilterSnapshot: s.saveFilterSnapshot,
+            setFilterApplied: s.setFilterApplied,
             setNotification: s.setNotification,
         })),
     )
@@ -42,20 +43,29 @@ export function useFilterJob(
     const run = async (filterChain: FilterStep[]): Promise<void> => {
         setError(null)
         setFilteringState(fileKey, true)
+        // Snapshot before the filter so before/after comparison is always available.
+        saveFilterSnapshot(fileKey)
 
         try {
             // ── Merged-result path: backend normalises, no worker needed ──────
-            if (backendVolumeId) {
+            // Only take this path for pure server-side session results (no local file,
+            // no path-registered volume). backendVolumeId is also lazily set by
+            // resolveVolumeId for local files used in segmentation — those must go
+            // through the normal upload→job pipeline below.
+            if (backendVolumeId && !sourceFile && !registeredVolumeId) {
                 setPhase('downloading')
                 const newData = await filterSessionVolume(backendVolumeId, filterChain)
                 applyBackendFilter(fileKey, newData)
+                setFilterApplied(fileKey, true)
                 setNotification({ message: 'Filter applied', severity: 'success' })
                 return
             }
 
-            // ── Normal path: (upload OR reuse registered volume) → job → poll → fetch ─
+            // ── Normal path: (upload OR reuse registered volume) → lean filter ─
             // A server-registered volume already lives on the backend by path, so we
-            // skip the upload entirely and go straight to job creation.
+            // skip the upload entirely. The /volumes/{id}/filter endpoint applies the
+            // chain and returns the normalised result in one request — no stitcher,
+            // no metrics, no polling, and the volume is not positionally altered.
             let volume_id: string
             if (registeredVolumeId) {
                 volume_id = registeredVolumeId
@@ -65,31 +75,13 @@ export function useFilterJob(
                 volume_id = (await uploadVolume(sourceFile)).volume_id
             }
 
-            const { job_id } = await createJob({
-                volume_id,
-                filter_chain: filterChain,
-                stitchers: [DEFAULT_STITCHER],
-            })
-
             setPhase('processing')
-            let jobStatus = await pollJob(job_id)
-            while (
-                jobStatus.status === JOB_STATUS.PENDING ||
-                jobStatus.status === JOB_STATUS.RUNNING
-            ) {
-                await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
-                jobStatus = await pollJob(job_id)
-            }
-            if (jobStatus.status === JOB_STATUS.ERROR) {
-                throw new Error(jobStatus.error ?? 'Job failed')
-            }
-
-            // fetchResultVolume now returns H5VolumeData directly — no worker.
-            setPhase('downloading')
-            const newData = await fetchResultVolume(job_id, DEFAULT_STITCHER)
+            const newData = await filterVolume(volume_id, filterChain)
             applyBackendFilter(fileKey, newData)
+            setFilterApplied(fileKey, true)
             setNotification({ message: 'Filter applied', severity: 'success' })
         } catch (err) {
+            setFilterApplied(fileKey, false)
             setError(err instanceof Error ? err.message : String(err))
         } finally {
             setPhase('idle')
@@ -103,7 +95,7 @@ export function useFilterJob(
         try {
             setPhase('reverting')
 
-            if (backendVolumeId) {
+            if (backendVolumeId && !sourceFile && !registeredVolumeId) {
                 // Reload the original merged volume — backend normalises, no worker.
                 const originalData = await fetchSessionMerged(backendVolumeId)
                 applyBackendFilter(fileKey, originalData)
@@ -117,6 +109,7 @@ export function useFilterJob(
                 applyBackendFilter(fileKey, originalData)
             }
 
+            setFilterApplied(fileKey, false)
             setNotification({ message: 'Filter reverted', severity: 'info' })
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err))

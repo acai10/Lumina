@@ -5,10 +5,18 @@ from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from src.config import settings
-from src.processing.h5_reader import OCT_DIMS, load_volume, validate_volume_file
+from src.processing.filters import apply_filter_chain
+from src.processing.h5_reader import (
+    OCT_DIMS,
+    load_volume,
+    load_volume_flexible,
+    validate_volume_file,
+)
 from src.processing.normalizer import pack_normalized_response
+from src.schemas.jobs import FilterRequest
 from src.schemas.volumes import (
     LocalVolume,
+    RegisterBatchRequest,
     RegisterRequest,
     UploadResponse,
     VolumeInfo,
@@ -75,23 +83,20 @@ def list_local_volumes() -> list[LocalVolume]:
     return volumes
 
 
-@router.post(
-    "/register",
-    response_model=UploadResponse,
-    summary="Register a local volume by path (no upload)",
-    description=(
-        "Reference an existing `.h5` file under `data_dir` by relative path instead "
-        "of uploading its bytes. Creates a symlink in `uploads_dir` (zero-copy); the "
-        "original file is only ever read, never modified."
-    ),
-    responses={
-        400: {"description": "Invalid path or volume"},
-        404: {"description": "File not found"},
-    },
-)
-def register_volume(req: RegisterRequest) -> UploadResponse:
+def _register_local(rel_path: str) -> UploadResponse:
+    """Validate a data_dir-relative path and symlink it into uploads_dir.
+
+    Args:
+        rel_path: Path to the source ``.h5`` relative to ``settings.data_dir``.
+
+    Returns:
+        UploadResponse for the registered volume.
+
+    Raises:
+        HTTPException: 400 for invalid path/volume, 404 if the file is missing.
+    """
     root = settings.data_dir.resolve()
-    source = (root / req.path).resolve()
+    source = (root / rel_path).resolve()
 
     # Path-traversal guard: the resolved path must stay within data_dir.
     if not source.is_relative_to(root):
@@ -114,6 +119,81 @@ def register_volume(req: RegisterRequest) -> UploadResponse:
     logger.info("Registered local volume %s -> %s", volume_id, source)
 
     return _upload_response(volume_id)
+
+
+@router.post(
+    "/register",
+    response_model=UploadResponse,
+    summary="Register a local volume by path (no upload)",
+    description=(
+        "Reference an existing `.h5` file under `data_dir` by relative path instead "
+        "of uploading its bytes. Creates a symlink in `uploads_dir` (zero-copy); the "
+        "original file is only ever read, never modified."
+    ),
+    responses={
+        400: {"description": "Invalid path or volume"},
+        404: {"description": "File not found"},
+    },
+)
+def register_volume(req: RegisterRequest) -> UploadResponse:
+    return _register_local(req.path)
+
+
+@router.post(
+    "/register-batch",
+    response_model=list[UploadResponse],
+    summary="Register several local volumes by path (no upload)",
+    description=(
+        "Register multiple existing `.h5` files under `data_dir` in one request, "
+        "avoiding an N+1 storm when adding many tiles (e.g. a stitch grid)."
+    ),
+    responses={
+        400: {"description": "Invalid path or volume"},
+        404: {"description": "File not found"},
+    },
+)
+def register_volumes_batch(req: RegisterBatchRequest) -> list[UploadResponse]:
+    return [_register_local(p) for p in req.paths]
+
+
+@router.post(
+    "/{volume_id}/filter",
+    summary="Apply a filter chain to a volume (no stitching, no metrics)",
+    description=(
+        "Load a stored/registered volume, apply the requested filter chain in order, "
+        "and return the render-ready normalised binary (same layout as "
+        "`/{id}/normalized`). This is the lean preprocessing path: it performs no "
+        "registration/stitching and computes no quality metrics, so the result is the "
+        "filtered volume exactly as-is — fast and positionally unchanged."
+    ),
+    responses={404: {"description": "Volume not found"}},
+)
+def filter_volume(volume_id: str, req: FilterRequest) -> Response:
+    """Apply *req.filter_chain* to a volume and return the normalised binary.
+
+    Args:
+        volume_id: Stem of a previously uploaded or registered ``.h5`` file.
+        req: The ordered filter chain to apply.
+
+    Returns:
+        Render-ready packed binary Response (``X-Shape`` / ``X-VCount`` headers).
+
+    Raises:
+        HTTPException 404: Volume not found on disk.
+    """
+    path = settings.uploads_dir / f"{volume_id}.h5"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Volume not found.")
+
+    vol = load_volume_flexible(path)
+    filter_chain_dicts = [step.model_dump() for step in req.filter_chain]
+    # copy_input=False: every filter allocates its own output, and `vol` is a fresh
+    # per-request array, so the defensive upfront copy is redundant.
+    filtered = apply_filter_chain(vol, filter_chain_dicts, copy_input=False)
+    del vol
+    content, headers = pack_normalized_response(filtered)
+    del filtered
+    return Response(content=content, media_type="application/octet-stream", headers=headers)
 
 
 @router.get(

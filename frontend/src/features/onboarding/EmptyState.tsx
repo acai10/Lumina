@@ -15,14 +15,9 @@ import { palette } from '../../shared/theme/palette'
  * load pipeline as the toolbar via useFileLoad.
  */
 export default function EmptyState() {
-    const {
-        stlInputRef,
-        h5InputRef,
-        handleSTLLoad,
-        handleH5Load,
-        loadServerVolume,
-        loadDroppedFiles,
-    } = useFileLoad()
+    const { pickers, loaders } = useFileLoad()
+    const { stlInputRef, h5InputRef, handleSTLLoad, handleH5Load } = pickers
+    const { loadServerVolume, loadDroppedFiles } = loaders
     const {
         volumes: serverVolumes,
         loading: serverVolumesLoading,

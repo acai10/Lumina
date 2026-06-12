@@ -32,6 +32,18 @@ logger = logging.getLogger(__name__)
 #: Must match ``PRE_FILTER_THRESHOLD`` in ``shared/h5/h5Reader.ts``.
 PRE_FILTER_THRESHOLD: float = 0.05
 
+#: Upper bound on the number of voxels exported in the 3-D point-cloud arrays
+#: (``vIndices`` / ``vIntensities``). For a large stitched montage, per-slice
+#: normalization can push nearly every voxel above ``PRE_FILTER_THRESHOLD``,
+#: producing 200 M+ point-cloud entries (1.5 GB+ of float32) — far beyond any
+#: useful render density and enough to exhaust browser memory. Because the
+#: arrays are sorted by intensity descending, truncating to the brightest
+#: ``MAX_POINTCLOUD_VOXELS`` keeps every meaningful voxel and drops only the
+#: dim noise tail. The full-resolution ``norm_u8`` volume (used by the slice
+#: viewer and measurements) is never truncated. ~60 M voxels ≈ 480 MB of packed
+#: point-cloud data, which stays under the frontend's IndexedDB persist ceiling.
+MAX_POINTCLOUD_VOXELS: int = 60_000_000
+
 
 def normalize_for_frontend(
     vol: np.ndarray,
@@ -77,7 +89,7 @@ def normalize_for_frontend(
         np.subtract(sl, mn, out=tmp)
         np.multiply(tmp, scale, out=tmp)
         np.clip(tmp, 0, 255, out=tmp)
-        norm_u8[s] = tmp  # implicit cast float32 → uint8
+        norm_u8[s] = tmp
 
     # ── Chunked above-threshold extraction ───────────────────────────────────
     # Building a single bool mask over the full volume (e.g. 248 MB for a
@@ -103,6 +115,23 @@ def normalize_for_frontend(
     # temporary index array is 4x smaller.  [::-1] reverses to descending order
     # as a zero-copy view.
     order = np.argsort(raw_int, kind="stable")[::-1]
+
+    # Cap the point cloud at the brightest MAX_POINTCLOUD_VOXELS. `order` is
+    # descending by intensity, so this keeps every meaningful voxel and discards
+    # only the dim noise tail that would otherwise bloat the payload (see the
+    # constant's docstring). norm_u8 is untouched, so the slice viewer and
+    # measurements still see the full-resolution volume.
+    raw_count = len(order)
+    if raw_count > MAX_POINTCLOUD_VOXELS:
+        order = order[:MAX_POINTCLOUD_VOXELS]
+        logger.info(
+            "normalize_for_frontend: point cloud capped %d → %d voxels "
+            "(dropped %d dimmest of shape %s); slice volume kept at full resolution",
+            raw_count,
+            MAX_POINTCLOUD_VOXELS,
+            raw_count - MAX_POINTCLOUD_VOXELS,
+            vol.shape,
+        )
 
     v_indices = raw_idx[order].astype(np.float32)
     v_intensities = raw_int[order].astype(np.float32) / 255.0

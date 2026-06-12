@@ -6,8 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from src.config import settings
-from src.processing.runner import shutdown_executor
-from src.routers import cleanup, jobs, results, sessions, volumes
+from src.routers import cleanup, jobs, measurements, results, segmentation, sessions, volumes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,7 +19,6 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     settings.uploads_dir.mkdir(exist_ok=True)
     yield
-    shutdown_executor()
 
 
 app = FastAPI(title="Lumina Backend", version="0.3.0", lifespan=lifespan)
@@ -35,6 +33,8 @@ app.add_middleware(
 )
 
 app.include_router(volumes.router, prefix="/volumes", tags=["volumes"])
+app.include_router(segmentation.router, tags=["segmentation"])
+app.include_router(measurements.router, tags=["measurements"])
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 app.include_router(results.router, prefix="/jobs", tags=["results"])
 app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])

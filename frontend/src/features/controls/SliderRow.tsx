@@ -8,10 +8,11 @@ interface SliderRowProps {
     min: number
     max: number
     step: number
+    disabled?: boolean
     onChange: (v: number) => void
 }
 
-export function SliderRow({ label, value, min, max, step, onChange }: SliderRowProps) {
+export function SliderRow({ label, value, min, max, step, disabled, onChange }: SliderRowProps) {
     const { inputVal, setInputVal, commit } = useNumberInput(value, min, max, onChange)
 
     return (
@@ -24,6 +25,7 @@ export function SliderRow({ label, value, min, max, step, onChange }: SliderRowP
                     min={min}
                     max={max}
                     step={step}
+                    disabled={disabled}
                     onChange={(e) => setInputVal(e.target.value)}
                     onBlur={commit}
                     onKeyDown={(e) => {
@@ -37,6 +39,7 @@ export function SliderRow({ label, value, min, max, step, onChange }: SliderRowP
                 max={max}
                 step={step}
                 value={value}
+                disabled={disabled}
                 onChange={(_, v) => onChange(typeof v === 'number' ? v : v[0])}
                 sx={sliderSx}
             />

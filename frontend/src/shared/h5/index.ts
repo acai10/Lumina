@@ -1,3 +1,5 @@
-export { loadH5File, loadH5FileInWorker, VOLUME_DIMS, PRE_FILTER_THRESHOLD } from './h5Reader'
+export { loadH5FileInWorker } from './h5WorkerClient'
+export type { WorkerResponse } from './h5WorkerClient'
+export { VOLUME_DIMS, PRE_FILTER_THRESHOLD } from './h5Constants'
 export { normalizeVolume } from './h5Normalizer'
 export { putVolume, getVolume, deleteVolume, clearVolumes } from './volumeCache'

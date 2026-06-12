@@ -1,18 +1,20 @@
 import { create } from 'zustand'
 import { putVolume, getVolume, deleteVolume, clearVolumes } from '../../shared/h5'
-import { VOLUME_DIMS } from '../../shared/h5/h5Reader'
+import { VOLUME_DIMS } from '../../shared/h5/h5Constants'
 import type {
+    ColormapType,
     H5FileEntry,
     H5PerFileState,
     H5RenderControls,
     H5TabEntry,
     H5VolumeData,
+    SegmentationOverlay,
     SlicePanelControl,
     StlTabEntry,
     TabEntry,
 } from '../../shared/types/viewer.types'
 
-export interface AppNotification {
+interface AppNotification {
     message: string
     severity: 'error' | 'success' | 'info'
 }
@@ -23,7 +25,7 @@ export interface AppNotification {
  * on demand. Two keeps the active tab plus one recently-viewed neighbour resident
  * for snappy A/B switching while bounding peak memory to ~3 volumes during loads.
  */
-export const MAX_HYDRATED_FILES = 2
+const MAX_HYDRATED_FILES = 2
 
 // `persisted` tracks which volumes are known to be safely written to IndexedDB,
 // so eviction can drop their in-memory buffers without re-writing. A filter result
@@ -31,6 +33,34 @@ export const MAX_HYDRATED_FILES = 2
 // `inFlight` dedupes concurrent rehydration requests for the same key.
 const persisted = new Set<string>()
 const inFlight = new Set<string>()
+// `residentOnly` holds volumes too large to mirror into IndexedDB (e.g. a 25-tile
+// stitched montage). Copying multi-GB buffers through structured-clone into IDB is
+// slow and can blow the storage quota, so these stay on the JS heap and are never
+// evicted. With MAX_HYDRATED_FILES small and such volumes rare, this is safe.
+const residentOnly = new Set<string>()
+
+/**
+ * Total heavy-buffer size of a volume in bytes. Above PERSIST_MAX_BYTES a volume
+ * is kept resident-only (see `residentOnly`) instead of mirrored to IndexedDB.
+ * A single OCT tile is ~150–210 MB; the threshold sits comfortably above that so
+ * only genuinely oversized (stitched) volumes opt out of persistence.
+ */
+const PERSIST_MAX_BYTES = 512 * 1024 * 1024
+
+const volumeBytes = (data: H5VolumeData): number =>
+    data.vIndices.byteLength +
+    data.vIntensities.byteLength +
+    (data.normalizedVolume?.byteLength ?? 0)
+
+/** Persist a volume to IndexedDB unless it is oversized; returns true if persisted. */
+const persistVolume = async (key: string, data: H5VolumeData): Promise<boolean> => {
+    if (volumeBytes(data) > PERSIST_MAX_BYTES) {
+        residentOnly.add(key)
+        return false
+    }
+    await putVolume(key, data)
+    return true
+}
 
 export const DEFAULT_STL_OPACITY = 0.55
 
@@ -45,10 +75,10 @@ const defaultSlicePanelControls = () => ({
 const [VOLUME_N_SLICES, VOLUME_HEIGHT, VOLUME_WIDTH] = VOLUME_DIMS
 
 export const defaultRenderControls: H5RenderControls = {
-    volumeSpacing: 200,
+    volumeSpacing: 250,
     h5Threshold: 0.8,
     h5Opacity: 0.25,
-    h5Brightness: 1.0,
+    h5Brightness: 5.0,
     h5Contrast: 1.0,
     h5PointSize: 1.0,
     h5SliceRange: [0, VOLUME_N_SLICES],
@@ -73,9 +103,13 @@ interface ViewerState {
     stlOpacity: number
     stitchPanelOpen: boolean
     controlsPanelOpen: boolean
+    fileListPanelOpen: boolean
+    zoomToCursor: boolean
+    axesVisible: boolean
     // Actions — unified tab management
     toggleStitchPanel: () => void
     toggleControlsPanel: () => void
+    toggleFileListPanel: () => void
     loadH5: (entries: H5FileEntry[]) => Promise<void>
     /** Restore an evicted tab's buffers from IndexedDB; no-op if already resident. */
     ensureHydrated: (fileKey: string) => Promise<void>
@@ -89,9 +123,23 @@ interface ViewerState {
         fileKey: string,
         cam: Pick<H5PerFileState, 'cameraPosition' | 'cameraQuaternion' | 'controlsTarget'>,
     ) => void
+    requestCameraReset: (fileKey: string) => void
     updateActiveRenderState: (patch: Partial<H5RenderControls>) => void
     setNormalizedVolume: (fileKey: string, normalizedVolume: Uint8Array) => void
+    /** Cache the server-side volume id obtained from a lazy upload of a local file. */
+    setBackendVolumeId: (fileKey: string, volumeId: string) => void
     applyBackendFilter: (fileKey: string, newData: H5VolumeData) => void
+    saveFilterSnapshot: (fileKey: string) => void
+    setFilterApplied: (fileKey: string, value: boolean) => void
+    setShowingComparison: (fileKey: string, value: boolean) => void
+    setSliceColormap: (fileKey: string, colormap: ColormapType) => void
+    setSliceColormapRange: (fileKey: string, range: [number, number]) => void
+    setColorByDepth: (fileKey: string, value: boolean) => void
+    setSliceVoxelSizeUm: (fileKey: string, size: [number, number, number]) => void
+    addSegmentationOverlay: (fileKey: string, overlay: SegmentationOverlay) => void
+    removeSegmentationOverlay: (fileKey: string, id: string) => void
+    clearSegmentationOverlays: (fileKey: string) => void
+    setMeasurementResult: (fileKey: string, result: H5PerFileState['measurementResult']) => void
     setFilteringState: (fileKey: string, value: boolean) => void
     setH5ViewMode: (fileKey: string, mode: 'pointcloud' | 'slice') => void
     setH5SliceIndex: (fileKey: string, index: number) => void
@@ -108,6 +156,8 @@ interface ViewerState {
     setNotification: (n: AppNotification) => void
     clearNotification: () => void
     setStlOpacity: (v: number) => void
+    toggleZoomToCursor: () => void
+    toggleAxesVisible: () => void
     reset: () => void
 }
 
@@ -121,7 +171,10 @@ const initialState = {
     notification: null,
     stlOpacity: DEFAULT_STL_OPACITY,
     stitchPanelOpen: false,
+    fileListPanelOpen: false,
     controlsPanelOpen: true,
+    zoomToCursor: true,
+    axesVisible: true,
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => {
@@ -142,7 +195,13 @@ export const useViewerStore = create<ViewerState>((set, get) => {
         if (activeName) keep.add(activeName)
 
         const candidates = snapshot.tabs.filter(
-            (t): t is H5TabEntry => t.type === 'h5' && t.data !== null && !keep.has(t.name),
+            (t): t is H5TabEntry =>
+                t.type === 'h5' &&
+                t.data !== null &&
+                !keep.has(t.name) &&
+                // Oversized volumes are never mirrored to IDB, so they cannot be
+                // safely dropped from the heap — keep them resident.
+                !residentOnly.has(t.name),
         )
 
         for (const candidate of candidates) {
@@ -157,7 +216,7 @@ export const useViewerStore = create<ViewerState>((set, get) => {
 
             if (!persisted.has(tab.name)) {
                 try {
-                    await putVolume(tab.name, tab.data)
+                    if (!(await persistVolume(tab.name, tab.data))) continue // oversized — keep resident
                     persisted.add(tab.name)
                 } catch (err) {
                     console.error(
@@ -180,6 +239,9 @@ export const useViewerStore = create<ViewerState>((set, get) => {
 
         toggleStitchPanel: () => set((s) => ({ stitchPanelOpen: !s.stitchPanelOpen })),
         toggleControlsPanel: () => set((s) => ({ controlsPanelOpen: !s.controlsPanelOpen })),
+        toggleFileListPanel: () => set((s) => ({ fileListPanelOpen: !s.fileListPanelOpen })),
+        toggleZoomToCursor: () => set((s) => ({ zoomToCursor: !s.zoomToCursor })),
+        toggleAxesVisible: () => set((s) => ({ axesVisible: !s.axesVisible })),
 
         loadH5: async (entries) => {
             const { tabs, h5PerFileStates, hydrationOrder } = get()
@@ -219,10 +281,10 @@ export const useViewerStore = create<ViewerState>((set, get) => {
             })
 
             // Persist freshly loaded buffers so the cap can safely evict older volumes.
+            // Oversized volumes are kept resident-only instead (persistVolume returns false).
             for (const e of fresh) {
                 try {
-                    await putVolume(e.name, e.data)
-                    persisted.add(e.name)
+                    if (await persistVolume(e.name, e.data)) persisted.add(e.name)
                 } catch (err) {
                     console.error(`volumeCache: cannot persist "${e.name}"`, err)
                 }
@@ -293,6 +355,7 @@ export const useViewerStore = create<ViewerState>((set, get) => {
             if (closing.type === 'h5') {
                 void deleteVolume(closing.name)
                 persisted.delete(closing.name)
+                residentOnly.delete(closing.name)
                 newHydrationOrder = hydrationOrder.filter((n) => n !== closing.name)
             }
 
@@ -370,6 +433,18 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 },
             })),
 
+        requestCameraReset: (fileKey) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: {
+                        ...state.h5PerFileStates[fileKey],
+                        cameraResetGen:
+                            ((state.h5PerFileStates[fileKey]?.cameraResetGen ?? 0) + 1) % 1000,
+                    },
+                },
+            })),
+
         updateActiveRenderState: (patch) => {
             const { tabs, activeTabIndex, h5PerFileStates } = get()
             const active = tabs[activeTabIndex]
@@ -398,6 +473,13 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 ),
             })),
 
+        setBackendVolumeId: (fileKey, volumeId) =>
+            set((state) => ({
+                tabs: state.tabs.map((t) =>
+                    t.type === 'h5' && t.name === fileKey ? { ...t, backendVolumeId: volumeId } : t,
+                ),
+            })),
+
         applyBackendFilter: (fileKey, newData) => {
             set((state) => ({
                 tabs: state.tabs.map((t) =>
@@ -419,12 +501,127 @@ export const useViewerStore = create<ViewerState>((set, get) => {
             // The cached buffers are now stale — mark unpersisted, then re-write so a
             // later eviction restores the *filtered* result rather than the original.
             persisted.delete(fileKey)
-            putVolume(fileKey, newData)
-                .then(() => persisted.add(fileKey))
+            residentOnly.delete(fileKey)
+            persistVolume(fileKey, newData)
+                .then((ok) => {
+                    if (ok) persisted.add(fileKey)
+                })
                 .catch((err) =>
                     console.error(`volumeCache: cannot persist filtered "${fileKey}"`, err),
                 )
         },
+
+        saveFilterSnapshot: (fileKey) => {
+            const tab = get().tabs.find(
+                (t): t is H5TabEntry => t.type === 'h5' && t.name === fileKey,
+            )
+            if (!tab?.data) return
+            const snapshot = { ...tab.data }
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: {
+                        ...state.h5PerFileStates[fileKey],
+                        filterSnapshot: snapshot,
+                        showingComparison: false,
+                    },
+                },
+            }))
+        },
+
+        setFilterApplied: (fileKey, value) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], filterApplied: value },
+                },
+            })),
+
+        setShowingComparison: (fileKey, value) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], showingComparison: value },
+                },
+            })),
+
+        setSliceColormap: (fileKey, colormap) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], sliceColormap: colormap },
+                },
+            })),
+
+        setSliceColormapRange: (fileKey, range) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], sliceColormapRange: range },
+                },
+            })),
+
+        setColorByDepth: (fileKey, value) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], colorByDepth: value },
+                },
+            })),
+
+        setSliceVoxelSizeUm: (fileKey, size) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], sliceVoxelSizeUm: size },
+                },
+            })),
+
+        addSegmentationOverlay: (fileKey, overlay) =>
+            set((state) => {
+                const prev = state.h5PerFileStates[fileKey]
+                return {
+                    h5PerFileStates: {
+                        ...state.h5PerFileStates,
+                        [fileKey]: {
+                            ...prev,
+                            segmentationOverlays: [...(prev?.segmentationOverlays ?? []), overlay],
+                        },
+                    },
+                }
+            }),
+
+        removeSegmentationOverlay: (fileKey, id) =>
+            set((state) => {
+                const prev = state.h5PerFileStates[fileKey]
+                return {
+                    h5PerFileStates: {
+                        ...state.h5PerFileStates,
+                        [fileKey]: {
+                            ...prev,
+                            segmentationOverlays: (prev?.segmentationOverlays ?? []).filter(
+                                (o) => o.id !== id,
+                            ),
+                        },
+                    },
+                }
+            }),
+
+        clearSegmentationOverlays: (fileKey) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], segmentationOverlays: [] },
+                },
+            })),
+
+        setMeasurementResult: (fileKey, result) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], measurementResult: result },
+                },
+            })),
 
         setFilteringState: (fileKey, value) =>
             set((state) => ({
@@ -503,6 +700,7 @@ export const useViewerStore = create<ViewerState>((set, get) => {
             void clearVolumes()
             persisted.clear()
             inFlight.clear()
+            residentOnly.clear()
             set(initialState)
         },
     }

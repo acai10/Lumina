@@ -88,18 +88,31 @@ export function createScene(
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.15
+    controls.zoomToCursor = true
 
     const handleResize = () => {
         const rw = container.clientWidth
         const rh = container.clientHeight
+        if (rw === 0 || rh === 0) return
         camera.aspect = rw / rh
         camera.updateProjectionMatrix()
         renderer.setSize(rw, rh)
+        // Viewers using a render-on-demand loop won't repaint on their own after a
+        // resize; render once here so the new buffer isn't shown stretched/blank.
+        renderer.render(scene, camera)
     }
     window.addEventListener('resize', handleResize)
 
+    // Track the container's own box, not just the window: side panels (stitcher,
+    // file list, controls) open/close as flex siblings, shrinking this container
+    // without firing a window resize. Without this the canvas keeps its old width
+    // and spills over the panel.
+    const resizeObserver = new ResizeObserver(handleResize)
+    resizeObserver.observe(container)
+
     const disposeBase = () => {
         window.removeEventListener('resize', handleResize)
+        resizeObserver.disconnect()
         controls.dispose()
         // forceContextLoss is intentionally omitted — the caller's canvas ref keeps
         // the context alive so StrictMode remounts can reuse it.  The browser frees

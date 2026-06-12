@@ -1,3 +1,15 @@
+import type { MeasureResult } from '../api/client'
+
+export type ColormapType = 'gray' | 'jet' | 'hot'
+
+export interface SegmentationOverlay {
+    id: string
+    threshold: number
+    map: Int32Array
+    color: [number, number, number]
+    label: string
+}
+
 export interface H5Meta {
     nSlices: number
     height: number
@@ -72,6 +84,7 @@ export interface H5PerFileState {
     cameraPosition?: [number, number, number]
     cameraQuaternion?: [number, number, number, number]
     controlsTarget?: [number, number, number]
+    cameraResetGen?: number
     renderControls: H5RenderControls
     isFiltering?: boolean
     viewMode?: 'pointcloud' | 'slice'
@@ -83,4 +96,22 @@ export interface H5PerFileState {
         y: SlicePanelControl
         x: SlicePanelControl
     }
+    /** Snapshot captured immediately before the last filter was applied. */
+    filterSnapshot?: H5VolumeData
+    /** True after a filter was successfully applied and not yet reverted. */
+    filterApplied?: boolean
+    /** When true, viewers render `filterSnapshot` instead of the filtered data. */
+    showingComparison?: boolean
+    /** Active colormap for the slice viewer panels and 3D viewer. */
+    sliceColormap?: ColormapType
+    /** Intensity range [min, max] (0–1) mapped to the full colormap gradient. */
+    sliceColormapRange?: [number, number]
+    /** When true the 3D viewer colors points by slice depth instead of intensity. */
+    colorByDepth?: boolean
+    /** Segmentation overlays — multiple thresholds can be compared side-by-side. */
+    segmentationOverlays?: SegmentationOverlay[]
+    /** Voxel spacing (µm/vox) used for interactive slice-panel distance measurement [dz, dy, dx]. */
+    sliceVoxelSizeUm?: [number, number, number]
+    /** Last computed geometric measurement result for this volume. */
+    measurementResult?: MeasureResult | null
 }

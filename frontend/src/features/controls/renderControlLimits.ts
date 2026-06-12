@@ -1,4 +1,4 @@
-import { VOLUME_DIMS, PRE_FILTER_THRESHOLD } from '../../shared/h5/h5Reader'
+import { VOLUME_DIMS, PRE_FILTER_THRESHOLD } from '../../shared/h5/h5Constants'
 
 const [N_SLICES, HEIGHT, WIDTH] = VOLUME_DIMS
 
@@ -16,11 +16,10 @@ export const RENDER_CONTROL_LIMITS = {
     h5WidthRange: { min: 0, max: WIDTH, step: 1 },
     h5HeightRange: { min: 0, max: HEIGHT, step: 1 },
     filterGaussianSigma: { min: 0.5, max: 5.0, step: 0.1 },
-    // Passed straight to ndi.median_filter(size=…). Sizes must be odd to keep a
-    // symmetric footprint; 1 would be a no-op, 2 an asymmetric (shifted) window.
+    // Passed straight to ndi.median_filter / ndi.uniform_filter(size=…). Sizes must
+    // be odd to keep a symmetric footprint; 1 would be a no-op.
     filterMedianRadius: { min: 3, max: 7, step: 2 },
-    filterLeeWindow: { min: 3, max: 9, step: 2 },
-    filterBm3dSigma: { min: 0.05, max: 0.5, step: 0.05 },
+    filterMeanSize: { min: 3, max: 9, step: 2 },
     filterNormalizeLow: { min: 0, max: 10, step: 0.5 },
     filterNormalizeHigh: { min: 90, max: 100, step: 0.5 },
 } as const

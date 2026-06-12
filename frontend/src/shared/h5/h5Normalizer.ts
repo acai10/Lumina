@@ -1,7 +1,6 @@
 import type { H5VolumeData } from '../types/viewer.types'
+import { UINT8_MAX } from '../constants'
 
-/** Max value of a Uint8 channel — the normalised volume is quantised to 0..255. */
-const UINT8_MAX = 255
 /** 24-bit quantisation range for the intensity radix-sort key (2 × 12-bit passes). */
 const INTENSITY_SORT_QUANT = 0xffffff
 
