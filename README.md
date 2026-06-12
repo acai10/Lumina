@@ -63,6 +63,16 @@ fallback regardless of this setting.
    back a render-ready result. When a volume was loaded via **From server…**, the
    filter job skips the upload step entirely. Filtered results survive tab eviction
    and are restored correctly on reactivation.
+5. **Crop** — define an axis-aligned sub-region with the X/Y/Z range sliders (a
+   live orange box in 3D) or by dragging a rectangle on any 2-D slice panel, then
+   **Open Crop** extracts it server-side (non-destructive) and opens it as a NEW
+   tab. The crop is a fully independent dataset — filters, 2-D/3-D viewers,
+   measurements and projections all work on it without restriction. The crop panel
+   shows the selection's physical size (mm) and a threshold-based signal-content
+   readout for the region (% above threshold, voxel count, signal volume in mm³),
+   plus an on-demand **object count** (3D connected components: number of distinct
+   structures with each one's volume in mm³). The tab title records the source
+   volume and crop coordinates.
 
 ### Multi-volume stitching
 
@@ -217,7 +227,7 @@ sliders and slice indices adapt automatically.
 | `GET` | `/volumes/{id}/normalized` | Render-ready binary of a stored/registered volume (same format as job results) |
 | `POST` | `/volumes/{id}/filter` | Apply a filter chain (no stitcher, no metrics) → render-ready binary |
 | `POST` | `/volumes/{id}/measure` | Geometric measurements (area, volume, thickness, diameter) |
-| `POST` | `/volumes/{id}/segment` | Surface height-map segmentation → `Int32` depth map |
+| `POST` | `/volumes/{id}/crop` | Extract a sub-volume (x/y/z + w/h/d) → new independent volume id (non-destructive) |
 
 ### Filter jobs
 
@@ -312,13 +322,13 @@ Lumina/
 │       │   ├── results.py        # GET /jobs/{id}/volume/{stitcher}
 │       │   ├── sessions.py       # POST+GET /sessions/, GET /merged, /mip, POST /filter
 │       │   ├── measurements.py   # POST /volumes/{id}/measure
-│       │   ├── segmentation.py   # POST /volumes/{id}/segment
+│       │   ├── crop.py           # POST /volumes/{id}/crop → new sub-volume
 │       │   └── cleanup.py        # DELETE /cleanup
 │       └── processing/
 │           ├── h5_reader.py      # load_volume(), load_volume_flexible()
 │           ├── filters.py        # apply_filter_chain() — Gaussian/Median/Mean/Normalize/Edge
 │           ├── normalizer.py     # normalize_for_frontend(); save/load_packed
-│           ├── multi_volume.py   # MIP, surface seg, phase/cross correlation, merge
+│           ├── multi_volume.py   # MIP, phase/cross correlation, merge
 │           ├── metrics.py        # NCC, MI, MSE, RMSE, Dice
 │           ├── measurements.py   # geometric measurements (area, volume, thickness)
 │           ├── runner.py         # JobStore, async run_job

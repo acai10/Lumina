@@ -37,6 +37,21 @@ def load_volume_flexible(path: Path) -> np.ndarray:
     return arr
 
 
+def save_oct_volume(path: Path, arr: np.ndarray) -> None:
+    """Write *arr* to *path* as an HDF5 file with the standard ``"OCT"`` dataset.
+
+    Used for derived volumes (e.g. crops) so they are persisted in exactly the
+    same on-disk layout as uploaded files and can be read back by
+    :func:`load_volume_flexible`.
+
+    Args:
+        path: Destination ``.h5`` path. Overwritten if it exists.
+        arr: 3-D volume array; stored as float32.
+    """
+    with h5py.File(path, "w") as f:
+        f.create_dataset("OCT", data=arr.astype(np.float32))
+
+
 def validate_volume_file(path: Path) -> None:
     """Validate an OCT ``.h5`` file using metadata only — no bulk read.
 

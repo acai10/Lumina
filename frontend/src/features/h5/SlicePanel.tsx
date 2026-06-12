@@ -3,7 +3,7 @@ import { Box, IconButton, Slider, Stack, Tooltip, Typography } from '@mui/materi
 import StraightenIcon from '@mui/icons-material/Straighten'
 import CloseIcon from '@mui/icons-material/Close'
 import { useViewerStore, DEFAULT_SLICE_PANEL_CONTROL } from '../../app/store/viewerSlice'
-import type { ColormapType, H5Meta, SegmentationOverlay } from '../../shared/types/viewer.types'
+import type { ColormapType, H5Meta } from '../../shared/types/viewer.types'
 import { palette } from '../../shared/theme/palette'
 import {
     UM_PER_MM,
@@ -25,13 +25,17 @@ export interface SlicePanelProps {
     onSliceChange: (v: number) => void
     colormap?: ColormapType
     colormapRange?: [number, number]
-    segmentationOverlays?: SegmentationOverlay[]
     voxelSizeUm?: [number, number, number]
+    /** When true, click+drag draws a crop rectangle instead of panning. */
+    cropMode?: boolean
+    /** Persisted crop selection in this panel's pre-orientation (orig) coords. */
+    cropRectOrig?: { ox0: number; oy0: number; ox1: number; oy1: number } | null
+    /** Emitted on crop-drag end with the two corners in orig coords. */
+    onCropRect?: (a: { ox: number; oy: number }, b: { ox: number; oy: number }) => void
 }
 
 const LUT_SIZE = 256
 const TONE_MAP_PIVOT = 0.5
-const SEG_A = 210
 const MEASURE_RADIUS = 5
 const SCALE_BAR_COLOR = '#a8caff'
 const COLORBAR_STOPS = 12
@@ -88,6 +92,24 @@ function screenToCanvas(
         cy: ((my - panY) / zoom) * (canvasH / cssDH) + canvasH / 2,
     }
 }
+
+// Inverse of canvasToOrig: map original (pre-orientation) coords back to canvas pixels.
+function origToCanvas(
+    ox: number,
+    oy: number,
+    orient: string | undefined,
+    origW: number,
+    origH: number,
+): { cx: number; cy: number } {
+    if (orient === 'ccw90') return { cx: oy, cy: origW - 1 - ox }
+    if (orient === 'flipH') return { cx: origW - 1 - ox, cy: oy }
+    if (orient === 'flip180') return { cx: origW - 1 - ox, cy: origH - 1 - oy }
+    return { cx: ox, cy: oy }
+}
+
+// Crop-rectangle overlay colours (orange, matching the 3D crop box).
+const CROP_STROKE = '#ff9800'
+const CROP_FILL = 'rgba(255,152,0,0.15)'
 
 // Map canvas pixel (cx, cy) to original (pre-orientation-transform) volume coords.
 function canvasToOrig(
@@ -225,8 +247,10 @@ export const SlicePanel = memo(function SlicePanel({
     onSliceChange,
     colormap = 'gray',
     colormapRange = DEFAULT_COLORMAP_RANGE,
-    segmentationOverlays,
     voxelSizeUm = DEFAULT_VOXEL_SIZE_UM,
+    cropMode = false,
+    cropRectOrig = null,
+    onCropRect,
 }: SlicePanelProps) {
     const { nSlices, height, width } = meta
     const maxSlice = axis === 'z' ? nSlices - 1 : axis === 'y' ? height - 1 : width - 1
@@ -246,6 +270,12 @@ export const SlicePanel = memo(function SlicePanel({
     // Measurement state — local to each panel
     const [measuring, setMeasuring] = useState(false)
     const [measurePoints, setMeasurePoints] = useState<{ cx: number; cy: number }[]>([])
+
+    // Live crop-drag rectangle in canvas coords (null when not dragging).
+    const [cropDrag, setCropDrag] = useState<{
+        s: { cx: number; cy: number }
+        c: { cx: number; cy: number }
+    } | null>(null)
 
     const { brightness, contrast } = useViewerStore(
         (s) =>
@@ -339,39 +369,6 @@ export const SlicePanel = memo(function SlicePanel({
             }
             ctx.putImageData(imageData, 0, 0)
 
-            // Segmentation overlays (z-axis / XY panel only — height map is in XY).
-            if (segmentationOverlays && segmentationOverlays.length > 0 && axis === 'z') {
-                for (const overlay of segmentationOverlays) {
-                    const [or, og, ob] = overlay.color
-                    for (let ny = 0; ny < canvasH; ny++) {
-                        for (let nx = 0; nx < canvasW; nx++) {
-                            let ox: number, oy: number
-                            if (orient === 'ccw90') {
-                                ox = origW - 1 - ny
-                                oy = nx
-                            } else if (orient === 'flipH') {
-                                ox = origW - 1 - nx
-                                oy = ny
-                            } else if (orient === 'flip180') {
-                                ox = origW - 1 - nx
-                                oy = origH - 1 - ny
-                            } else {
-                                ox = nx
-                                oy = ny
-                            }
-                            if (overlay.map[oy * width + ox] === sliceIndex) {
-                                const pi = (ny * canvasW + nx) * 4
-                                pixels[pi] = or
-                                pixels[pi + 1] = og
-                                pixels[pi + 2] = ob
-                                pixels[pi + 3] = SEG_A
-                            }
-                        }
-                    }
-                }
-                ctx.putImageData(imageData, 0, 0)
-            }
-
             // Measurement overlay — draw on top of the existing canvas pixels.
             if (measuring && measurePoints.length > 0) {
                 ctx.save()
@@ -393,6 +390,32 @@ export const SlicePanel = memo(function SlicePanel({
                 }
 
                 ctx.restore()
+            }
+
+            // Crop-selection rectangle — live drag takes priority over the persisted box.
+            if (cropMode) {
+                let c0: { cx: number; cy: number } | null = null
+                let c1: { cx: number; cy: number } | null = null
+                if (cropDrag) {
+                    c0 = cropDrag.s
+                    c1 = cropDrag.c
+                } else if (cropRectOrig) {
+                    c0 = origToCanvas(cropRectOrig.ox0, cropRectOrig.oy0, orient, origW, origH)
+                    c1 = origToCanvas(cropRectOrig.ox1, cropRectOrig.oy1, orient, origW, origH)
+                }
+                if (c0 && c1) {
+                    const rx = Math.min(c0.cx, c1.cx)
+                    const ry = Math.min(c0.cy, c1.cy)
+                    const rw = Math.abs(c1.cx - c0.cx)
+                    const rh = Math.abs(c1.cy - c0.cy)
+                    ctx.save()
+                    ctx.fillStyle = CROP_FILL
+                    ctx.fillRect(rx, ry, rw, rh)
+                    ctx.strokeStyle = CROP_STROKE
+                    ctx.lineWidth = 2 / (zoomRef.current || 1)
+                    ctx.strokeRect(rx, ry, rw, rh)
+                    ctx.restore()
+                }
             }
 
             // Scale bar overlay
@@ -420,10 +443,12 @@ export const SlicePanel = memo(function SlicePanel({
         origH,
         canvasW,
         canvasH,
-        segmentationOverlays,
         measuring,
         measurePoints,
         voxelSizeUm,
+        cropMode,
+        cropRectOrig,
+        cropDrag,
     ])
 
     const applyTransform = useCallback(() => {
@@ -461,15 +486,55 @@ export const SlicePanel = memo(function SlicePanel({
         [applyTransform, measuring],
     )
 
-    const handleMouseDown = useCallback((e: React.MouseEvent) => {
-        isDragging.current = true
-        lastPos.current = { x: e.clientX, y: e.clientY }
-        clickStartRef.current = { x: e.clientX, y: e.clientY }
-        e.preventDefault()
-    }, [])
+    // Screen event → canvas pixel coords (accounting for zoom/pan/CSS scaling).
+    const eventToCanvas = useCallback(
+        (e: React.MouseEvent): { cx: number; cy: number } | null => {
+            const wrapper = canvasWrapperRef.current
+            const canvas = canvasRef.current
+            if (!wrapper || !canvas) return null
+            const rect = wrapper.getBoundingClientRect()
+            const cssDW = canvas.offsetWidth || canvasW
+            const cssDH = canvas.offsetHeight || canvasH
+            return screenToCanvas(
+                e.clientX - rect.left,
+                e.clientY - rect.top,
+                rect.width,
+                rect.height,
+                canvasW,
+                canvasH,
+                cssDW,
+                cssDH,
+                zoomRef.current,
+                panRef.current.x,
+                panRef.current.y,
+            )
+        },
+        [canvasW, canvasH],
+    )
+
+    const handleMouseDown = useCallback(
+        (e: React.MouseEvent) => {
+            e.preventDefault()
+            if (cropMode) {
+                const pt = eventToCanvas(e)
+                if (pt) setCropDrag({ s: pt, c: pt })
+                return
+            }
+            isDragging.current = true
+            lastPos.current = { x: e.clientX, y: e.clientY }
+            clickStartRef.current = { x: e.clientX, y: e.clientY }
+        },
+        [cropMode, eventToCanvas],
+    )
 
     const handleMouseMove = useCallback(
         (e: React.MouseEvent) => {
+            if (cropMode) {
+                if (!cropDrag) return
+                const pt = eventToCanvas(e)
+                if (pt) setCropDrag((d) => (d ? { ...d, c: pt } : d))
+                return
+            }
             if (!isDragging.current) return
             const dx = e.clientX - lastPos.current.x
             const dy = e.clientY - lastPos.current.y
@@ -477,12 +542,26 @@ export const SlicePanel = memo(function SlicePanel({
             panRef.current = { x: panRef.current.x + dx, y: panRef.current.y + dy }
             applyTransform()
         },
-        [applyTransform],
+        [applyTransform, cropMode, cropDrag, eventToCanvas],
     )
 
     const handleMouseUp = useCallback(
         (e: React.MouseEvent) => {
             isDragging.current = false
+            if (cropMode) {
+                if (cropDrag) {
+                    const moved =
+                        Math.abs(cropDrag.s.cx - cropDrag.c.cx) > 2 ||
+                        Math.abs(cropDrag.s.cy - cropDrag.c.cy) > 2
+                    if (moved) {
+                        const a = canvasToOrig(cropDrag.s.cx, cropDrag.s.cy, orient, origW, origH)
+                        const b = canvasToOrig(cropDrag.c.cx, cropDrag.c.cy, orient, origW, origH)
+                        onCropRect?.(a, b)
+                    }
+                    setCropDrag(null)
+                }
+                return
+            }
             if (measuring && clickStartRef.current) {
                 const dx = Math.abs(e.clientX - clickStartRef.current.x)
                 const dy = Math.abs(e.clientY - clickStartRef.current.y)
@@ -515,7 +594,7 @@ export const SlicePanel = memo(function SlicePanel({
             }
             clickStartRef.current = null
         },
-        [measuring, canvasW, canvasH],
+        [measuring, canvasW, canvasH, cropMode, cropDrag, orient, origW, origH, onCropRect],
     )
 
     const resetView = useCallback(() => {
@@ -556,7 +635,7 @@ export const SlicePanel = memo(function SlicePanel({
                 height: '100%',
                 overflow: 'hidden',
                 position: 'relative',
-                cursor: cursorStyle,
+                cursor: cropMode ? 'crosshair' : cursorStyle,
                 userSelect: 'none',
                 border: `1px solid ${palette.sceneHairline}`,
                 borderRadius: 1,
@@ -569,6 +648,7 @@ export const SlicePanel = memo(function SlicePanel({
             onMouseUp={handleMouseUp}
             onMouseLeave={() => {
                 isDragging.current = false
+                if (cropDrag) setCropDrag(null)
             }}
             onDoubleClick={resetView}
         >

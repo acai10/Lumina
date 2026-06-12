@@ -99,13 +99,13 @@ backend/
     │   ├── results.py        # GET /jobs/{id}/volume/{stitcher} → normalised binary
     │   ├── sessions.py       # POST+GET /sessions/, /merged, /mip, POST /filter
     │   ├── measurements.py   # POST /volumes/{id}/measure
-    │   ├── segmentation.py   # POST /volumes/{id}/segment
+    │   ├── crop.py           # POST /volumes/{id}/crop → new independent sub-volume
     │   └── cleanup.py        # DELETE /cleanup
     └── processing/
         ├── h5_reader.py      # load_volume(), load_volume_flexible(), OCT_DIMS constant
         ├── filters.py        # apply_filter_chain(); _FILTER_REGISTRY
         ├── stitchers.py      # STITCHER_REGISTRY: phase_correlation, simpleitk_affine, elastix_bspline, bigstitcher
-        ├── multi_volume.py   # MIP, surface seg, phase/cross correlation, global offsets, merge
+        ├── multi_volume.py   # MIP, phase/cross correlation, global offsets, merge
         ├── normalizer.py     # normalize_for_frontend(); pack/save/load_packed
         ├── measurements.py   # compute_measurements(): area, volume, thickness, diameter
         ├── metrics.py        # compute_all() -> dict[str, float]: NCC, MI, MSE, RMSE, Dice
@@ -134,7 +134,7 @@ backend/
 | GET | `/volumes/{id}/normalized` | 200 | Render-ready normalised binary |
 | POST | `/volumes/{id}/filter` | 200 | Apply filter chain → normalised binary (no stitch/metrics) |
 | POST | `/volumes/{id}/measure` | 200 | Geometric measurements |
-| POST | `/volumes/{id}/segment` | 200 | Surface height-map segmentation |
+| POST | `/volumes/{id}/crop` | 200 | Extract sub-volume (x/y/z + w/h/d) → new volume id; non-destructive, persisted + cached |
 | POST | `/jobs/` | **201** | Start job → `{ job_id }` (immediate) |
 | GET | `/jobs/{id}` | 200 | Poll status + metric results |
 | GET | `/jobs/{id}/volume/{stitcher}` | 200 | Normalised binary result volume |
@@ -165,7 +165,7 @@ Session registration methods: `"phase_correlation"`, `"cross_correlation"`.
 
 ## Frontend Architecture
 
-Loaded files (H5 and STL, mixed freely) live in a single unified `tabs: TabEntry[]` array in Zustand with an `activeTabIndex`; view switching is state-based off the active tab's `type` (`'h5' | 'stl'`) and, for H5, its per-file `viewMode` (`'pointcloud' | 'slice'`) — no URL routing. MUI is the sole styling system; no CSS files. All colour tokens are in `frontend/src/shared/theme/palette.ts`.
+Loaded files (H5 and STL, mixed freely) live in a single unified `tabs: TabEntry[]` array in Zustand with an `activeTabIndex`; view switching is state-based off the active tab's `type` (`'h5' | 'stl'`) and, for H5, its per-file `viewMode` (`'pointcloud' | 'slice'`) — no URL routing. **Crop** (`features/controls/CropSection.tsx`, per-file `cropBox`/`cropMode`/`cropThreshold`; box drawn in 3D via `H5Viewer` and as a draggable rectangle in `SlicePanel`) extracts a sub-volume server-side (`POST /volumes/{id}/crop`) and adds it through the normal `loadH5` path as a brand-new tab keyed by a unique name (`Crop N: …`), so each crop is a fully independent dataset with its own per-file state. The crop panel also shows the selection's physical size (mm), a strided client-side signal-content readout at an adjustable threshold, and an on-demand object count (`cropObjectAnalysis.ts`: 3D 6-connectivity flood fill over the in-memory normalised volume → distinct structures + per-object mm³). Both quantifications are carried over from the former segmentation tool. MUI is the sole styling system; no CSS files. All colour tokens are in `frontend/src/shared/theme/palette.ts`.
 
 Complex component styles with pseudo-selectors go in co-located `.styles.ts` files; simple 1–3 property overrides stay as inline `sx` props.
 

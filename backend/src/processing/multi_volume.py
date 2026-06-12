@@ -18,25 +18,6 @@ def compute_mip(vol: np.ndarray) -> np.ndarray:
     return np.max(vol, axis=0).astype(np.float32)
 
 
-def segment_surface(vol: np.ndarray, threshold: float = 0.05) -> np.ndarray:
-    """Find the depth index of the first high-intensity voxel for each lateral position.
-
-    Args:
-        vol: Float32 array of shape (n_slices, height, width).
-        threshold: Minimum intensity to be considered surface.
-
-    Returns:
-        Int32 height map of shape (height, width). Positions with no value above
-        threshold receive index 0.
-    """
-    mask = vol > threshold
-    height_map = np.argmax(mask, axis=0).astype(np.int32)
-    # Positions with no above-threshold voxel get sentinel -1 so the frontend
-    # overlay check (map[i] === sliceIndex, sliceIndex >= 0) never matches them.
-    height_map[~mask.any(axis=0)] = -1
-    return height_map
-
-
 def _phase_corr_padded(img_a: np.ndarray, img_b: np.ndarray) -> tuple[float, float]:
     """Non-circular phase correlation via zero-padding.
 

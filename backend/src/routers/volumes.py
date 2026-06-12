@@ -8,7 +8,6 @@ from src.config import settings
 from src.processing.filters import apply_filter_chain
 from src.processing.h5_reader import (
     OCT_DIMS,
-    load_volume,
     load_volume_flexible,
     validate_volume_file,
 )
@@ -225,6 +224,8 @@ def get_normalized_volume(volume_id: str) -> Response:
     path = settings.uploads_dir / f"{volume_id}.h5"
     if not path.exists():
         raise HTTPException(status_code=404, detail="Volume not found.")
-    vol = load_volume(path)
+    # Flexible loader so derived volumes (crops, merges) with non-standard shapes
+    # are served too, not only the fixed OCT_DIMS uploads.
+    vol = load_volume_flexible(path)
     content, headers = pack_normalized_response(vol)
     return Response(content=content, media_type="application/octet-stream", headers=headers)

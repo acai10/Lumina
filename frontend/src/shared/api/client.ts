@@ -5,8 +5,7 @@ import type {
     SessionStatus,
     UploadResponse,
 } from './types'
-import type { H5VolumeData } from '../types/viewer.types'
-import { PRE_FILTER_THRESHOLD } from '../h5/h5Constants'
+import type { CropBox, H5VolumeData } from '../types/viewer.types'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 const CONTENT_TYPE_JSON = 'application/json'
@@ -35,6 +34,28 @@ function parseShapeHeader(res: Response, expectedDims: number): number[] {
     if (parts.length !== expectedDims || parts.some((n) => !Number.isFinite(n)))
         throw new Error(`Invalid X-Shape header: "${shapeHeader}"`)
     return parts
+}
+
+/**
+ * Extract a sub-volume crop server-side and return the new volume's id + dims.
+ * Non-destructive: the backend writes a fresh `.h5` and never touches the source.
+ * The returned id can be loaded exactly like any uploaded volume.
+ */
+export async function cropVolume(volumeId: string, box: CropBox): Promise<UploadResponse> {
+    const res = await fetch(`${BASE_URL}/volumes/${volumeId}/crop`, {
+        method: 'POST',
+        headers: { 'Content-Type': CONTENT_TYPE_JSON },
+        body: JSON.stringify({
+            x: box.x,
+            y: box.y,
+            z: box.z,
+            width: box.w,
+            height: box.h,
+            depth: box.d,
+        }),
+    })
+    if (!res.ok) throw new Error(`Crop failed: ${await res.text()}`)
+    return getJson<UploadResponse>(res)
 }
 
 export async function uploadVolume(file: File): Promise<UploadResponse> {
@@ -212,13 +233,6 @@ export async function filterVolume(
     return parseNormalizedVolume(res)
 }
 
-/**
- * Request a surface segmentation height map for `volumeId`.
- *
- * Returns an `Int32Array` of shape `(height × width)` — each value is the
- * depth (slice) index of the first above-threshold voxel at that lateral
- * position. The caller receives the 2-D shape separately.
- */
 export interface MeasureRequest {
     threshold?: number
     voxel_size_um?: [number, number, number]
@@ -245,17 +259,4 @@ export async function measureVolume(
     })
     if (!res.ok) throw new Error(`Measurement failed: ${await res.text()}`)
     return getJson<MeasureResult>(res)
-}
-
-export async function segmentVolume(
-    volumeId: string,
-    threshold = PRE_FILTER_THRESHOLD,
-): Promise<{ data: Int32Array; height: number; width: number }> {
-    const res = await fetch(`${BASE_URL}/volumes/${volumeId}/segment?threshold=${threshold}`, {
-        method: 'POST',
-    })
-    if (!res.ok) throw new Error(`Segmentation failed: ${await res.text()}`)
-    const [height, width] = parseShapeHeader(res, 2)
-    const buf = await res.arrayBuffer()
-    return { data: new Int32Array(buf), height, width }
 }

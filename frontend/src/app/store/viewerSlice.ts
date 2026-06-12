@@ -8,11 +8,18 @@ import type {
     H5RenderControls,
     H5TabEntry,
     H5VolumeData,
-    SegmentationOverlay,
+    CropBox,
     SlicePanelControl,
     StlTabEntry,
     TabEntry,
 } from '../../shared/types/viewer.types'
+
+/** Crop box covering the whole volume (the default selection). */
+export const fullVolumeCropBox = (meta: {
+    nSlices: number
+    height: number
+    width: number
+}): CropBox => ({ x: 0, y: 0, z: 0, w: meta.width, h: meta.height, d: meta.nSlices })
 
 interface AppNotification {
     message: string
@@ -64,6 +71,10 @@ const persistVolume = async (key: string, data: H5VolumeData): Promise<boolean> 
 
 export const DEFAULT_STL_OPACITY = 0.55
 
+/** Defaults for the dedicated threshold-segmentation tab. */
+/** Default threshold (0–1) for the crop region's signal-content readout. */
+export const DEFAULT_CROP_THRESHOLD = 0.5
+
 export const DEFAULT_SLICE_PANEL_CONTROL: SlicePanelControl = { brightness: 1.0, contrast: 1.0 }
 
 const defaultSlicePanelControls = () => ({
@@ -76,7 +87,7 @@ const [VOLUME_N_SLICES, VOLUME_HEIGHT, VOLUME_WIDTH] = VOLUME_DIMS
 
 export const defaultRenderControls: H5RenderControls = {
     volumeSpacing: 250,
-    h5Threshold: 0.8,
+    h5Threshold: 0.75,
     h5Opacity: 0.25,
     h5Brightness: 5.0,
     h5Contrast: 1.0,
@@ -106,6 +117,8 @@ interface ViewerState {
     fileListPanelOpen: boolean
     zoomToCursor: boolean
     axesVisible: boolean
+    /** Monotonic counter for naming confirmed crop tabs ("Crop 1", "Crop 2", …). */
+    cropCounter: number
     // Actions — unified tab management
     toggleStitchPanel: () => void
     toggleControlsPanel: () => void
@@ -136,12 +149,15 @@ interface ViewerState {
     setSliceColormapRange: (fileKey: string, range: [number, number]) => void
     setColorByDepth: (fileKey: string, value: boolean) => void
     setSliceVoxelSizeUm: (fileKey: string, size: [number, number, number]) => void
-    addSegmentationOverlay: (fileKey: string, overlay: SegmentationOverlay) => void
-    removeSegmentationOverlay: (fileKey: string, id: string) => void
-    clearSegmentationOverlays: (fileKey: string) => void
     setMeasurementResult: (fileKey: string, result: H5PerFileState['measurementResult']) => void
     setFilteringState: (fileKey: string, value: boolean) => void
     setH5ViewMode: (fileKey: string, mode: 'pointcloud' | 'slice') => void
+    // Crop-selection actions
+    setCropMode: (fileKey: string, on: boolean) => void
+    setCropBox: (fileKey: string, box: CropBox) => void
+    setCropThreshold: (fileKey: string, threshold: number) => void
+    /** Reserve the next sequential crop number for tab naming (e.g. "Crop 3"). */
+    nextCropNumber: () => number
     setH5SliceIndex: (fileKey: string, index: number) => void
     setH5SliceY: (fileKey: string, y: number) => void
     setH5SliceX: (fileKey: string, x: number) => void
@@ -175,6 +191,7 @@ const initialState = {
     controlsPanelOpen: true,
     zoomToCursor: true,
     axesVisible: true,
+    cropCounter: 0,
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => {
@@ -577,44 +594,6 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 },
             })),
 
-        addSegmentationOverlay: (fileKey, overlay) =>
-            set((state) => {
-                const prev = state.h5PerFileStates[fileKey]
-                return {
-                    h5PerFileStates: {
-                        ...state.h5PerFileStates,
-                        [fileKey]: {
-                            ...prev,
-                            segmentationOverlays: [...(prev?.segmentationOverlays ?? []), overlay],
-                        },
-                    },
-                }
-            }),
-
-        removeSegmentationOverlay: (fileKey, id) =>
-            set((state) => {
-                const prev = state.h5PerFileStates[fileKey]
-                return {
-                    h5PerFileStates: {
-                        ...state.h5PerFileStates,
-                        [fileKey]: {
-                            ...prev,
-                            segmentationOverlays: (prev?.segmentationOverlays ?? []).filter(
-                                (o) => o.id !== id,
-                            ),
-                        },
-                    },
-                }
-            }),
-
-        clearSegmentationOverlays: (fileKey) =>
-            set((state) => ({
-                h5PerFileStates: {
-                    ...state.h5PerFileStates,
-                    [fileKey]: { ...state.h5PerFileStates[fileKey], segmentationOverlays: [] },
-                },
-            })),
-
         setMeasurementResult: (fileKey, result) =>
             set((state) => ({
                 h5PerFileStates: {
@@ -638,6 +617,36 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                     [fileKey]: { ...state.h5PerFileStates[fileKey], viewMode },
                 },
             })),
+
+        setCropMode: (fileKey, cropMode) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], cropMode },
+                },
+            })),
+
+        setCropBox: (fileKey, cropBox) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], cropBox },
+                },
+            })),
+
+        setCropThreshold: (fileKey, cropThreshold) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], cropThreshold },
+                },
+            })),
+
+        nextCropNumber: () => {
+            const next = get().cropCounter + 1
+            set({ cropCounter: next })
+            return next
+        },
 
         setH5SliceIndex: (fileKey, sliceIndex) =>
             set((state) => ({

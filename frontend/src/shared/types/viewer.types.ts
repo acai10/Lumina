@@ -2,12 +2,17 @@ import type { MeasureResult } from '../api/client'
 
 export type ColormapType = 'gray' | 'jet' | 'hot'
 
-export interface SegmentationOverlay {
-    id: string
-    threshold: number
-    map: Int32Array
-    color: [number, number, number]
-    label: string
+/**
+ * Axis-aligned crop bounding box in source-volume voxel coordinates.
+ * Axes match the volume layout: `x` indexes width, `y` height, `z` slices.
+ */
+export interface CropBox {
+    x: number
+    y: number
+    z: number
+    w: number
+    h: number
+    d: number
 }
 
 export interface H5Meta {
@@ -108,10 +113,14 @@ export interface H5PerFileState {
     sliceColormapRange?: [number, number]
     /** When true the 3D viewer colors points by slice depth instead of intensity. */
     colorByDepth?: boolean
-    /** Segmentation overlays — multiple thresholds can be compared side-by-side. */
-    segmentationOverlays?: SegmentationOverlay[]
     /** Voxel spacing (µm/vox) used for interactive slice-panel distance measurement [dz, dy, dx]. */
     sliceVoxelSizeUm?: [number, number, number]
     /** Last computed geometric measurement result for this volume. */
     measurementResult?: MeasureResult | null
+    /** When true, the crop selection box is shown/editable in the 2D & 3D viewers. */
+    cropMode?: boolean
+    /** Current crop selection in voxel coords; defaults to the full volume. */
+    cropBox?: CropBox
+    /** Threshold (0–1) for the crop region's signal-content readout. */
+    cropThreshold?: number
 }

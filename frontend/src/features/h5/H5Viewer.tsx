@@ -5,7 +5,11 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Box, IconButton, Tooltip } from '@mui/material'
 import GridOnIcon from '@mui/icons-material/GridOn'
 import GridOffIcon from '@mui/icons-material/GridOff'
-import { useViewerStore, defaultRenderControls } from '../../app/store/viewerSlice'
+import {
+    useViewerStore,
+    defaultRenderControls,
+    fullVolumeCropBox,
+} from '../../app/store/viewerSlice'
 import { createScene, disposeSceneGeometry } from '../../shared/three/sceneUtils'
 import { palette } from '../../shared/theme/palette'
 import { ZoomModeButton } from '../../shared/components'
@@ -40,6 +44,9 @@ function visibleIntensityWindow(vIntensities: Float32Array, threshold: number): 
     // Guard against a degenerate zero-width window (all visible voxels identical).
     return floor < ceil ? [floor, ceil] : [floor, floor + 0.001]
 }
+
+// Crop-selection box colour (orange), distinct from the green volume bounds.
+const CROP_BOX_COLOR = 0xff9800
 
 // STL overlay appearance: a semi-transparent blue mesh lit by its own ambient + key light.
 const STL_OVERLAY_COLOR = 0x88aaff
@@ -80,6 +87,8 @@ export default function H5Viewer({
     const sceneRef = useRef<THREE.Scene | null>(null)
     // The green bounding box; its Y extent tracks the current volume spacing.
     const boxHelperRef = useRef<THREE.Box3Helper | null>(null)
+    // The orange crop-selection box; shown only while crop mode is active.
+    const cropBoxHelperRef = useRef<THREE.Box3Helper | null>(null)
     const axesGroupRef = useRef<THREE.Group | null>(null)
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
     const controlsRef = useRef<OrbitControls | null>(null)
@@ -95,6 +104,8 @@ export default function H5Viewer({
     const colorByDepth = useViewerStore((s) => s.h5PerFileStates[fileKey]?.colorByDepth ?? false)
     const axesVisible = useViewerStore((s) => s.axesVisible)
     const toggleAxesVisible = useViewerStore((s) => s.toggleAxesVisible)
+    const cropMode = useViewerStore((s) => s.h5PerFileStates[fileKey]?.cropMode ?? false)
+    const cropBox = useViewerStore((s) => s.h5PerFileStates[fileKey]?.cropBox)
 
     useEffect(() => {
         const container = containerRef.current
@@ -201,6 +212,16 @@ export default function H5Viewer({
         scene.add(boxHelper)
         boxHelperRef.current = boxHelper
 
+        // Orange crop-selection box — extents set by the dedicated effect below; the
+        // initial box is a placeholder cloned from the volume bounds.
+        const cropHelper = new THREE.Box3Helper(
+            boundingBox.clone(),
+            new THREE.Color(CROP_BOX_COLOR),
+        )
+        cropHelper.visible = false
+        scene.add(cropHelper)
+        cropBoxHelperRef.current = cropHelper
+
         chunkGeosRef.current = []
         for (let offset = 0; offset < vIndices.length; offset += MAX_VERTS_PER_DRAW) {
             const count = Math.min(MAX_VERTS_PER_DRAW, vIndices.length - offset)
@@ -273,6 +294,7 @@ export default function H5Viewer({
             materialRef.current = null
             chunkGeosRef.current = []
             boxHelperRef.current = null
+            cropBoxHelperRef.current = null
             axesGroupRef.current = null
             sceneRef.current = null
             cameraRef.current = null
@@ -432,6 +454,29 @@ export default function H5Viewer({
         }
         needsRenderRef.current = true
     }, [volumeSpacing, sliceMin, sliceMax, widthMin, widthMax, heightMin, heightMax, meta])
+
+    // Crop-selection box: mirrors the clip-box coordinate transform. Shown only in
+    // crop mode; box extents follow the per-file cropBox (defaults to full volume).
+    useEffect(() => {
+        const cropHelper = cropBoxHelperRef.current
+        if (!cropHelper) return
+        cropHelper.visible = cropMode
+        if (cropMode) {
+            const { nSlices, height, width } = meta
+            const box = cropBox ?? fullVolumeCropBox(meta)
+            cropHelper.box.min.set(
+                box.x - width / 2,
+                (box.z - nSlices / 2) * (volumeSpacing / nSlices),
+                box.y - height / 2,
+            )
+            cropHelper.box.max.set(
+                box.x + box.w - width / 2,
+                (box.z + box.d - nSlices / 2) * (volumeSpacing / nSlices),
+                box.y + box.h - height / 2,
+            )
+        }
+        needsRenderRef.current = true
+    }, [cropMode, cropBox, volumeSpacing, meta])
 
     useEffect(() => {
         const mat = materialRef.current
