@@ -32,6 +32,63 @@ void main() {
 }
 `
 
+// ── Object-overlay shaders ────────────────────────────────────────────────────
+// Colour the individual voxels of counted objects, applying the SAME clip-range and
+// threshold discards as the main cloud so only currently-visible voxels are tinted.
+// position.y carries the slice offset (s - nSlices/2); the object's scale.y maps it
+// into world units, matching the main vertex transform.
+export const objectOverlayVertexShader = /* glsl */ `
+in vec3 aColor;
+in float aIntensity;
+out vec3 fColor;
+out float fIntensity;
+out float fS;
+out float fW;
+out float fH;
+
+uniform float uNSlices;
+uniform float uHeight;
+uniform float uWidth;
+uniform float uPointSize;
+
+void main() {
+    fW = position.x + uWidth * 0.5;
+    fS = position.y + uNSlices * 0.5;
+    fH = position.z + uHeight * 0.5;
+    fColor = aColor;
+    fIntensity = aIntensity;
+    gl_PointSize = uPointSize;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`
+
+export const objectOverlayFragmentShader = /* glsl */ `
+precision highp float;
+in vec3 fColor;
+in float fIntensity;
+in float fS;
+in float fW;
+in float fH;
+out vec4 fragColor;
+
+uniform float uThreshold;
+uniform float uSliceMin;
+uniform float uSliceMax;
+uniform float uWidthMin;
+uniform float uWidthMax;
+uniform float uHeightMin;
+uniform float uHeightMax;
+
+void main() {
+    // Mirror the main cloud's visibility tests so only displayed voxels are coloured.
+    if (fIntensity < uThreshold) discard;
+    if (fS < uSliceMin || fS >= uSliceMax) discard;
+    if (fW < uWidthMin || fW >= uWidthMax) discard;
+    if (fH < uHeightMin || fH >= uHeightMax) discard;
+    fragColor = vec4(fColor, 1.0);
+}
+`
+
 export const fragmentShader = /* glsl */ `
 precision highp float;
 in float fIntensity;

@@ -138,7 +138,7 @@ export function PreprocessingSection() {
         activeEntry?.backendVolumeId,
         activeEntry?.registeredVolumeId,
     )
-    const { pipeline, buildFilterChain } = usePipeline()
+    const { pipeline, buildFilterChain } = usePipeline(fileKey)
     const { steps, addStep, removeStep, moveStep, updateStepType, updateStepParam, reset } =
         pipeline
 

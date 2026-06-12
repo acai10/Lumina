@@ -4,11 +4,14 @@ import { VOLUME_DIMS } from '../../shared/h5/h5Constants'
 import type {
     ColormapType,
     H5FileEntry,
+    H5Meta,
     H5PerFileState,
     H5RenderControls,
     H5TabEntry,
     H5VolumeData,
     CropBox,
+    ObjectLabeling,
+    PipelineStep,
     SlicePanelControl,
     StlTabEntry,
     TabEntry,
@@ -70,10 +73,6 @@ const persistVolume = async (key: string, data: H5VolumeData): Promise<boolean> 
 }
 
 export const DEFAULT_STL_OPACITY = 0.55
-
-/** Defaults for the dedicated threshold-segmentation tab. */
-/** Default threshold (0–1) for the crop region's signal-content readout. */
-export const DEFAULT_CROP_THRESHOLD = 0.5
 
 export const DEFAULT_SLICE_PANEL_CONTROL: SlicePanelControl = { brightness: 1.0, contrast: 1.0 }
 
@@ -155,7 +154,12 @@ interface ViewerState {
     // Crop-selection actions
     setCropMode: (fileKey: string, on: boolean) => void
     setCropBox: (fileKey: string, box: CropBox) => void
-    setCropThreshold: (fileKey: string, threshold: number) => void
+    /** Replace this tab's preprocessing pipeline (per-file). */
+    setFilterSteps: (fileKey: string, steps: PipelineStep[]) => void
+    /** Store (or clear) the object-count labelling used to colour detected objects. */
+    setObjectLabeling: (fileKey: string, labeling: ObjectLabeling | null) => void
+    /** Toggle whether labelled objects are coloured in the viewers. */
+    setObjectColorsVisible: (fileKey: string, value: boolean) => void
     /** Reserve the next sequential crop number for tab naming (e.g. "Crop 3"). */
     nextCropNumber: () => number
     setH5SliceIndex: (fileKey: string, index: number) => void
@@ -167,6 +171,13 @@ interface ViewerState {
         patch: Partial<SlicePanelControl>,
     ) => void
     resetSlicePanelControls: (fileKey: string) => void
+    /**
+     * Reset all view/interaction controls for a file to their defaults — render
+     * controls, clipping, slice-panel adjustments, slice position, crop selection,
+     * voxel spacing and measurement result — and request a camera reset. Filters
+     * (pipeline + applied result) and colormap settings are intentionally preserved.
+     */
+    resetFileControls: (fileKey: string, meta: H5Meta) => void
     // Global actions
     setIsLoading: (v: boolean) => void
     setNotification: (n: AppNotification) => void
@@ -513,6 +524,11 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                           }
                         : t,
                 ),
+                // The voxels changed — any prior object labelling no longer matches.
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], objectLabeling: null },
+                },
             }))
             bumpLru(fileKey)
             // The cached buffers are now stale — mark unpersisted, then re-write so a
@@ -634,11 +650,34 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 },
             })),
 
-        setCropThreshold: (fileKey, cropThreshold) =>
+        setFilterSteps: (fileKey, filterSteps) =>
             set((state) => ({
                 h5PerFileStates: {
                     ...state.h5PerFileStates,
-                    [fileKey]: { ...state.h5PerFileStates[fileKey], cropThreshold },
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], filterSteps },
+                },
+            })),
+
+        setObjectLabeling: (fileKey, objectLabeling) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: {
+                        ...state.h5PerFileStates[fileKey],
+                        objectLabeling,
+                        // Showing a fresh labelling implies it should be visible.
+                        objectColorsVisible: objectLabeling
+                            ? true
+                            : state.h5PerFileStates[fileKey]?.objectColorsVisible,
+                    },
+                },
+            })),
+
+        setObjectColorsVisible: (fileKey, objectColorsVisible) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], objectColorsVisible },
                 },
             })),
 
@@ -700,6 +739,39 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                     },
                 },
             })),
+
+        resetFileControls: (fileKey, meta) =>
+            set((state) => {
+                const current = state.h5PerFileStates[fileKey]
+                if (!current) return {}
+                return {
+                    h5PerFileStates: {
+                        ...state.h5PerFileStates,
+                        [fileKey]: {
+                            ...current,
+                            renderControls: {
+                                ...defaultRenderControls,
+                                h5SliceRange: [0, meta.nSlices],
+                                h5HeightRange: [0, meta.height],
+                                h5WidthRange: [0, meta.width],
+                            },
+                            slicePanelControls: defaultSlicePanelControls(),
+                            sliceIndex: undefined,
+                            sliceY: undefined,
+                            sliceX: undefined,
+                            cropMode: false,
+                            cropBox: undefined,
+                            sliceVoxelSizeUm: undefined,
+                            measurementResult: null,
+                            objectLabeling: null,
+                            cameraResetGen: ((current.cameraResetGen ?? 0) + 1) % 1000,
+                            // Preserved on purpose: sliceColormap, sliceColormapRange,
+                            // colorByDepth (colormap) and filterApplied, filterSnapshot,
+                            // showingComparison (filters).
+                        },
+                    },
+                }
+            }),
 
         setIsLoading: (isLoading) => set({ isLoading }),
         setNotification: (notification) => set({ notification }),

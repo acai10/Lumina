@@ -13,11 +13,17 @@ import {
 import { createScene, disposeSceneGeometry } from '../../shared/three/sceneUtils'
 import { palette } from '../../shared/theme/palette'
 import { ZoomModeButton } from '../../shared/components'
-import type { H5Meta } from '../../shared/types/viewer.types'
+import type { H5Meta, H5TabEntry } from '../../shared/types/viewer.types'
 import { createAxisLabels, createAxisTickLabels } from './createAxisLabels'
 import { DEFAULT_VOXEL_SIZE_UM, DEFAULT_COLORMAP_RANGE } from '../../shared/constants'
-import { vertexShader, fragmentShader } from './h5ViewerShaders'
+import {
+    vertexShader,
+    fragmentShader,
+    objectOverlayVertexShader,
+    objectOverlayFragmentShader,
+} from './h5ViewerShaders'
 import { applyDrawRanges, countAboveThreshold } from './h5DrawUtils'
+import { objectColorRgb } from '../controls/cropObjectAnalysis'
 
 // Firefox caps drawArraysInstanced at 30 M vertices per draw call; leave headroom
 const MAX_VERTS_PER_DRAW = 28_000_000
@@ -47,6 +53,12 @@ function visibleIntensityWindow(vIntensities: Float32Array, threshold: number): 
 
 // Crop-selection box colour (orange), distinct from the green volume bounds.
 const CROP_BOX_COLOR = 0xff9800
+// Opacity of the crop box's translucent faces (edges stay fully opaque).
+const CROP_BOX_FACE_OPACITY = 0.12
+// Object-overlay points render on top of the underlying cloud (depth-test off) and
+// adopt the cloud's own point size, so each labelled voxel is coloured exactly in
+// place rather than appearing as a larger separate marker.
+const OBJECT_OVERLAY_RENDER_ORDER = 999
 
 // STL overlay appearance: a semi-transparent blue mesh lit by its own ambient + key light.
 const STL_OVERLAY_COLOR = 0x88aaff
@@ -87,8 +99,12 @@ export default function H5Viewer({
     const sceneRef = useRef<THREE.Scene | null>(null)
     // The green bounding box; its Y extent tracks the current volume spacing.
     const boxHelperRef = useRef<THREE.Box3Helper | null>(null)
-    // The orange crop-selection box; shown only while crop mode is active.
-    const cropBoxHelperRef = useRef<THREE.Box3Helper | null>(null)
+    // The orange crop-selection box (transparent faces + solid edges as one unit
+    // cube scaled to the selection); shown only while crop mode is active.
+    const cropBoxGroupRef = useRef<THREE.Group | null>(null)
+    // Coloured point overlay marking the voxels of each counted object.
+    const objectOverlayRef = useRef<THREE.Points | null>(null)
+    const objectOverlayMatRef = useRef<THREE.ShaderMaterial | null>(null)
     const axesGroupRef = useRef<THREE.Group | null>(null)
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
     const controlsRef = useRef<OrbitControls | null>(null)
@@ -106,6 +122,10 @@ export default function H5Viewer({
     const toggleAxesVisible = useViewerStore((s) => s.toggleAxesVisible)
     const cropMode = useViewerStore((s) => s.h5PerFileStates[fileKey]?.cropMode ?? false)
     const cropBox = useViewerStore((s) => s.h5PerFileStates[fileKey]?.cropBox)
+    const objectLabeling = useViewerStore((s) => s.h5PerFileStates[fileKey]?.objectLabeling ?? null)
+    const objectColorsVisible = useViewerStore(
+        (s) => s.h5PerFileStates[fileKey]?.objectColorsVisible ?? false,
+    )
 
     useEffect(() => {
         const container = containerRef.current
@@ -212,15 +232,30 @@ export default function H5Viewer({
         scene.add(boxHelper)
         boxHelperRef.current = boxHelper
 
-        // Orange crop-selection box — extents set by the dedicated effect below; the
-        // initial box is a placeholder cloned from the volume bounds.
-        const cropHelper = new THREE.Box3Helper(
-            boundingBox.clone(),
-            new THREE.Color(CROP_BOX_COLOR),
+        // Orange crop-selection box: a unit cube (transparent faces + solid edges)
+        // positioned/scaled by the dedicated effect below. Built once at unit size
+        // and centred at the origin so the effect only sets position + scale.
+        const cropColor = new THREE.Color(CROP_BOX_COLOR)
+        const cropGroup = new THREE.Group()
+        const cropUnitGeo = new THREE.BoxGeometry(1, 1, 1)
+        const cropFaces = new THREE.Mesh(
+            cropUnitGeo,
+            new THREE.MeshBasicMaterial({
+                color: cropColor,
+                transparent: true,
+                opacity: CROP_BOX_FACE_OPACITY,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            }),
         )
-        cropHelper.visible = false
-        scene.add(cropHelper)
-        cropBoxHelperRef.current = cropHelper
+        const cropEdges = new THREE.LineSegments(
+            new THREE.EdgesGeometry(cropUnitGeo),
+            new THREE.LineBasicMaterial({ color: cropColor }),
+        )
+        cropGroup.add(cropFaces, cropEdges)
+        cropGroup.visible = false
+        scene.add(cropGroup)
+        cropBoxGroupRef.current = cropGroup
 
         chunkGeosRef.current = []
         for (let offset = 0; offset < vIndices.length; offset += MAX_VERTS_PER_DRAW) {
@@ -294,7 +329,8 @@ export default function H5Viewer({
             materialRef.current = null
             chunkGeosRef.current = []
             boxHelperRef.current = null
-            cropBoxHelperRef.current = null
+            cropBoxGroupRef.current = null
+            objectOverlayRef.current = null
             axesGroupRef.current = null
             sceneRef.current = null
             cameraRef.current = null
@@ -425,6 +461,9 @@ export default function H5Viewer({
         const [floor, ceil] = visibleIntensityWindow(vIntensities, h5Threshold)
         mat.uniforms.uIntensityFloor.value = floor
         mat.uniforms.uIntensityCeil.value = ceil
+        // Keep the object overlay clipped to the same threshold as the cloud.
+        const om = objectOverlayMatRef.current
+        if (om) om.uniforms.uThreshold.value = h5Threshold
         needsRenderRef.current = true
     }, [h5Threshold, vIntensities])
 
@@ -458,25 +497,168 @@ export default function H5Viewer({
     // Crop-selection box: mirrors the clip-box coordinate transform. Shown only in
     // crop mode; box extents follow the per-file cropBox (defaults to full volume).
     useEffect(() => {
-        const cropHelper = cropBoxHelperRef.current
-        if (!cropHelper) return
-        cropHelper.visible = cropMode
+        const cropGroup = cropBoxGroupRef.current
+        if (!cropGroup) return
+        cropGroup.visible = cropMode
         if (cropMode) {
             const { nSlices, height, width } = meta
             const box = cropBox ?? fullVolumeCropBox(meta)
-            cropHelper.box.min.set(
-                box.x - width / 2,
-                (box.z - nSlices / 2) * (volumeSpacing / nSlices),
-                box.y - height / 2,
-            )
-            cropHelper.box.max.set(
-                box.x + box.w - width / 2,
-                (box.z + box.d - nSlices / 2) * (volumeSpacing / nSlices),
-                box.y + box.h - height / 2,
+            // Same coordinate transform as the clip box; convert min/max into the
+            // unit cube's centre (position) and extent (scale).
+            const minX = box.x - width / 2
+            const maxX = box.x + box.w - width / 2
+            const minY = (box.z - nSlices / 2) * (volumeSpacing / nSlices)
+            const maxY = (box.z + box.d - nSlices / 2) * (volumeSpacing / nSlices)
+            const minZ = box.y - height / 2
+            const maxZ = box.y + box.h - height / 2
+            cropGroup.position.set((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2)
+            // Guard against a zero-thickness axis (degenerate scale breaks the edges).
+            cropGroup.scale.set(
+                Math.max(maxX - minX, 0.001),
+                Math.max(maxY - minY, 0.001),
+                Math.max(maxZ - minZ, 0.001),
             )
         }
         needsRenderRef.current = true
     }, [cropMode, cropBox, volumeSpacing, meta])
+
+    // Coloured object overlay: one point per labelled voxel, tinted by object rank.
+    // Built when the labelling or its visibility changes; the Y scale tracks volume
+    // spacing via the dedicated effect below (so spacing changes don't rebuild it).
+    useEffect(() => {
+        const scene = sceneRef.current
+        if (!scene) return
+
+        const disposeOverlay = () => {
+            const prev = objectOverlayRef.current
+            if (!prev) return
+            scene.remove(prev)
+            prev.geometry.dispose()
+            ;(prev.material as THREE.Material).dispose()
+            objectOverlayRef.current = null
+            objectOverlayMatRef.current = null
+        }
+        disposeOverlay()
+
+        if (!objectColorsVisible || !objectLabeling) {
+            needsRenderRef.current = true
+            return
+        }
+
+        const { nSlices, height, width } = meta
+        const { box, labels, count } = objectLabeling
+        const wh = box.w * box.h
+        const sliceStride = height * width
+        // Per-voxel intensity so the overlay shader can apply the same threshold the
+        // cloud uses; falls back to fully-opaque (always pass) if buffers were evicted.
+        const normalizedVolume = useViewerStore
+            .getState()
+            .tabs.find((t): t is H5TabEntry => t.type === 'h5' && t.name === fileKey)?.data
+            ?.normalizedVolume
+
+        // Per-rank colour table so each voxel only does a lookup.
+        const colorByRank = new Float32Array((count + 1) * 3)
+        for (let rank = 1; rank <= count; rank++) {
+            const [r, g, b] = objectColorRgb(rank)
+            colorByRank[rank * 3] = r
+            colorByRank[rank * 3 + 1] = g
+            colorByRank[rank * 3 + 2] = b
+        }
+
+        let labelled = 0
+        for (let i = 0; i < labels.length; i++) if (labels[i] > 0) labelled++
+
+        const positions = new Float32Array(labelled * 3)
+        const colors = new Float32Array(labelled * 3)
+        const intensities = new Float32Array(labelled)
+        let p = 0
+        let k = 0
+        for (let i = 0; i < labels.length; i++) {
+            const rank = labels[i]
+            if (rank === 0) continue
+            const lx = i % box.w
+            const ly = ((i / box.w) | 0) % box.h
+            const lz = (i / wh) | 0
+            const s = box.z + lz
+            const vh = box.y + ly
+            const vw = box.x + lx
+            // X/Z in pixel coords; Y stored as the slice offset (scaled by the
+            // spacing effect into world units, matching the vertex-shader transform).
+            positions[p] = vw - width / 2
+            positions[p + 1] = s - nSlices / 2
+            positions[p + 2] = vh - height / 2
+            const ci = rank * 3
+            colors[p] = colorByRank[ci]
+            colors[p + 1] = colorByRank[ci + 1]
+            colors[p + 2] = colorByRank[ci + 2]
+            intensities[k] = normalizedVolume
+                ? normalizedVolume[s * sliceStride + vh * width + vw] / 255
+                : 1
+            p += 3
+            k++
+        }
+
+        const geo = new THREE.BufferGeometry()
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+        geo.setAttribute('aColor', new THREE.BufferAttribute(colors, 3))
+        geo.setAttribute('aIntensity', new THREE.BufferAttribute(intensities, 1))
+        const initialRc =
+            useViewerStore.getState().h5PerFileStates[fileKey]?.renderControls ?? defaultRenderControls
+        const mat = new THREE.ShaderMaterial({
+            glslVersion: THREE.GLSL3,
+            uniforms: {
+                uNSlices: { value: nSlices },
+                uHeight: { value: height },
+                uWidth: { value: width },
+                // Match the cloud's own point size so each voxel is coloured in place.
+                uPointSize: { value: initialRc.h5PointSize },
+                // Same visibility tests as the main cloud → only visible voxels tinted.
+                uThreshold: { value: initialRc.h5Threshold },
+                uSliceMin: { value: initialRc.h5SliceRange[0] },
+                uSliceMax: { value: initialRc.h5SliceRange[1] },
+                uWidthMin: { value: initialRc.h5WidthRange[0] },
+                uWidthMax: { value: initialRc.h5WidthRange[1] },
+                uHeightMin: { value: initialRc.h5HeightRange[0] },
+                uHeightMax: { value: initialRc.h5HeightRange[1] },
+            },
+            vertexShader: objectOverlayVertexShader,
+            fragmentShader: objectOverlayFragmentShader,
+            depthTest: false,
+        })
+        const points = new THREE.Points(geo, mat)
+        points.frustumCulled = false
+        points.renderOrder = OBJECT_OVERLAY_RENDER_ORDER
+        points.scale.y = initialRc.volumeSpacing / nSlices
+        scene.add(points)
+        objectOverlayRef.current = points
+        objectOverlayMatRef.current = mat
+        needsRenderRef.current = true
+
+        return disposeOverlay
+    }, [objectLabeling, objectColorsVisible, meta, fileKey])
+
+    // Keep the overlay's Y scale in sync with volume spacing without a full rebuild.
+    useEffect(() => {
+        const overlay = objectOverlayRef.current
+        if (!overlay) return
+        overlay.scale.y = volumeSpacing / meta.nSlices
+        needsRenderRef.current = true
+    }, [volumeSpacing, meta])
+
+    // Keep the overlay's point size and clip ranges matched to the cloud's, so the
+    // coloured voxels stay the same size and only show where the cloud shows them.
+    useEffect(() => {
+        const om = objectOverlayMatRef.current
+        if (!om) return
+        om.uniforms.uPointSize.value = h5PointSize
+        om.uniforms.uSliceMin.value = sliceMin
+        om.uniforms.uSliceMax.value = sliceMax
+        om.uniforms.uWidthMin.value = widthMin
+        om.uniforms.uWidthMax.value = widthMax
+        om.uniforms.uHeightMin.value = heightMin
+        om.uniforms.uHeightMax.value = heightMax
+        needsRenderRef.current = true
+    }, [h5PointSize, sliceMin, sliceMax, widthMin, widthMax, heightMin, heightMax])
 
     useEffect(() => {
         const mat = materialRef.current

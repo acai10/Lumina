@@ -3,7 +3,8 @@ import { Box, IconButton, Slider, Stack, Tooltip, Typography } from '@mui/materi
 import StraightenIcon from '@mui/icons-material/Straighten'
 import CloseIcon from '@mui/icons-material/Close'
 import { useViewerStore, DEFAULT_SLICE_PANEL_CONTROL } from '../../app/store/viewerSlice'
-import type { ColormapType, H5Meta } from '../../shared/types/viewer.types'
+import type { ColormapType, H5Meta, ObjectLabeling } from '../../shared/types/viewer.types'
+import { objectColorRgb } from '../controls/cropObjectAnalysis'
 import { palette } from '../../shared/theme/palette'
 import {
     UM_PER_MM,
@@ -32,7 +33,16 @@ export interface SlicePanelProps {
     cropRectOrig?: { ox0: number; oy0: number; ox1: number; oy1: number } | null
     /** Emitted on crop-drag end with the two corners in orig coords. */
     onCropRect?: (a: { ox: number; oy: number }, b: { ox: number; oy: number }) => void
+    /** Object-count labelling whose voxels are tinted with per-object colours. */
+    objectLabeling?: ObjectLabeling | null
+    /** When true, overlay the object colours from `objectLabeling`. */
+    showObjectColors?: boolean
+    /** Visibility threshold (0–1): only voxels at/above it are tinted, matching the cloud. */
+    objectThreshold?: number
 }
+
+/** Alpha for the object-colour tint blended over the grayscale/colormap pixel. */
+const OBJECT_TINT_ALPHA = 0.55
 
 const LUT_SIZE = 256
 const TONE_MAP_PIVOT = 0.5
@@ -251,6 +261,9 @@ export const SlicePanel = memo(function SlicePanel({
     cropMode = false,
     cropRectOrig = null,
     onCropRect,
+    objectLabeling = null,
+    showObjectColors = false,
+    objectThreshold = 0,
 }: SlicePanelProps) {
     const { nSlices, height, width } = meta
     const maxSlice = axis === 'z' ? nSlices - 1 : axis === 'y' ? height - 1 : width - 1
@@ -305,6 +318,19 @@ export const SlicePanel = memo(function SlicePanel({
         return table
     }, [brightness, contrast, colormap, colormapRange])
 
+    // Per-rank RGB colour table (rank 1..count) for object tinting; index 0 unused.
+    const objColorLut = useMemo(() => {
+        if (!objectLabeling) return null
+        const table = new Uint8ClampedArray((objectLabeling.count + 1) * 3)
+        for (let rank = 1; rank <= objectLabeling.count; rank++) {
+            const [r, g, b] = objectColorRgb(rank)
+            table[rank * 3] = Math.round(r * UINT8_MAX)
+            table[rank * 3 + 1] = Math.round(g * UINT8_MAX)
+            table[rank * 3 + 2] = Math.round(b * UINT8_MAX)
+        }
+        return table
+    }, [objectLabeling])
+
     // CSS linear-gradient representing the colormap (bottom = dark, top = bright).
     const colormapCss = useMemo(() => {
         const stops = Array.from({ length: COLORBAR_STOPS }, (_, i) => {
@@ -332,6 +358,15 @@ export const SlicePanel = memo(function SlicePanel({
             const imageData = ctx.createImageData(canvasW, canvasH)
             const pixels = imageData.data
 
+            // Object-colour overlay setup: precompute the region box so each pixel
+            // can be mapped to a region-local label index without per-pixel branching
+            // on `axis` more than necessary.
+            const tinting = showObjectColors && objectLabeling && objColorLut
+            const box = objectLabeling?.box
+            const labels = objectLabeling?.labels
+            // Only tint voxels that are actually visible (at/above the threshold).
+            const tintMinValue = Math.round(objectThreshold * UINT8_MAX)
+
             const sliceStride = height * width
             for (let ny = 0; ny < canvasH; ny++) {
                 for (let nx = 0; nx < canvasW; nx++) {
@@ -350,20 +385,59 @@ export const SlicePanel = memo(function SlicePanel({
                         oy = ny
                     }
 
-                    let volIdx: number
+                    // Resolve the volume voxel (s = slice, vh = height, vw = width) for
+                    // this canvas pixel; volIdx uses the same mapping per axis.
+                    let s: number, vh: number, vw: number
                     if (axis === 'z') {
-                        volIdx = sliceIndex * sliceStride + oy * width + ox
+                        s = sliceIndex
+                        vh = oy
+                        vw = ox
                     } else if (axis === 'y') {
-                        volIdx = oy * sliceStride + sliceIndex * width + ox
+                        s = oy
+                        vh = sliceIndex
+                        vw = ox
                     } else {
-                        volIdx = ox * sliceStride + oy * width + sliceIndex
+                        s = ox
+                        vh = oy
+                        vw = sliceIndex
                     }
+                    const volIdx = s * sliceStride + vh * width + vw
 
                     const lutIdx = normalizedVolume[volIdx] * 3
                     const pi = (ny * canvasW + nx) * 4
-                    pixels[pi] = lut[lutIdx]
-                    pixels[pi + 1] = lut[lutIdx + 1]
-                    pixels[pi + 2] = lut[lutIdx + 2]
+                    let r = lut[lutIdx]
+                    let g = lut[lutIdx + 1]
+                    let b = lut[lutIdx + 2]
+
+                    if (tinting && box && labels && normalizedVolume[volIdx] >= tintMinValue) {
+                        const lx = vw - box.x
+                        const ly = vh - box.y
+                        const lz = s - box.z
+                        if (
+                            lx >= 0 &&
+                            lx < box.w &&
+                            ly >= 0 &&
+                            ly < box.h &&
+                            lz >= 0 &&
+                            lz < box.d
+                        ) {
+                            const rank = labels[lz * box.w * box.h + ly * box.w + lx]
+                            if (rank > 0) {
+                                const ci = rank * 3
+                                r = r * (1 - OBJECT_TINT_ALPHA) + objColorLut[ci] * OBJECT_TINT_ALPHA
+                                g =
+                                    g * (1 - OBJECT_TINT_ALPHA) +
+                                    objColorLut[ci + 1] * OBJECT_TINT_ALPHA
+                                b =
+                                    b * (1 - OBJECT_TINT_ALPHA) +
+                                    objColorLut[ci + 2] * OBJECT_TINT_ALPHA
+                            }
+                        }
+                    }
+
+                    pixels[pi] = r
+                    pixels[pi + 1] = g
+                    pixels[pi + 2] = b
                     pixels[pi + 3] = UINT8_MAX
                 }
             }
@@ -449,6 +523,10 @@ export const SlicePanel = memo(function SlicePanel({
         cropMode,
         cropRectOrig,
         cropDrag,
+        showObjectColors,
+        objectLabeling,
+        objColorLut,
+        objectThreshold,
     ])
 
     const applyTransform = useCallback(() => {

@@ -34,6 +34,9 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
         cropMode,
         cropBox,
         setCropBox,
+        objectLabeling,
+        objectColorsVisible,
+        objectThreshold,
     } = useViewerStore(
         useShallow((s) => ({
             sliceZ: s.h5PerFileStates[fileKey]?.sliceIndex ?? Math.floor(meta.nSlices / 2),
@@ -48,6 +51,9 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
             cropMode: s.h5PerFileStates[fileKey]?.cropMode ?? false,
             cropBox: s.h5PerFileStates[fileKey]?.cropBox,
             setCropBox: s.setCropBox,
+            objectLabeling: s.h5PerFileStates[fileKey]?.objectLabeling ?? null,
+            objectColorsVisible: s.h5PerFileStates[fileKey]?.objectColorsVisible ?? false,
+            objectThreshold: s.h5PerFileStates[fileKey]?.renderControls?.h5Threshold ?? 0,
         })),
     )
 
@@ -130,6 +136,9 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
                 colormap={sliceColormap}
                 colormapRange={colormapRange}
                 voxelSizeUm={voxelSizeUm}
+                objectLabeling={objectLabeling}
+                showObjectColors={objectColorsVisible}
+                objectThreshold={objectThreshold}
                 cropMode={cropMode}
                 cropRectOrig={cropRectZ}
                 onCropRect={onCropZ}
@@ -147,6 +156,9 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
                 colormap={sliceColormap}
                 colormapRange={colormapRange}
                 voxelSizeUm={voxelSizeUm}
+                objectLabeling={objectLabeling}
+                showObjectColors={objectColorsVisible}
+                objectThreshold={objectThreshold}
                 cropMode={cropMode}
                 cropRectOrig={cropRectY}
                 onCropRect={onCropY}
@@ -164,6 +176,9 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
                 colormap={sliceColormap}
                 colormapRange={colormapRange}
                 voxelSizeUm={voxelSizeUm}
+                objectLabeling={objectLabeling}
+                showObjectColors={objectColorsVisible}
+                objectThreshold={objectThreshold}
                 cropMode={cropMode}
                 cropRectOrig={cropRectX}
                 onCropRect={onCropX}

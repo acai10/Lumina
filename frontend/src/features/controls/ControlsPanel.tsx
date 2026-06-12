@@ -103,7 +103,7 @@ export default function ControlsPanel() {
         stlOpacity,
         setStlOpacity,
         setH5ViewMode,
-        resetSlicePanelControls,
+        resetFileControls,
         stlOverlayIndex,
         setStlOverlayIndex,
         controlsPanelOpen,
@@ -115,7 +115,6 @@ export default function ControlsPanel() {
         setMeasurementResult,
         setBackendVolumeId,
         setNotification,
-        requestCameraReset,
     } = useViewerStore(
         useShallow((s) => ({
             tabs: s.tabs,
@@ -125,7 +124,7 @@ export default function ControlsPanel() {
             stlOpacity: s.stlOpacity,
             setStlOpacity: s.setStlOpacity,
             setH5ViewMode: s.setH5ViewMode,
-            resetSlicePanelControls: s.resetSlicePanelControls,
+            resetFileControls: s.resetFileControls,
             stlOverlayIndex: s.stlOverlayIndex,
             setStlOverlayIndex: s.setStlOverlayIndex,
             controlsPanelOpen: s.controlsPanelOpen,
@@ -137,7 +136,6 @@ export default function ControlsPanel() {
             setMeasurementResult: s.setMeasurementResult,
             setBackendVolumeId: s.setBackendVolumeId,
             setNotification: s.setNotification,
-            requestCameraReset: s.requestCameraReset,
         })),
     )
 
@@ -189,31 +187,15 @@ export default function ControlsPanel() {
     }, [activeH5, activeKey, setBackendVolumeId])
 
     const handleReset = useCallback(() => {
-        if (activeH5) {
-            if (viewMode === 'slice' && activeKey) {
-                resetSlicePanelControls(activeKey)
-            } else {
-                const { nSlices, height, width } = activeH5.meta
-                updateActiveRenderState({
-                    ...defaultRenderControls,
-                    h5SliceRange: [0, nSlices],
-                    h5HeightRange: [0, height],
-                    h5WidthRange: [0, width],
-                })
-                if (activeKey) requestCameraReset(activeKey)
-            }
+        // Reset every view/interaction control (3D + slice) back to defaults, but
+        // keep the active filters and colormap so a reset never undoes preprocessing.
+        if (activeH5 && activeKey) {
+            resetFileControls(activeKey, activeH5.meta)
+            setVoxelSize(DEFAULT_VOXEL_SIZE_UM)
         } else {
             setStlOpacity(DEFAULT_STL_OPACITY)
         }
-    }, [
-        activeH5,
-        viewMode,
-        activeKey,
-        resetSlicePanelControls,
-        updateActiveRenderState,
-        setStlOpacity,
-        requestCameraReset,
-    ])
+    }, [activeH5, activeKey, resetFileControls, setStlOpacity])
 
     if (tabs.length === 0) return null
 

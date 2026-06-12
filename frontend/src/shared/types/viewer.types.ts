@@ -1,6 +1,40 @@
 import type { MeasureResult } from '../api/client'
+import type { FilterType } from '../api/types'
 
 export type ColormapType = 'gray' | 'jet' | 'hot'
+
+/** A filter step's type, or 'none' for an unconfigured slot. */
+export type FilterTypeOrNone = FilterType | 'none'
+
+/** Per-step mutable param bag — only the fields relevant to the chosen type are used. */
+export interface StepParams {
+    gaussianSigma: number
+    medianRadius: number
+    meanSize: number
+    normalizeLow: number
+    normalizeHigh: number
+}
+
+/** One configured step in the preprocessing pipeline. */
+export interface PipelineStep {
+    type: FilterTypeOrNone
+    params: StepParams
+}
+
+/**
+ * Result of an on-demand connected-component analysis over a crop region, kept so
+ * the detected objects can be coloured in both the slice and 3D viewers.
+ */
+export interface ObjectLabeling {
+    /** Region the labels cover, in source-volume voxel coords. */
+    box: CropBox
+    /** Threshold (0–1) the analysis was run at. */
+    threshold: number
+    /** Per-region-voxel label: 0 = background, else 1-based rank (1 = largest object). */
+    labels: Uint32Array
+    /** Number of distinct objects (== max label). */
+    count: number
+}
 
 /**
  * Axis-aligned crop bounding box in source-volume voxel coordinates.
@@ -121,6 +155,10 @@ export interface H5PerFileState {
     cropMode?: boolean
     /** Current crop selection in voxel coords; defaults to the full volume. */
     cropBox?: CropBox
-    /** Threshold (0–1) for the crop region's signal-content readout. */
-    cropThreshold?: number
+    /** Configured preprocessing pipeline for this tab (per-file, persisted on switch). */
+    filterSteps?: PipelineStep[]
+    /** Last object-count labelling, used to colour detected objects in the viewers. */
+    objectLabeling?: ObjectLabeling | null
+    /** When true, the labelled objects are coloured in the slice and 3D viewers. */
+    objectColorsVisible?: boolean
 }

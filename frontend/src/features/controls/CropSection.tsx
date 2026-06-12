@@ -8,11 +8,7 @@ import ToggleButton from '@mui/material/ToggleButton'
 import Typography from '@mui/material/Typography'
 import CropIcon from '@mui/icons-material/Crop'
 import { useShallow } from 'zustand/react/shallow'
-import {
-    useViewerStore,
-    fullVolumeCropBox,
-    DEFAULT_CROP_THRESHOLD,
-} from '../../app/store/viewerSlice'
+import { useViewerStore, fullVolumeCropBox, defaultRenderControls } from '../../app/store/viewerSlice'
 import { cropVolume, fetchNormalizedVolume, uploadVolume } from '../../shared/api/client'
 import type { CropBox, H5FileEntry, H5TabEntry } from '../../shared/types/viewer.types'
 import { DEFAULT_VOXEL_SIZE_UM, UINT8_MAX, UM_PER_MM } from '../../shared/constants'
@@ -20,9 +16,16 @@ import { RangeSliderRow } from './SliderRow'
 import { labelSx } from './ControlsPanel.styles'
 import {
     analyzeRegionObjects,
+    objectColorRgb,
     MIN_OBJECT_VOXELS,
     type CropObjectResult,
 } from './cropObjectAnalysis'
+
+/** CSS rgb() string for an object's rank colour (1-based), matching the viewers. */
+const rankColorCss = (rank: number): string => {
+    const [r, g, b] = objectColorRgb(rank)
+    return `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`
+}
 
 /** Largest objects listed in the result panel before collapsing into "+N more". */
 const OBJECT_LIST_LIMIT = 10
@@ -49,22 +52,32 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
     const {
         cropMode,
         rawCropBox,
-        cropThreshold,
+        threshold,
         voxelSizeUm,
+        objectColorsVisible,
         setCropMode,
         setCropBox,
-        setCropThreshold,
+        updateActiveRenderState,
+        setObjectLabeling,
+        setObjectColorsVisible,
     } = useViewerStore(
         useShallow((s) => ({
             cropMode: s.h5PerFileStates[fileKey]?.cropMode ?? false,
             // Raw (possibly undefined) so useShallow keeps a stable reference; the
             // full-volume default is derived below to avoid a fresh object per render.
             rawCropBox: s.h5PerFileStates[fileKey]?.cropBox,
-            cropThreshold: s.h5PerFileStates[fileKey]?.cropThreshold ?? DEFAULT_CROP_THRESHOLD,
+            // The crop signal/count threshold IS the render visibility threshold, so a
+            // voxel is "signal" exactly when it is shown in the 3D cloud.
+            threshold:
+                s.h5PerFileStates[fileKey]?.renderControls?.h5Threshold ??
+                defaultRenderControls.h5Threshold,
             voxelSizeUm: s.h5PerFileStates[fileKey]?.sliceVoxelSizeUm ?? DEFAULT_VOXEL_SIZE_UM,
+            objectColorsVisible: s.h5PerFileStates[fileKey]?.objectColorsVisible ?? false,
             setCropMode: s.setCropMode,
             setCropBox: s.setCropBox,
-            setCropThreshold: s.setCropThreshold,
+            updateActiveRenderState: s.updateActiveRenderState,
+            setObjectLabeling: s.setObjectLabeling,
+            setObjectColorsVisible: s.setObjectColorsVisible,
         })),
     )
     const cropBox = rawCropBox ?? fullVolumeCropBox(activeH5.meta)
@@ -81,7 +94,7 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
     const [analysis, setAnalysis] = useState<{ key: string; result: CropObjectResult } | null>(null)
 
     const { x, y, z, w, h, d } = cropBox
-    const analysisKey = `${x},${y},${z},${w},${h},${d},${cropThreshold}`
+    const analysisKey = `${x},${y},${z},${w},${h},${d},${threshold}`
     const objectResult = analysis?.key === analysisKey ? analysis.result : null
 
     const handleAnalyzeObjects = () => {
@@ -93,10 +106,23 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
                 normalizedVolume,
                 activeH5.meta,
                 cropBox,
-                cropThreshold,
+                threshold,
                 voxelSizeUm,
             )
             setAnalysis({ key: analysisKey, result })
+            // Persist the labelling so the detected objects can be coloured in the
+            // slice and 3D viewers; clear it when the region was too large to label.
+            setObjectLabeling(
+                fileKey,
+                result.tooLarge || !result.labels
+                    ? null
+                    : {
+                          box: cropBox,
+                          threshold,
+                          labels: result.labels,
+                          count: result.count,
+                      },
+            )
             setIsAnalyzing(false)
         }, 0)
     }
@@ -122,7 +148,7 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
     const signal = useMemo(() => {
         if (!normalizedVolume) return null
         const { x, y, z, w, h, d } = cropBox
-        const thr = Math.round(cropThreshold * UINT8_MAX)
+        const thr = Math.round(threshold * UINT8_MAX)
         const sliceStride = height * width
         const totalVox = w * h * d
         const step = Math.max(1, Math.round(Math.cbrt(totalVox / SIGNAL_SAMPLE_BUDGET)))
@@ -141,7 +167,7 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
         const aboveVoxEst = Math.round(fraction * totalVox)
         const signalMm3 = (aboveVoxEst * dz * dy * dx) / UM_PER_MM ** 3
         return { fraction, aboveVoxEst, signalMm3 }
-    }, [normalizedVolume, cropBox, cropThreshold, height, width, dz, dy, dx])
+    }, [normalizedVolume, cropBox, threshold, height, width, dz, dy, dx])
 
     const isFullVolume =
         cropBox.x === 0 &&
@@ -178,7 +204,11 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
             const src = activeH5.name.replace(/\.h5$/i, '')
             const mm = `${sizeMm[0].toFixed(2)}×${sizeMm[1].toFixed(2)}×${sizeMm[2].toFixed(2)}mm`
             const name = `Crop ${num}: ${src} [x${cropBox.x}–${cropBox.x + cropBox.w}, y${cropBox.y}–${cropBox.y + cropBox.h}, z${cropBox.z}–${cropBox.z + cropBox.d}] ${mm}`
-            const entry: H5FileEntry = { name, data, backendVolumeId: volume_id }
+            // A crop is a standalone stored .h5 reachable at /volumes/{id}/… — register
+            // it as registeredVolumeId (not backendVolumeId) so filtering, measurement
+            // and re-cropping hit the volume endpoints rather than the session-only
+            // fast path. This gives crops full feature parity with a freshly loaded file.
+            const entry: H5FileEntry = { name, data, registeredVolumeId: volume_id }
             await loadH5([entry])
             setCropMode(fileKey, false)
             setNotification({
@@ -248,20 +278,22 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
             {signal && (
                 <Stack spacing={0.25}>
                     <Stack direction="row" alignItems="center" spacing={1}>
-                        <Typography sx={{ ...labelSx, minWidth: 64 }}>Signal ≥</Typography>
+                        <Typography sx={{ ...labelSx, minWidth: 64 }}>Sichtbar ≥</Typography>
                         <Slider
                             size="small"
-                            value={cropThreshold}
+                            value={threshold}
                             min={0}
                             max={1}
                             step={0.01}
                             onChange={(_, v) =>
-                                setCropThreshold(fileKey, typeof v === 'number' ? v : v[0])
+                                updateActiveRenderState({
+                                    h5Threshold: typeof v === 'number' ? v : v[0],
+                                })
                             }
                             sx={{ flex: 1 }}
                         />
                         <Typography sx={{ ...labelSx, minWidth: 30, textAlign: 'right' }}>
-                            {cropThreshold.toFixed(2)}
+                            {threshold.toFixed(2)}
                         </Typography>
                     </Stack>
                     <Typography sx={{ ...labelSx, opacity: 0.6, fontSize: '0.62rem' }}>
@@ -282,6 +314,18 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
                         >
                             Objekte zählen
                         </Button>
+                        {objectResult && !objectResult.tooLarge && objectResult.count > 0 && (
+                            <Button
+                                size="small"
+                                variant={objectColorsVisible ? 'contained' : 'outlined'}
+                                onClick={() =>
+                                    setObjectColorsVisible(fileKey, !objectColorsVisible)
+                                }
+                                sx={{ fontSize: '0.65rem', py: 0.4 }}
+                            >
+                                {objectColorsVisible ? 'Färbung an' : 'Färbung aus'}
+                            </Button>
+                        )}
                         {isAnalyzing && <CircularProgress size={12} thickness={5} />}
                     </Box>
 
@@ -303,11 +347,23 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
                                     key={i}
                                     direction="row"
                                     justifyContent="space-between"
-                                    sx={{ opacity: 0.7 }}
+                                    alignItems="center"
+                                    sx={{ opacity: 0.8 }}
                                 >
-                                    <Typography sx={{ ...labelSx, fontSize: '0.6rem' }}>
-                                        #{i + 1}
-                                    </Typography>
+                                    <Stack direction="row" alignItems="center" spacing={0.5}>
+                                        <Box
+                                            sx={{
+                                                width: 9,
+                                                height: 9,
+                                                borderRadius: '2px',
+                                                flexShrink: 0,
+                                                backgroundColor: rankColorCss(i + 1),
+                                            }}
+                                        />
+                                        <Typography sx={{ ...labelSx, fontSize: '0.6rem' }}>
+                                            #{i + 1}
+                                        </Typography>
+                                    </Stack>
                                     <Typography sx={{ ...labelSx, fontSize: '0.6rem' }}>
                                         {o.volumeMm3.toFixed(5)} mm³ · {o.voxels.toLocaleString()}{' '}
                                         vox
