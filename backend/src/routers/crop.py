@@ -1,6 +1,8 @@
 import logging
 import uuid
+from typing import Literal
 
+import numpy as np
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -27,6 +29,30 @@ class CropRequest(BaseModel):
     width: int = Field(ge=1)
     height: int = Field(ge=1)
     depth: int = Field(ge=1)
+    #: Region shape. 'rect' keeps the full box; 'cylinder' zeroes voxels outside the
+    #: ellipse inscribed in the x/y footprint (extruded along z); 'sphere' zeroes
+    #: voxels outside the ellipsoid inscribed in the box. The mask is baked into the
+    #: stored crop so downstream filtering/measurement stay within the shape.
+    shape: Literal["rect", "cylinder", "sphere"] = "rect"
+
+
+def _apply_shape_mask(sub: np.ndarray, shape: str) -> None:
+    """Zero voxels outside the inscribed cylinder/ellipsoid, in place. No-op for 'rect'."""
+    if shape == "rect":
+        return
+    d, h, w = sub.shape
+    zz, yy, xx = np.ogrid[0:d, 0:h, 0:w]
+    rx = max(w / 2, 1e-6)
+    ry = max(h / 2, 1e-6)
+    rz = max(d / 2, 1e-6)
+    ex = ((xx - (w - 1) / 2) / rx) ** 2
+    ey = ((yy - (h - 1) / 2) / ry) ** 2
+    if shape == "cylinder":
+        outside = ex + ey > 1.0  # shape (1, h, w) → broadcasts over z
+    else:  # sphere (ellipsoid filling the box)
+        ez = ((zz - (d - 1) / 2) / rz) ** 2
+        outside = ex + ey + ez > 1.0
+    sub[np.broadcast_to(outside, sub.shape)] = 0
 
 
 @router.post(
@@ -81,6 +107,9 @@ def crop_volume(volume_id: str, req: CropRequest) -> UploadResponse:
     ]
     # Copy so the new file owns contiguous data independent of the cached source.
     sub = sub.copy()
+    # Bake the region shape into the stored crop so later filtering / measurement
+    # operate on the masked sub-volume rather than the full bounding box.
+    _apply_shape_mask(sub, req.shape)
 
     new_id = uuid.uuid4().hex
     dest = settings.uploads_dir / f"{new_id}.h5"

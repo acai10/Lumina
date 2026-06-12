@@ -37,6 +37,13 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
         objectLabeling,
         objectColorsVisible,
         objectThreshold,
+        cropShape,
+        annotationMask,
+        annotationVersion,
+        activeTool,
+        brushRadius,
+        activeColorLabel,
+        paintAnnotation,
     } = useViewerStore(
         useShallow((s) => ({
             sliceZ: s.h5PerFileStates[fileKey]?.sliceIndex ?? Math.floor(meta.nSlices / 2),
@@ -54,7 +61,30 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
             objectLabeling: s.h5PerFileStates[fileKey]?.objectLabeling ?? null,
             objectColorsVisible: s.h5PerFileStates[fileKey]?.objectColorsVisible ?? false,
             objectThreshold: s.h5PerFileStates[fileKey]?.renderControls?.h5Threshold ?? 0,
+            cropShape: s.h5PerFileStates[fileKey]?.cropShape ?? 'rect',
+            annotationMask: s.h5PerFileStates[fileKey]?.annotationMask ?? null,
+            annotationVersion: s.h5PerFileStates[fileKey]?.annotationVersion ?? 0,
+            activeTool: s.activeTool,
+            brushRadius: s.brushRadius,
+            activeColorLabel: s.activeColorLabel,
+            paintAnnotation: s.paintAnnotation,
         })),
+    )
+
+    const onPaintZ = useCallback(
+        (points: { ox: number; oy: number }[], label: number) =>
+            paintAnnotation(fileKey, meta, 'z', sliceZ, points, brushRadius, label),
+        [paintAnnotation, fileKey, meta, sliceZ, brushRadius],
+    )
+    const onPaintY = useCallback(
+        (points: { ox: number; oy: number }[], label: number) =>
+            paintAnnotation(fileKey, meta, 'y', sliceY, points, brushRadius, label),
+        [paintAnnotation, fileKey, meta, sliceY, brushRadius],
+    )
+    const onPaintX = useCallback(
+        (points: { ox: number; oy: number }[], label: number) =>
+            paintAnnotation(fileKey, meta, 'x', sliceX, points, brushRadius, label),
+        [paintAnnotation, fileKey, meta, sliceX, brushRadius],
     )
 
     const cb = useMemo(() => cropBox ?? fullVolumeCropBox(meta), [cropBox, meta])
@@ -139,9 +169,17 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
                 objectLabeling={objectLabeling}
                 showObjectColors={objectColorsVisible}
                 objectThreshold={objectThreshold}
+                activeTool={activeTool}
+                brushRadius={brushRadius}
+                activeColorLabel={activeColorLabel}
+                annotationMask={annotationMask}
+                annotationVersion={annotationVersion}
+                cropShape={cropShape}
                 cropMode={cropMode}
                 cropRectOrig={cropRectZ}
                 onCropRect={onCropZ}
+                onCircleCrop={onCropZ}
+                onPaint={onPaintZ}
             />
             {/* XY — navigates height (y-axis in data space) */}
             <SlicePanel
@@ -159,9 +197,17 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
                 objectLabeling={objectLabeling}
                 showObjectColors={objectColorsVisible}
                 objectThreshold={objectThreshold}
+                activeTool={activeTool}
+                brushRadius={brushRadius}
+                activeColorLabel={activeColorLabel}
+                annotationMask={annotationMask}
+                annotationVersion={annotationVersion}
+                cropShape={cropShape}
                 cropMode={cropMode}
                 cropRectOrig={cropRectY}
                 onCropRect={onCropY}
+                onCircleCrop={onCropY}
+                onPaint={onPaintY}
             />
             {/* YZ — navigates width (x-axis in data space) */}
             <SlicePanel
@@ -179,9 +225,17 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
                 objectLabeling={objectLabeling}
                 showObjectColors={objectColorsVisible}
                 objectThreshold={objectThreshold}
+                activeTool={activeTool}
+                brushRadius={brushRadius}
+                activeColorLabel={activeColorLabel}
+                annotationMask={annotationMask}
+                annotationVersion={annotationVersion}
+                cropShape={cropShape}
                 cropMode={cropMode}
                 cropRectOrig={cropRectX}
                 onCropRect={onCropX}
+                onCircleCrop={onCropX}
+                onPaint={onPaintX}
             />
         </Box>
     )

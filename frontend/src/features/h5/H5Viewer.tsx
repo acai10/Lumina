@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js'
 import { Box, IconButton, Tooltip } from '@mui/material'
 import GridOnIcon from '@mui/icons-material/GridOn'
 import GridOffIcon from '@mui/icons-material/GridOff'
@@ -24,6 +25,8 @@ import {
 } from './h5ViewerShaders'
 import { applyDrawRanges, countAboveThreshold } from './h5DrawUtils'
 import { objectColorRgb } from '../controls/cropObjectAnalysis'
+import { annotationArrays } from '../annotation/annotationMask'
+import { ANNOTATION_PALETTE } from '../annotation/annotationPalette'
 
 // Firefox caps drawArraysInstanced at 30 M vertices per draw call; leave headroom
 const MAX_VERTS_PER_DRAW = 28_000_000
@@ -105,6 +108,14 @@ export default function H5Viewer({
     // Coloured point overlay marking the voxels of each counted object.
     const objectOverlayRef = useRef<THREE.Points | null>(null)
     const objectOverlayMatRef = useRef<THREE.ShaderMaterial | null>(null)
+    // Coloured point overlay mirroring the per-tab annotation mask (read-only in 3D).
+    const annotationOverlayRef = useRef<THREE.Points | null>(null)
+    // Crop shape meshes: a box, an inscribed cylinder, and an inscribed sphere;
+    // one is shown per cropShape and is the target of the move gizmo.
+    const cropCylinderGroupRef = useRef<THREE.Group | null>(null)
+    const cropSphereGroupRef = useRef<THREE.Group | null>(null)
+    // Translate gizmo (TransformControls) for moving the crop shape in 3D space.
+    const transformControlsRef = useRef<TransformControls | null>(null)
     const axesGroupRef = useRef<THREE.Group | null>(null)
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
     const controlsRef = useRef<OrbitControls | null>(null)
@@ -126,6 +137,10 @@ export default function H5Viewer({
     const objectColorsVisible = useViewerStore(
         (s) => s.h5PerFileStates[fileKey]?.objectColorsVisible ?? false,
     )
+    const annotationVersion = useViewerStore(
+        (s) => s.h5PerFileStates[fileKey]?.annotationVersion ?? 0,
+    )
+    const cropShape = useViewerStore((s) => s.h5PerFileStates[fileKey]?.cropShape ?? 'rect')
 
     useEffect(() => {
         const container = containerRef.current
@@ -257,6 +272,85 @@ export default function H5Viewer({
         scene.add(cropGroup)
         cropBoxGroupRef.current = cropGroup
 
+        // Companion cylinder for circular crops (unit radius 1, height 1, axis = Y =
+        // the slice/volume-spacing direction). Shown instead of the box when the crop
+        // shape is 'circle'; the effect below sets its position + scale.
+        const cropCylGroup = new THREE.Group()
+        const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 32, 1, true)
+        const cylFaces = new THREE.Mesh(
+            cylGeo,
+            new THREE.MeshBasicMaterial({
+                color: cropColor,
+                transparent: true,
+                opacity: CROP_BOX_FACE_OPACITY,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            }),
+        )
+        const cylEdges = new THREE.LineSegments(
+            new THREE.EdgesGeometry(cylGeo),
+            new THREE.LineBasicMaterial({ color: cropColor }),
+        )
+        cropCylGroup.add(cylFaces, cylEdges)
+        cropCylGroup.visible = false
+        scene.add(cropCylGroup)
+        cropCylinderGroupRef.current = cropCylGroup
+
+        // Companion sphere/ellipsoid for spherical crops.
+        const cropSphGroup = new THREE.Group()
+        const sphGeo = new THREE.SphereGeometry(1, 32, 24)
+        const sphFaces = new THREE.Mesh(
+            sphGeo,
+            new THREE.MeshBasicMaterial({
+                color: cropColor,
+                transparent: true,
+                opacity: CROP_BOX_FACE_OPACITY,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            }),
+        )
+        // A sphere has no hard edges, so use a coarse wireframe for a visible outline.
+        const sphWire = new THREE.LineSegments(
+            new THREE.WireframeGeometry(new THREE.SphereGeometry(1, 12, 8)),
+            new THREE.LineBasicMaterial({ color: cropColor, transparent: true, opacity: 0.5 }),
+        )
+        cropSphGroup.add(sphFaces, sphWire)
+        cropSphGroup.visible = false
+        scene.add(cropSphGroup)
+        cropSphereGroupRef.current = cropSphGroup
+
+        // Move gizmo — translates whichever crop shape is active; updates the store.
+        const transformControls = new TransformControls(camera, renderer.domElement)
+        transformControls.setMode('translate')
+        transformControls.setSize(0.8)
+        transformControls.addEventListener('dragging-changed', (e) => {
+            controls.enabled = !e.value
+        })
+        transformControls.addEventListener('change', () => {
+            needsRenderRef.current = true
+        })
+        transformControls.addEventListener('objectChange', () => {
+            const obj = transformControls.object
+            if (!obj) return
+            const { nSlices, height, width } = meta
+            const st = useViewerStore.getState()
+            const pf = st.h5PerFileStates[fileKey]
+            const box = pf?.cropBox ?? fullVolumeCropBox(meta)
+            const spacing = pf?.renderControls?.volumeSpacing ?? defaultRenderControls.volumeSpacing
+            // Invert the box-centre transform to recover the origin from the position.
+            const nx = obj.position.x + width / 2 - box.w / 2
+            const nz = obj.position.y / (spacing / nSlices) + nSlices / 2 - box.d / 2
+            const ny = obj.position.z + height / 2 - box.h / 2
+            st.setCropBox(fileKey, {
+                ...box,
+                x: Math.round(Math.max(0, Math.min(width - box.w, nx))),
+                y: Math.round(Math.max(0, Math.min(height - box.h, ny))),
+                z: Math.round(Math.max(0, Math.min(nSlices - box.d, nz))),
+            })
+        })
+        scene.add(transformControls.getHelper())
+        transformControlsRef.current = transformControls
+
         chunkGeosRef.current = []
         for (let offset = 0; offset < vIndices.length; offset += MAX_VERTS_PER_DRAW) {
             const count = Math.min(MAX_VERTS_PER_DRAW, vIndices.length - offset)
@@ -328,9 +422,20 @@ export default function H5Viewer({
             })
             materialRef.current = null
             chunkGeosRef.current = []
+            const tc = transformControlsRef.current
+            if (tc) {
+                tc.detach()
+                scene.remove(tc.getHelper())
+                tc.dispose()
+            }
             boxHelperRef.current = null
             cropBoxGroupRef.current = null
+            cropCylinderGroupRef.current = null
+            cropSphereGroupRef.current = null
+            transformControlsRef.current = null
             objectOverlayRef.current = null
+            objectOverlayMatRef.current = null
+            annotationOverlayRef.current = null
             axesGroupRef.current = null
             sceneRef.current = null
             cameraRef.current = null
@@ -498,29 +603,62 @@ export default function H5Viewer({
     // crop mode; box extents follow the per-file cropBox (defaults to full volume).
     useEffect(() => {
         const cropGroup = cropBoxGroupRef.current
-        if (!cropGroup) return
-        cropGroup.visible = cropMode
+        const cylGroup = cropCylinderGroupRef.current
+        const sphGroup = cropSphereGroupRef.current
+        if (!cropGroup || !cylGroup || !sphGroup) return
+        cropGroup.visible = cropMode && cropShape === 'rect'
+        cylGroup.visible = cropMode && cropShape === 'circle'
+        sphGroup.visible = cropMode && cropShape === 'sphere'
         if (cropMode) {
             const { nSlices, height, width } = meta
             const box = cropBox ?? fullVolumeCropBox(meta)
-            // Same coordinate transform as the clip box; convert min/max into the
-            // unit cube's centre (position) and extent (scale).
+            // Same coordinate transform as the clip box; convert min/max into a centre
+            // (position) and extent (scale) per shape's geometry convention.
             const minX = box.x - width / 2
             const maxX = box.x + box.w - width / 2
             const minY = (box.z - nSlices / 2) * (volumeSpacing / nSlices)
             const maxY = (box.z + box.d - nSlices / 2) * (volumeSpacing / nSlices)
             const minZ = box.y - height / 2
             const maxZ = box.y + box.h - height / 2
-            cropGroup.position.set((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2)
-            // Guard against a zero-thickness axis (degenerate scale breaks the edges).
-            cropGroup.scale.set(
-                Math.max(maxX - minX, 0.001),
-                Math.max(maxY - minY, 0.001),
-                Math.max(maxZ - minZ, 0.001),
-            )
+            const cx = (minX + maxX) / 2
+            const cy = (minY + maxY) / 2
+            const cz = (minZ + maxZ) / 2
+            const sx = Math.max(maxX - minX, 0.001)
+            const sy = Math.max(maxY - minY, 0.001)
+            const sz = Math.max(maxZ - minZ, 0.001)
+            if (cropShape === 'circle') {
+                // Elliptical cylinder filling the box footprint; axis (height) along Y.
+                cylGroup.position.set(cx, cy, cz)
+                cylGroup.scale.set(sx / 2, sy, sz / 2)
+            } else if (cropShape === 'sphere') {
+                // Ellipsoid filling the box (unit sphere radius 1 → half-extent scale).
+                sphGroup.position.set(cx, cy, cz)
+                sphGroup.scale.set(sx / 2, sy / 2, sz / 2)
+            } else {
+                // Box (unit cube size 1 → full-extent scale).
+                cropGroup.position.set(cx, cy, cz)
+                cropGroup.scale.set(sx, sy, sz)
+            }
         }
         needsRenderRef.current = true
-    }, [cropMode, cropBox, volumeSpacing, meta])
+    }, [cropMode, cropShape, cropBox, volumeSpacing, meta])
+
+    // Attach the translate gizmo to the active crop shape while in crop mode.
+    useEffect(() => {
+        const tc = transformControlsRef.current
+        if (!tc) return
+        const target = !cropMode
+            ? null
+            : cropShape === 'sphere'
+              ? cropSphereGroupRef.current
+              : cropShape === 'circle'
+                ? cropCylinderGroupRef.current
+                : cropBoxGroupRef.current
+        if (target) tc.attach(target)
+        else tc.detach()
+        tc.enabled = !!target
+        needsRenderRef.current = true
+    }, [cropMode, cropShape])
 
     // Coloured object overlay: one point per labelled voxel, tinted by object rank.
     // Built when the labelling or its visibility changes; the Y scale tracks volume
@@ -659,6 +797,94 @@ export default function H5Viewer({
         om.uniforms.uHeightMax.value = heightMax
         needsRenderRef.current = true
     }, [h5PointSize, sliceMin, sliceMax, widthMin, widthMax, heightMin, heightMax])
+
+    // Annotation voxel overlay — mirrors the per-tab mask painted in the 2D view.
+    // Rebuilt whenever the mask changes (annotationVersion); read-only in 3D.
+    useEffect(() => {
+        const scene = sceneRef.current
+        if (!scene) return
+
+        const disposeAnno = () => {
+            const prev = annotationOverlayRef.current
+            if (!prev) return
+            scene.remove(prev)
+            prev.geometry.dispose()
+            ;(prev.material as THREE.Material).dispose()
+            annotationOverlayRef.current = null
+        }
+        disposeAnno()
+
+        const mask = useViewerStore.getState().h5PerFileStates[fileKey]?.annotationMask
+        if (!mask) {
+            needsRenderRef.current = true
+            return
+        }
+        const { indices, labels } = annotationArrays(fileKey, mask)
+        if (indices.length === 0) {
+            needsRenderRef.current = true
+            return
+        }
+
+        const { nSlices, height, width } = meta
+        const sliceStride = height * width
+        // Per-label RGB (0–1) for vertex colours.
+        const maxLabel = Math.max(...ANNOTATION_PALETTE.map((c) => c.label))
+        const colorByLabel = new Float32Array((maxLabel + 1) * 3)
+        for (const c of ANNOTATION_PALETTE) {
+            colorByLabel[c.label * 3] = c.rgb[0] / 255
+            colorByLabel[c.label * 3 + 1] = c.rgb[1] / 255
+            colorByLabel[c.label * 3 + 2] = c.rgb[2] / 255
+        }
+
+        const positions = new Float32Array(indices.length * 3)
+        const colors = new Float32Array(indices.length * 3)
+        for (let i = 0; i < indices.length; i++) {
+            const gi = indices[i]
+            const s = (gi / sliceStride) | 0
+            const rem = gi % sliceStride
+            const vh = (rem / width) | 0
+            const vw = rem % width
+            const p = i * 3
+            positions[p] = vw - width / 2
+            positions[p + 1] = s - nSlices / 2 // slice offset; scaled by spacing below
+            positions[p + 2] = vh - height / 2
+            const ci = labels[i] * 3
+            colors[p] = colorByLabel[ci]
+            colors[p + 1] = colorByLabel[ci + 1]
+            colors[p + 2] = colorByLabel[ci + 2]
+        }
+
+        const geo = new THREE.BufferGeometry()
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+        geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+        const initialRc =
+            useViewerStore.getState().h5PerFileStates[fileKey]?.renderControls ??
+            defaultRenderControls
+        const mat = new THREE.PointsMaterial({
+            size: Math.max(initialRc.h5PointSize, 2),
+            sizeAttenuation: false,
+            vertexColors: true,
+            depthTest: false,
+        })
+        const points = new THREE.Points(geo, mat)
+        points.frustumCulled = false
+        points.renderOrder = OBJECT_OVERLAY_RENDER_ORDER + 1
+        points.scale.y = initialRc.volumeSpacing / nSlices
+        scene.add(points)
+        annotationOverlayRef.current = points
+        needsRenderRef.current = true
+
+        return disposeAnno
+    }, [annotationVersion, meta, fileKey])
+
+    // Keep the annotation overlay's Y scale / point size synced (no rebuild).
+    useEffect(() => {
+        const overlay = annotationOverlayRef.current
+        if (!overlay) return
+        overlay.scale.y = volumeSpacing / meta.nSlices
+        ;(overlay.material as THREE.PointsMaterial).size = Math.max(h5PointSize, 2)
+        needsRenderRef.current = true
+    }, [volumeSpacing, h5PointSize, meta])
 
     useEffect(() => {
         const mat = materialRef.current

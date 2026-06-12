@@ -5,13 +5,13 @@ import CircularProgress from '@mui/material/CircularProgress'
 import Slider from '@mui/material/Slider'
 import Stack from '@mui/material/Stack'
 import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
-import CropIcon from '@mui/icons-material/Crop'
 import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore, fullVolumeCropBox, defaultRenderControls } from '../../app/store/viewerSlice'
-import { cropVolume, fetchNormalizedVolume, uploadVolume } from '../../shared/api/client'
-import type { CropBox, H5FileEntry, H5TabEntry } from '../../shared/types/viewer.types'
+import type { AnnotationTool, CropBox, H5TabEntry } from '../../shared/types/viewer.types'
 import { DEFAULT_VOXEL_SIZE_UM, UINT8_MAX, UM_PER_MM } from '../../shared/constants'
+import { useOpenCrop } from './useOpenCrop'
 import { RangeSliderRow } from './SliderRow'
 import { labelSx } from './ControlsPanel.styles'
 import {
@@ -51,11 +51,14 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
 
     const {
         cropMode,
+        cropShape,
         rawCropBox,
         threshold,
         voxelSizeUm,
         objectColorsVisible,
         setCropMode,
+        setCropShape,
+        setActiveTool,
         setCropBox,
         updateActiveRenderState,
         setObjectLabeling,
@@ -63,6 +66,7 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
     } = useViewerStore(
         useShallow((s) => ({
             cropMode: s.h5PerFileStates[fileKey]?.cropMode ?? false,
+            cropShape: s.h5PerFileStates[fileKey]?.cropShape ?? 'rect',
             // Raw (possibly undefined) so useShallow keeps a stable reference; the
             // full-volume default is derived below to avoid a fresh object per render.
             rawCropBox: s.h5PerFileStates[fileKey]?.cropBox,
@@ -74,20 +78,36 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
             voxelSizeUm: s.h5PerFileStates[fileKey]?.sliceVoxelSizeUm ?? DEFAULT_VOXEL_SIZE_UM,
             objectColorsVisible: s.h5PerFileStates[fileKey]?.objectColorsVisible ?? false,
             setCropMode: s.setCropMode,
+            setCropShape: s.setCropShape,
+            setActiveTool: s.setActiveTool,
             setCropBox: s.setCropBox,
             updateActiveRenderState: s.updateActiveRenderState,
             setObjectLabeling: s.setObjectLabeling,
             setObjectColorsVisible: s.setObjectColorsVisible,
         })),
     )
-    const cropBox = rawCropBox ?? fullVolumeCropBox(activeH5.meta)
-    const loadH5 = useViewerStore((s) => s.loadH5)
-    const setIsLoading = useViewerStore((s) => s.setIsLoading)
-    const setNotification = useViewerStore((s) => s.setNotification)
-    const setBackendVolumeId = useViewerStore((s) => s.setBackendVolumeId)
-    const nextCropNumber = useViewerStore((s) => s.nextCropNumber)
 
-    const [isCropping, setIsCropping] = useState(false)
+    // Shape buttons drive crop mode + the active crop tool (so the 2D drag and 3D
+    // gizmo respond). Picking the active shape again turns cropping off.
+    const CROP_SHAPES = [
+        { shape: 'rect' as const, tool: 'rectCrop' as const, label: 'Rechteck' },
+        { shape: 'circle' as const, tool: 'circleCrop' as const, label: 'Kreis/Zylinder' },
+        { shape: 'sphere' as const, tool: 'sphereCrop' as const, label: 'Kugel' },
+    ]
+    const selectCropShape = (shape: 'rect' | 'circle' | 'sphere', tool: AnnotationTool) => {
+        const isActive = cropMode && cropShape === shape
+        if (isActive) {
+            setActiveTool(null)
+            setCropMode(fileKey, false)
+            return
+        }
+        setCropShape(fileKey, shape)
+        setActiveTool(tool)
+        setCropMode(fileKey, true)
+    }
+    const cropBox = rawCropBox ?? fullVolumeCropBox(activeH5.meta)
+    const { openCrop, isCropping } = useOpenCrop(activeH5)
+
     const [isAnalyzing, setIsAnalyzing] = useState(false)
     // Object result is tagged with the box/threshold it was computed for, so a
     // stale count is simply ignored at render when the selection changes — no effect.
@@ -177,71 +197,31 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
         cropBox.h === height &&
         cropBox.d === nSlices
 
-    const resolveVolumeId = async (): Promise<string | null> => {
-        const existing = activeH5.registeredVolumeId ?? activeH5.backendVolumeId
-        if (existing) return existing
-        if (!activeH5.sourceFile) return null
-        const { volume_id } = await uploadVolume(activeH5.sourceFile)
-        setBackendVolumeId(fileKey, volume_id)
-        return volume_id
-    }
-
-    const handleOpenCrop = async () => {
-        setIsCropping(true)
-        setIsLoading(true)
-        try {
-            const sourceId = await resolveVolumeId()
-            if (!sourceId) {
-                setNotification({
-                    message: 'Keine Volumen-Quelle zum Zuschneiden',
-                    severity: 'error',
-                })
-                return
-            }
-            const { volume_id, n_slices, height: h, width: w } = await cropVolume(sourceId, cropBox)
-            const data = await fetchNormalizedVolume(volume_id)
-            const num = nextCropNumber()
-            const src = activeH5.name.replace(/\.h5$/i, '')
-            const mm = `${sizeMm[0].toFixed(2)}×${sizeMm[1].toFixed(2)}×${sizeMm[2].toFixed(2)}mm`
-            const name = `Crop ${num}: ${src} [x${cropBox.x}–${cropBox.x + cropBox.w}, y${cropBox.y}–${cropBox.y + cropBox.h}, z${cropBox.z}–${cropBox.z + cropBox.d}] ${mm}`
-            // A crop is a standalone stored .h5 reachable at /volumes/{id}/… — register
-            // it as registeredVolumeId (not backendVolumeId) so filtering, measurement
-            // and re-cropping hit the volume endpoints rather than the session-only
-            // fast path. This gives crops full feature parity with a freshly loaded file.
-            const entry: H5FileEntry = { name, data, registeredVolumeId: volume_id }
-            await loadH5([entry])
-            setCropMode(fileKey, false)
-            setNotification({
-                message: `Crop geöffnet (${w}×${h}×${n_slices})`,
-                severity: 'success',
-            })
-        } catch (err) {
-            setNotification({
-                message: err instanceof Error ? err.message : 'Crop fehlgeschlagen',
-                severity: 'error',
-            })
-        } finally {
-            setIsCropping(false)
-            setIsLoading(false)
-        }
-    }
-
     return (
         <Stack spacing={0.75}>
-            <Stack direction="row" alignItems="center" justifyContent="space-between">
-                <Typography sx={{ ...labelSx, letterSpacing: '0.08em', opacity: 0.7 }}>
-                    ZUSCHNEIDEN
-                </Typography>
-                <ToggleButton
-                    value="crop"
-                    selected={cropMode}
-                    size="small"
-                    onChange={() => setCropMode(fileKey, !cropMode)}
-                    sx={{ fontSize: '0.6rem', py: 0.2, px: 0.8, textTransform: 'none', margin: 1 }}
-                >
-                    <CropIcon sx={{ fontSize: 14, mr: 0.5 }} />
-                </ToggleButton>
-            </Stack>
+            <Typography sx={{ ...labelSx, letterSpacing: '0.08em', opacity: 0.7 }}>
+                ZUSCHNEIDEN
+            </Typography>
+
+            {/* Region shape — selecting one enables crop drawing (2D drag + 3D move
+                gizmo); selecting the active one again turns it off. */}
+            <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={cropMode ? cropShape : null}
+                sx={{ alignSelf: 'flex-start' }}
+            >
+                {CROP_SHAPES.map(({ shape, tool, label }) => (
+                    <ToggleButton
+                        key={shape}
+                        value={shape}
+                        onClick={() => selectCropShape(shape, tool)}
+                        sx={{ fontSize: '0.6rem', py: 0.3, px: 0.9, textTransform: 'none' }}
+                    >
+                        {label}
+                    </ToggleButton>
+                ))}
+            </ToggleButtonGroup>
 
             <RangeSliderRow
                 label="X (Breite)"
@@ -385,7 +365,7 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
                     size="small"
                     variant="outlined"
                     disabled={isCropping || isFullVolume}
-                    onClick={handleOpenCrop}
+                    onClick={() => void openCrop()}
                     sx={{ fontSize: '0.65rem', py: 0.4 }}
                 >
                     Open Crop

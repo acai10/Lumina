@@ -3,6 +3,18 @@ import type { FilterType } from '../api/types'
 
 export type ColormapType = 'gray' | 'jet' | 'hot'
 
+/** Active annotation/crop toolbar tool. `null` = no tool (pan/orbit). */
+export type AnnotationTool =
+    | 'brush'
+    | 'eraser'
+    | 'rectCrop'
+    | 'circleCrop'
+    | 'sphereCrop'
+    | null
+
+/** Crop region shape: box, circle (→ cylinder across Z), or sphere (ellipsoid). */
+export type CropShape = 'rect' | 'circle' | 'sphere'
+
 /** A filter step's type, or 'none' for an unconfigured slot. */
 export type FilterTypeOrNone = FilterType | 'none'
 
@@ -155,6 +167,16 @@ export interface H5PerFileState {
     cropMode?: boolean
     /** Current crop selection in voxel coords; defaults to the full volume. */
     cropBox?: CropBox
+    /** Crop region shape (box vs inscribed cylinder). Defaults to 'rect'. */
+    cropShape?: CropShape
+    /**
+     * Per-voxel annotation labels (0 = none, else palette label). Allocated lazily on
+     * first paint; mutated in place with `annotationVersion` bumped to notify viewers.
+     * Non-destructive — never written back to the HDF5 volume.
+     */
+    annotationMask?: Uint8Array
+    /** Bumped on every mask edit so 2D/3D overlays know to redraw. */
+    annotationVersion?: number
     /** Configured preprocessing pipeline for this tab (per-file, persisted on switch). */
     filterSteps?: PipelineStep[]
     /** Last object-count labelling, used to colour detected objects in the viewers. */

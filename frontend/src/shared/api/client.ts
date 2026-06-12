@@ -41,7 +41,11 @@ function parseShapeHeader(res: Response, expectedDims: number): number[] {
  * Non-destructive: the backend writes a fresh `.h5` and never touches the source.
  * The returned id can be loaded exactly like any uploaded volume.
  */
-export async function cropVolume(volumeId: string, box: CropBox): Promise<UploadResponse> {
+export async function cropVolume(
+    volumeId: string,
+    box: CropBox,
+    shape: 'rect' | 'cylinder' | 'sphere' = 'rect',
+): Promise<UploadResponse> {
     const res = await fetch(`${BASE_URL}/volumes/${volumeId}/crop`, {
         method: 'POST',
         headers: { 'Content-Type': CONTENT_TYPE_JSON },
@@ -52,6 +56,7 @@ export async function cropVolume(volumeId: string, box: CropBox): Promise<Upload
             width: box.w,
             height: box.h,
             depth: box.d,
+            shape,
         }),
     })
     if (!res.ok) throw new Error(`Crop failed: ${await res.text()}`)

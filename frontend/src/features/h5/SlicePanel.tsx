@@ -3,9 +3,29 @@ import { Box, IconButton, Slider, Stack, Tooltip, Typography } from '@mui/materi
 import StraightenIcon from '@mui/icons-material/Straighten'
 import CloseIcon from '@mui/icons-material/Close'
 import { useViewerStore, DEFAULT_SLICE_PANEL_CONTROL } from '../../app/store/viewerSlice'
-import type { ColormapType, H5Meta, ObjectLabeling } from '../../shared/types/viewer.types'
+import type {
+    AnnotationTool,
+    ColormapType,
+    H5Meta,
+    ObjectLabeling,
+} from '../../shared/types/viewer.types'
 import { objectColorRgb } from '../controls/cropObjectAnalysis'
+import { ANNOTATION_PALETTE, ANNOTATION_TINT_ALPHA } from '../annotation/annotationPalette'
+import type { StrokePoint } from '../annotation/annotationMask'
 import { palette } from '../../shared/theme/palette'
+
+// Label → RGB lookup for the annotation overlay (fixed palette, built once).
+const ANNO_LUT = (() => {
+    const max = Math.max(...ANNOTATION_PALETTE.map((c) => c.label))
+    const t = new Uint8Array((max + 1) * 3)
+    for (const c of ANNOTATION_PALETTE) {
+        t[c.label * 3] = c.rgb[0]
+        t[c.label * 3 + 1] = c.rgb[1]
+        t[c.label * 3 + 2] = c.rgb[2]
+    }
+    return t
+})()
+const ANNO_LUT_MAX = ANNO_LUT.length / 3 - 1
 import {
     UM_PER_MM,
     DEFAULT_VOXEL_SIZE_UM,
@@ -39,6 +59,22 @@ export interface SlicePanelProps {
     showObjectColors?: boolean
     /** Visibility threshold (0–1): only voxels at/above it are tinted, matching the cloud. */
     objectThreshold?: number
+    /** Active toolbar tool — governs mouse behaviour (paint / crop / pan). */
+    activeTool?: AnnotationTool
+    /** Brush/eraser radius in voxels. */
+    brushRadius?: number
+    /** Colour label the brush paints with. */
+    activeColorLabel?: number
+    /** Annotation mask for this tab (label per voxel) — drawn as a semi-transparent overlay. */
+    annotationMask?: Uint8Array | null
+    /** Bumped on mask edits; included in the draw deps so the overlay refreshes. */
+    annotationVersion?: number
+    /** Paint a stroke of in-plane points with the given label (0 erases). */
+    onPaint?: (points: StrokePoint[], label: number) => void
+    /** Confirm a circular selection (two corners of its bounding square, orig coords). */
+    onCircleCrop?: (a: { ox: number; oy: number }, b: { ox: number; oy: number }) => void
+    /** Persisted crop shape — non-'rect' draws an ellipse overlay instead of a rectangle. */
+    cropShape?: 'rect' | 'circle' | 'sphere'
 }
 
 /** Alpha for the object-colour tint blended over the grayscale/colormap pixel. */
@@ -264,6 +300,14 @@ export const SlicePanel = memo(function SlicePanel({
     objectLabeling = null,
     showObjectColors = false,
     objectThreshold = 0,
+    activeTool = null,
+    brushRadius = 6,
+    activeColorLabel = 1,
+    annotationMask = null,
+    annotationVersion = 0,
+    onPaint,
+    onCircleCrop,
+    cropShape = 'rect',
 }: SlicePanelProps) {
     const { nSlices, height, width } = meta
     const maxSlice = axis === 'z' ? nSlices - 1 : axis === 'y' ? height - 1 : width - 1
@@ -284,11 +328,24 @@ export const SlicePanel = memo(function SlicePanel({
     const [measuring, setMeasuring] = useState(false)
     const [measurePoints, setMeasurePoints] = useState<{ cx: number; cy: number }[]>([])
 
-    // Live crop-drag rectangle in canvas coords (null when not dragging).
+    // Live crop-drag rectangle/circle in canvas coords (null when not dragging).
     const [cropDrag, setCropDrag] = useState<{
         s: { cx: number; cy: number }
         c: { cx: number; cy: number }
     } | null>(null)
+    // Active brush/eraser stroke — true between mousedown and mouseup while painting.
+    const isPainting = useRef(false)
+    // Last painted point (orig coords) so a drag interpolates instead of leaving gaps.
+    const lastPaintOrig = useRef<{ ox: number; oy: number } | null>(null)
+
+    // The per-panel measurement mode takes precedence over annotation/crop tools, so
+    // toggling "Messung" always works regardless of the globally-active tool.
+    const isPaintTool = !measuring && (activeTool === 'brush' || activeTool === 'eraser')
+    const isRectTool = !measuring && activeTool === 'rectCrop'
+    // Circle and sphere crops both drag out a 2D ellipse on the slice.
+    const isCircleTool =
+        !measuring && (activeTool === 'circleCrop' || activeTool === 'sphereCrop')
+    const paintLabel = activeTool === 'eraser' ? 0 : activeColorLabel
 
     const { brightness, contrast } = useViewerStore(
         (s) =>
@@ -435,6 +492,21 @@ export const SlicePanel = memo(function SlicePanel({
                         }
                     }
 
+                    // Annotation overlay — semi-transparent label colour over the slice.
+                    if (annotationMask) {
+                        const lab = annotationMask[volIdx]
+                        if (lab > 0 && lab <= ANNO_LUT_MAX) {
+                            const ai = lab * 3
+                            r = r * (1 - ANNOTATION_TINT_ALPHA) + ANNO_LUT[ai] * ANNOTATION_TINT_ALPHA
+                            g =
+                                g * (1 - ANNOTATION_TINT_ALPHA) +
+                                ANNO_LUT[ai + 1] * ANNOTATION_TINT_ALPHA
+                            b =
+                                b * (1 - ANNOTATION_TINT_ALPHA) +
+                                ANNO_LUT[ai + 2] * ANNOTATION_TINT_ALPHA
+                        }
+                    }
+
                     pixels[pi] = r
                     pixels[pi + 1] = g
                     pixels[pi + 2] = b
@@ -484,10 +556,18 @@ export const SlicePanel = memo(function SlicePanel({
                     const rh = Math.abs(c1.cy - c0.cy)
                     ctx.save()
                     ctx.fillStyle = CROP_FILL
-                    ctx.fillRect(rx, ry, rw, rh)
                     ctx.strokeStyle = CROP_STROKE
                     ctx.lineWidth = 2 / (zoomRef.current || 1)
-                    ctx.strokeRect(rx, ry, rw, rh)
+                    if (cropShape !== 'rect') {
+                        // Ellipse inscribed in the drag bounds (cylinder/sphere cross-section).
+                        ctx.beginPath()
+                        ctx.ellipse(rx + rw / 2, ry + rh / 2, rw / 2, rh / 2, 0, 0, Math.PI * 2)
+                        ctx.fill()
+                        ctx.stroke()
+                    } else {
+                        ctx.fillRect(rx, ry, rw, rh)
+                        ctx.strokeRect(rx, ry, rw, rh)
+                    }
                     ctx.restore()
                 }
             }
@@ -527,6 +607,9 @@ export const SlicePanel = memo(function SlicePanel({
         objectLabeling,
         objColorLut,
         objectThreshold,
+        annotationMask,
+        annotationVersion,
+        cropShape,
     ])
 
     const applyTransform = useCallback(() => {
@@ -590,10 +673,42 @@ export const SlicePanel = memo(function SlicePanel({
         [canvasW, canvasH],
     )
 
+    // Map a mouse event to the slice voxel and paint a (gap-free interpolated) stroke.
+    const paintAtEvent = useCallback(
+        (e: React.MouseEvent) => {
+            if (!onPaint) return
+            const pt = eventToCanvas(e)
+            if (!pt) return
+            const { ox, oy } = canvasToOrig(pt.cx, pt.cy, orient, origW, origH)
+            const points: StrokePoint[] = []
+            const last = lastPaintOrig.current
+            if (last) {
+                const dx = ox - last.ox
+                const dy = oy - last.oy
+                const dist = Math.hypot(dx, dy)
+                const step = Math.max(1, brushRadius / 2)
+                const n = Math.max(1, Math.ceil(dist / step))
+                for (let i = 1; i <= n; i++)
+                    points.push({ ox: last.ox + (dx * i) / n, oy: last.oy + (dy * i) / n })
+            } else {
+                points.push({ ox, oy })
+            }
+            lastPaintOrig.current = { ox, oy }
+            onPaint(points, paintLabel)
+        },
+        [onPaint, eventToCanvas, orient, origW, origH, brushRadius, paintLabel],
+    )
+
     const handleMouseDown = useCallback(
         (e: React.MouseEvent) => {
             e.preventDefault()
-            if (cropMode) {
+            if (isPaintTool) {
+                isPainting.current = true
+                lastPaintOrig.current = null
+                paintAtEvent(e)
+                return
+            }
+            if (isRectTool || isCircleTool) {
                 const pt = eventToCanvas(e)
                 if (pt) setCropDrag({ s: pt, c: pt })
                 return
@@ -602,12 +717,16 @@ export const SlicePanel = memo(function SlicePanel({
             lastPos.current = { x: e.clientX, y: e.clientY }
             clickStartRef.current = { x: e.clientX, y: e.clientY }
         },
-        [cropMode, eventToCanvas],
+        [isPaintTool, isRectTool, isCircleTool, paintAtEvent, eventToCanvas],
     )
 
     const handleMouseMove = useCallback(
         (e: React.MouseEvent) => {
-            if (cropMode) {
+            if (isPaintTool) {
+                if (isPainting.current) paintAtEvent(e)
+                return
+            }
+            if (isRectTool || isCircleTool) {
                 if (!cropDrag) return
                 const pt = eventToCanvas(e)
                 if (pt) setCropDrag((d) => (d ? { ...d, c: pt } : d))
@@ -620,13 +739,18 @@ export const SlicePanel = memo(function SlicePanel({
             panRef.current = { x: panRef.current.x + dx, y: panRef.current.y + dy }
             applyTransform()
         },
-        [applyTransform, cropMode, cropDrag, eventToCanvas],
+        [applyTransform, isPaintTool, isRectTool, isCircleTool, cropDrag, paintAtEvent, eventToCanvas],
     )
 
     const handleMouseUp = useCallback(
         (e: React.MouseEvent) => {
             isDragging.current = false
-            if (cropMode) {
+            if (isPaintTool) {
+                isPainting.current = false
+                lastPaintOrig.current = null
+                return
+            }
+            if (isRectTool || isCircleTool) {
                 if (cropDrag) {
                     const moved =
                         Math.abs(cropDrag.s.cx - cropDrag.c.cx) > 2 ||
@@ -634,7 +758,8 @@ export const SlicePanel = memo(function SlicePanel({
                     if (moved) {
                         const a = canvasToOrig(cropDrag.s.cx, cropDrag.s.cy, orient, origW, origH)
                         const b = canvasToOrig(cropDrag.c.cx, cropDrag.c.cy, orient, origW, origH)
-                        onCropRect?.(a, b)
+                        if (isCircleTool) onCircleCrop?.(a, b)
+                        else onCropRect?.(a, b)
                     }
                     setCropDrag(null)
                 }
@@ -672,7 +797,20 @@ export const SlicePanel = memo(function SlicePanel({
             }
             clickStartRef.current = null
         },
-        [measuring, canvasW, canvasH, cropMode, cropDrag, orient, origW, origH, onCropRect],
+        [
+            measuring,
+            canvasW,
+            canvasH,
+            isPaintTool,
+            isRectTool,
+            isCircleTool,
+            cropDrag,
+            orient,
+            origW,
+            origH,
+            onCropRect,
+            onCircleCrop,
+        ],
     )
 
     const resetView = useCallback(() => {
@@ -713,7 +851,7 @@ export const SlicePanel = memo(function SlicePanel({
                 height: '100%',
                 overflow: 'hidden',
                 position: 'relative',
-                cursor: cropMode ? 'crosshair' : cursorStyle,
+                cursor: isPaintTool || isRectTool || isCircleTool ? 'crosshair' : cursorStyle,
                 userSelect: 'none',
                 border: `1px solid ${palette.sceneHairline}`,
                 borderRadius: 1,
@@ -726,6 +864,8 @@ export const SlicePanel = memo(function SlicePanel({
             onMouseUp={handleMouseUp}
             onMouseLeave={() => {
                 isDragging.current = false
+                isPainting.current = false
+                lastPaintOrig.current = null
                 if (cropDrag) setCropDrag(null)
             }}
             onDoubleClick={resetView}

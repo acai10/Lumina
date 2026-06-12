@@ -1,8 +1,16 @@
 import { create } from 'zustand'
 import { putVolume, getVolume, deleteVolume, clearVolumes } from '../../shared/h5'
 import { VOLUME_DIMS } from '../../shared/h5/h5Constants'
+import {
+    paintStroke,
+    clearAnnotation,
+    disposeAnnotationIndex,
+    type StrokePoint,
+} from '../../features/annotation/annotationMask'
 import type {
+    AnnotationTool,
     ColormapType,
+    CropShape,
     H5FileEntry,
     H5Meta,
     H5PerFileState,
@@ -16,6 +24,9 @@ import type {
     StlTabEntry,
     TabEntry,
 } from '../../shared/types/viewer.types'
+
+/** Default brush/eraser radius in voxels. */
+export const DEFAULT_BRUSH_RADIUS = 6
 
 /** Crop box covering the whole volume (the default selection). */
 export const fullVolumeCropBox = (meta: {
@@ -118,6 +129,12 @@ interface ViewerState {
     axesVisible: boolean
     /** Monotonic counter for naming confirmed crop tabs ("Crop 1", "Crop 2", …). */
     cropCounter: number
+    /** Active annotation/crop toolbar tool (global, mutually exclusive). */
+    activeTool: AnnotationTool
+    /** Brush/eraser radius in voxels. */
+    brushRadius: number
+    /** Active colour label (1-based) the brush paints with. */
+    activeColorLabel: number
     // Actions — unified tab management
     toggleStitchPanel: () => void
     toggleControlsPanel: () => void
@@ -154,6 +171,23 @@ interface ViewerState {
     // Crop-selection actions
     setCropMode: (fileKey: string, on: boolean) => void
     setCropBox: (fileKey: string, box: CropBox) => void
+    setCropShape: (fileKey: string, shape: CropShape) => void
+    // Annotation toolbar actions
+    setActiveTool: (tool: AnnotationTool) => void
+    setBrushRadius: (radius: number) => void
+    setActiveColorLabel: (label: number) => void
+    /** Paint (label > 0) or erase (label === 0) a stroke into a tab's annotation mask. */
+    paintAnnotation: (
+        fileKey: string,
+        meta: H5Meta,
+        axis: 'z' | 'y' | 'x',
+        sliceIndex: number,
+        points: StrokePoint[],
+        radius: number,
+        label: number,
+    ) => void
+    /** Clear all annotations for a tab. */
+    clearAnnotations: (fileKey: string) => void
     /** Replace this tab's preprocessing pipeline (per-file). */
     setFilterSteps: (fileKey: string, steps: PipelineStep[]) => void
     /** Store (or clear) the object-count labelling used to colour detected objects. */
@@ -203,6 +237,9 @@ const initialState = {
     zoomToCursor: true,
     axesVisible: true,
     cropCounter: 0,
+    activeTool: null as AnnotationTool,
+    brushRadius: DEFAULT_BRUSH_RADIUS,
+    activeColorLabel: 1,
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => {
@@ -384,6 +421,7 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 void deleteVolume(closing.name)
                 persisted.delete(closing.name)
                 residentOnly.delete(closing.name)
+                disposeAnnotationIndex(closing.name)
                 newHydrationOrder = hydrationOrder.filter((n) => n !== closing.name)
             }
 
@@ -649,6 +687,52 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                     [fileKey]: { ...state.h5PerFileStates[fileKey], cropBox },
                 },
             })),
+
+        setCropShape: (fileKey, cropShape) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], cropShape },
+                },
+            })),
+
+        setActiveTool: (activeTool) => set({ activeTool }),
+        setBrushRadius: (brushRadius) => set({ brushRadius }),
+        setActiveColorLabel: (activeColorLabel) => set({ activeColorLabel }),
+
+        paintAnnotation: (fileKey, meta, axis, sliceIndex, points, radius, label) =>
+            set((state) => {
+                const cur = state.h5PerFileStates[fileKey]
+                const mask =
+                    cur?.annotationMask ??
+                    new Uint8Array(meta.nSlices * meta.height * meta.width)
+                paintStroke({ fileKey, mask, meta, axis, sliceIndex, points, radius, label })
+                return {
+                    h5PerFileStates: {
+                        ...state.h5PerFileStates,
+                        [fileKey]: {
+                            ...cur,
+                            annotationMask: mask,
+                            annotationVersion: (cur?.annotationVersion ?? 0) + 1,
+                        },
+                    },
+                }
+            }),
+
+        clearAnnotations: (fileKey) =>
+            set((state) => {
+                const cur = state.h5PerFileStates[fileKey]
+                if (cur?.annotationMask) clearAnnotation(fileKey, cur.annotationMask)
+                return {
+                    h5PerFileStates: {
+                        ...state.h5PerFileStates,
+                        [fileKey]: {
+                            ...cur,
+                            annotationVersion: (cur?.annotationVersion ?? 0) + 1,
+                        },
+                    },
+                }
+            }),
 
         setFilterSteps: (fileKey, filterSteps) =>
             set((state) => ({
