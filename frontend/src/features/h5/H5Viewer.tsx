@@ -54,8 +54,6 @@ const STL_OVERLAY_DIR_INTENSITY = 1.2
 const STL_OVERLAY_DIR_POSITION: [number, number, number] = [1, 2, 3]
 
 // Scene framing, expressed as multiples of the volume's largest dimension (maxDim).
-const AXES_HELPER_SCALE = 0.7
-const AXIS_LABEL_LENGTH_SCALE = 0.78
 const AXIS_LABEL_SIZE_SCALE = 0.09
 const CAMERA_START_OFFSET: [number, number, number] = [0.5, 1.5, 1.2]
 const CAMERA_NEAR_FACTOR = 0.001
@@ -127,18 +125,36 @@ export default function H5Viewer({
             initialRc.h5Threshold,
         )
 
+        // Colormap state is per-file and must survive geometry rebuilds (e.g. after
+        // a filter replaces the volume data). Read it imperatively here so a rebuilt
+        // material starts with the user's chosen colormap instead of the gray default;
+        // the dedicated colormap effects below keep it in sync on later changes.
+        const initialPerFile = useViewerStore.getState().h5PerFileStates[fileKey]
+        const initialColormap = initialPerFile?.sliceColormap ?? 'gray'
+        const [initialColormapMin, initialColormapMax] =
+            initialPerFile?.sliceColormapRange ?? DEFAULT_COLORMAP_RANGE
+        const initialColorByDepth = initialPerFile?.colorByDepth ?? false
+        const colormapToInt = (c: typeof initialColormap) => (c === 'jet' ? 1 : c === 'hot' ? 2 : 0)
+
         // Group all axis decorations so visibility can be toggled with one flag.
+        // The group sits at the box's min corner so the origin coincides with a
+        // corner of the green bounding box (instead of its centre); each axis then
+        // runs along the box edge into the +X / +Y / +Z directions.
+        const axisLengths: [number, number, number] = [width, initialRc.volumeSpacing, height]
         const axesGroup = new THREE.Group()
+        axesGroup.position.set(-width / 2, -initialRc.volumeSpacing / 2, -height / 2)
         axesGroup.visible = useViewerStore.getState().axesVisible
         scene.add(axesGroup)
         axesGroupRef.current = axesGroup
 
-        const axes = new THREE.AxesHelper(maxDim * AXES_HELPER_SCALE)
+        // AxesHelper draws unit-length lines from its origin along +X/+Y/+Z; scaling
+        // it per-axis makes each line span the full corresponding box edge.
+        const axes = new THREE.AxesHelper(1)
+        axes.scale.set(axisLengths[0], axisLengths[1], axisLengths[2])
         axesGroup.add(axes)
 
-        const axisLen = maxDim * AXIS_LABEL_LENGTH_SCALE
         const labelScale = maxDim * AXIS_LABEL_SIZE_SCALE
-        const axisLabels = createAxisLabels(axesGroup, axisLen, labelScale)
+        const axisLabels = createAxisLabels(axesGroup, axisLengths, labelScale)
         const voxelSizeUm =
             useViewerStore.getState().h5PerFileStates[fileKey]?.sliceVoxelSizeUm ??
             DEFAULT_VOXEL_SIZE_UM
@@ -168,10 +184,10 @@ export default function H5Viewer({
                 uWidthMax: { value: initialRc.h5WidthRange[1] },
                 uHeightMin: { value: initialRc.h5HeightRange[0] },
                 uHeightMax: { value: initialRc.h5HeightRange[1] },
-                uColormap: { value: 0 },
-                uColormapMin: { value: 0 },
-                uColormapMax: { value: 1 },
-                uColorByDepth: { value: 0 },
+                uColormap: { value: colormapToInt(initialColormap) },
+                uColormapMin: { value: initialColormapMin },
+                uColormapMax: { value: initialColormapMax },
+                uColorByDepth: { value: initialColorByDepth ? 1 : 0 },
                 uIntensityFloor: { value: initialFloor },
                 uIntensityCeil: { value: initialCeil },
             },
@@ -481,7 +497,10 @@ export default function H5Viewer({
         <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
             <Box ref={containerRef} sx={{ width: '100%', height: '100%' }} />
             <ZoomModeButton active={zoomToCursor} onToggle={toggleZoomToCursor} />
-            <Tooltip title={axesVisible ? 'Achsen ausblenden' : 'Achsen einblenden'} placement="left">
+            <Tooltip
+                title={axesVisible ? 'Achsen ausblenden' : 'Achsen einblenden'}
+                placement="left"
+            >
                 <IconButton
                     size="small"
                     onClick={toggleAxesVisible}

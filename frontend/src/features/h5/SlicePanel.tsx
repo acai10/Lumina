@@ -618,7 +618,15 @@ export const SlicePanel = memo(function SlicePanel({
             </Tooltip>
 
             {/* Canvas + colorbar row — colorbar lives outside the image area so it never overlaps content */}
-            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden', minHeight: 0 }}>
+            <Box
+                sx={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'row',
+                    overflow: 'hidden',
+                    minHeight: 0,
+                }}
+            >
                 {/* Canvas area */}
                 <Box
                     ref={canvasWrapperRef}
@@ -660,7 +668,9 @@ export const SlicePanel = memo(function SlicePanel({
                         flexShrink: 0,
                     }}
                 >
-                    <Typography sx={{ fontSize: '0.48rem', lineHeight: 1, opacity: 0.65, color: '#fff' }}>
+                    <Typography
+                        sx={{ fontSize: '0.48rem', lineHeight: 1, opacity: 0.65, color: '#fff' }}
+                    >
                         255
                     </Typography>
                     <Box
@@ -673,7 +683,9 @@ export const SlicePanel = memo(function SlicePanel({
                             borderRadius: 0.5,
                         }}
                     />
-                    <Typography sx={{ fontSize: '0.48rem', lineHeight: 1, opacity: 0.65, color: '#fff' }}>
+                    <Typography
+                        sx={{ fontSize: '0.48rem', lineHeight: 1, opacity: 0.65, color: '#fff' }}
+                    >
                         0
                     </Typography>
                 </Box>

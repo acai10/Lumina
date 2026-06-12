@@ -19,16 +19,21 @@ export function useFilterJob(
     backendVolumeId?: string,
     registeredVolumeId?: string,
 ) {
-    const { setFilteringState, applyBackendFilter, saveFilterSnapshot, setFilterApplied, setNotification } =
-        useViewerStore(
-            useShallow((s) => ({
-                setFilteringState: s.setFilteringState,
-                applyBackendFilter: s.applyBackendFilter,
-                saveFilterSnapshot: s.saveFilterSnapshot,
-                setFilterApplied: s.setFilterApplied,
-                setNotification: s.setNotification,
-            })),
-        )
+    const {
+        setFilteringState,
+        applyBackendFilter,
+        saveFilterSnapshot,
+        setFilterApplied,
+        setNotification,
+    } = useViewerStore(
+        useShallow((s) => ({
+            setFilteringState: s.setFilteringState,
+            applyBackendFilter: s.applyBackendFilter,
+            saveFilterSnapshot: s.saveFilterSnapshot,
+            setFilterApplied: s.setFilterApplied,
+            setNotification: s.setNotification,
+        })),
+    )
 
     const [phase, setPhase] = useState<FilterPhase>('idle')
     const [error, setError] = useState<string | null>(null)

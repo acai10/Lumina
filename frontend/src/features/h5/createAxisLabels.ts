@@ -17,8 +17,8 @@ const AXIS_DEFINITIONS = [
 
 const TICK_NICE_UM = [25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000]
 
-function niceIntervalUm(halfExtentUm: number): number {
-    const raw = halfExtentUm / 3
+function niceIntervalUm(fullExtentUm: number): number {
+    const raw = fullExtentUm / 6
     return TICK_NICE_UM.find((v) => v >= raw) ?? TICK_NICE_UM[TICK_NICE_UM.length - 1]
 }
 
@@ -54,17 +54,21 @@ function makeTickSprite(
     return [sprite]
 }
 
+/** Place each axis label a little beyond the end of its own edge. */
+const AXIS_LABEL_OVERSHOOT = 1.06
+
 /**
  * Create X/Y/Z axis label sprites and add them to *scene*.
  *
  * @param scene  - Three.js scene to add sprites to.
- * @param axisLen - Distance from origin to place each label.
+ * @param axisLengths - Per-axis edge lengths ``[lenX, lenY, lenZ]`` in scene units;
+ *   each label is placed just past the end of its corresponding edge.
  * @param labelScale - Uniform sprite scale in world units.
  * @returns Array of created sprites (caller is responsible for disposal on unmount).
  */
 export function createAxisLabels(
     scene: THREE.Object3D,
-    axisLen: number,
+    axisLengths: readonly [number, number, number],
     labelScale: number,
 ): THREE.Sprite[] {
     return AXIS_DEFINITIONS.flatMap(({ text, color, pos }) => {
@@ -81,7 +85,11 @@ export function createAxisLabels(
         const texture = new THREE.CanvasTexture(canvas)
         const mat = new THREE.SpriteMaterial({ map: texture, depthTest: false })
         const sprite = new THREE.Sprite(mat)
-        sprite.position.set(pos[0] * axisLen, pos[1] * axisLen, pos[2] * axisLen)
+        sprite.position.set(
+            pos[0] * axisLengths[0] * AXIS_LABEL_OVERSHOOT,
+            pos[1] * axisLengths[1] * AXIS_LABEL_OVERSHOOT,
+            pos[2] * axisLengths[2] * AXIS_LABEL_OVERSHOOT,
+        )
         sprite.scale.setScalar(labelScale)
         scene.add(sprite)
         return [sprite]
@@ -91,8 +99,9 @@ export function createAxisLabels(
 /**
  * Create numeric tick label sprites along X, Y, Z axes and add them to *scene*.
  *
- * Ticks are placed along the positive half of each axis at physically meaningful
- * intervals derived from voxelSizeUm and the volume dimensions.
+ * Ticks are placed along the full length of each axis (the origin sits at the
+ * box's min corner) at physically meaningful intervals derived from voxelSizeUm
+ * and the volume dimensions.
  *
  * @param scene          - Three.js scene to add sprites to.
  * @param meta           - Volume dimensions {nSlices, height, width}.
@@ -115,10 +124,10 @@ export function createAxisTickLabels(
     const off = labelScale * 0.9
     const sprites: THREE.Sprite[] = []
 
-    // X axis: scene units = pixels, 1 su = dx µm; range [-width/2, width/2]
-    const xHalfUm = (width / 2) * dx
-    const xInterval = niceIntervalUm(xHalfUm)
-    for (let um = xInterval; um <= xHalfUm + 1; um += xInterval) {
+    // X axis: scene units = pixels, 1 su = dx µm; range [0, width]
+    const xFullUm = width * dx
+    const xInterval = niceIntervalUm(xFullUm)
+    for (let um = xInterval; um <= xFullUm + 1; um += xInterval) {
         const su = um / dx
         sprites.push(
             ...makeTickSprite(
@@ -131,10 +140,10 @@ export function createAxisTickLabels(
         )
     }
 
-    // Z axis: scene units = pixels, 1 su = dy µm; range [-height/2, height/2]
-    const zHalfUm = (height / 2) * dy
-    const zInterval = niceIntervalUm(zHalfUm)
-    for (let um = zInterval; um <= zHalfUm + 1; um += zInterval) {
+    // Z axis: scene units = pixels, 1 su = dy µm; range [0, height]
+    const zFullUm = height * dy
+    const zInterval = niceIntervalUm(zFullUm)
+    for (let um = zInterval; um <= zFullUm + 1; um += zInterval) {
         const su = um / dy
         sprites.push(
             ...makeTickSprite(
@@ -147,11 +156,11 @@ export function createAxisTickLabels(
         )
     }
 
-    // Y axis: 1 su = (dz * nSlices / volumeSpacing) µm; range [-vS/2, vS/2]
+    // Y axis: 1 su = (dz * nSlices / volumeSpacing) µm; range [0, volumeSpacing]
     const yUmPerSU = (dz * nSlices) / volumeSpacing
-    const yHalfUm = (volumeSpacing / 2) * yUmPerSU
-    const yInterval = niceIntervalUm(yHalfUm)
-    for (let um = yInterval; um <= yHalfUm + 1; um += yInterval) {
+    const yFullUm = volumeSpacing * yUmPerSU
+    const yInterval = niceIntervalUm(yFullUm)
+    for (let um = yInterval; um <= yFullUm + 1; um += yInterval) {
         const su = um / yUmPerSU
         sprites.push(
             ...makeTickSprite(

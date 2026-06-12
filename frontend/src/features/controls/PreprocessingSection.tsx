@@ -312,7 +312,9 @@ export function PreprocessingSection() {
 
             {/* Compare toggle */}
             {filterApplied && (
-                <Tooltip title={showingComparison ? 'Gefiltertes Bild anzeigen' : 'Original anzeigen'}>
+                <Tooltip
+                    title={showingComparison ? 'Gefiltertes Bild anzeigen' : 'Original anzeigen'}
+                >
                     <span style={{ width: '100%' }}>
                         <Button
                             size="small"

@@ -10,6 +10,7 @@ import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import { palette } from '../../shared/theme/palette'
 import { cleanupUploads, registerLocalVolume, registerLocalVolumesBatch } from '../../shared/api'
 import { REGISTRATION_METHOD } from '../../shared/api/types'
@@ -54,6 +55,7 @@ export default function StitcherPanel() {
     const [method, setMethod] = useState<RegistrationMethod>(REGISTRATION_METHOD.PHASE_CORRELATION)
     const [serverDialogOpen, setServerDialogOpen] = useState(false)
     const { phase, sessionStatus, error, run, reset } = useStitchSession()
+    const toggleStitchPanel = useViewerStore((s) => s.toggleStitchPanel)
     const {
         volumes: serverVolumes,
         loading: serverVolumesLoading,
@@ -196,16 +198,33 @@ export default function StitcherPanel() {
                 >
                     Volume Stitching
                 </Typography>
-                {(configs.length > 0 || phase !== 'idle') && (
-                    <Button
-                        size="small"
-                        variant="text"
-                        onClick={handleReset}
-                        sx={{ color: palette.danger, fontSize: '0.72rem', minWidth: 0 }}
-                    >
-                        Clear
-                    </Button>
-                )}
+                <Stack direction="row" alignItems="center" spacing={0.5}>
+                    {(configs.length > 0 || phase !== 'idle') && (
+                        <Button
+                            size="small"
+                            variant="text"
+                            onClick={handleReset}
+                            sx={{ color: palette.danger, fontSize: '0.72rem', minWidth: 0 }}
+                        >
+                            Clear
+                        </Button>
+                    )}
+                    <Tooltip title="Einklappen">
+                        <IconButton
+                            size="small"
+                            onClick={toggleStitchPanel}
+                            sx={{
+                                color: palette.textMuted,
+                                '&:hover': {
+                                    color: palette.primary,
+                                    background: palette.primarySoft,
+                                },
+                            }}
+                        >
+                            <ChevronRightIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                    </Tooltip>
+                </Stack>
             </Stack>
 
             {/* File upload */}
