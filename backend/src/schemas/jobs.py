@@ -10,6 +10,10 @@ class FilterStep(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
 
 
+class FilterRequest(BaseModel):
+    filter_chain: list[FilterStep] = Field(default_factory=list)
+
+
 class JobRequest(BaseModel):
     volume_id: str
     filter_chain: list[FilterStep] = Field(default_factory=list)

@@ -218,6 +218,24 @@ export async function filterSessionVolume(
 }
 
 /**
+ * Apply a filter chain to a stored/registered volume via the lean preprocessing
+ * endpoint. Unlike the job pipeline this runs no stitcher and computes no metrics,
+ * so it returns the filtered (positionally unchanged) volume in a single request —
+ * no polling. Result is the render-ready normalised binary.
+ */
+export async function filterVolume(
+    volumeId: string,
+    filterChain: FilterStep[],
+): Promise<H5VolumeData> {
+    const res = await fetch(`${BASE_URL}/volumes/${volumeId}/filter`, {
+        method: 'POST',
+        headers: { 'Content-Type': CONTENT_TYPE_JSON },
+        body: JSON.stringify({ filter_chain: filterChain }),
+    })
+    return parseNormalizedVolume(res)
+}
+
+/**
  * Request a surface segmentation height map for `volumeId`.
  *
  * Returns an `Int32Array` of shape `(height × width)` — each value is the

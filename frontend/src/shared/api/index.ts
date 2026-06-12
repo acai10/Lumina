@@ -13,6 +13,7 @@ export {
     fetchSessionMerged,
     cleanupUploads,
     filterSessionVolume,
+    filterVolume,
 } from './client'
 export type {
     FilterType,
