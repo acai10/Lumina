@@ -313,16 +313,18 @@ export function PreprocessingSection() {
             {/* Compare toggle */}
             {filterApplied && (
                 <Tooltip title={showingComparison ? 'Gefiltertes Bild anzeigen' : 'Original anzeigen'}>
-                    <Button
-                        size="small"
-                        variant={showingComparison ? 'contained' : 'outlined'}
-                        onClick={() => setShowingComparison(fileKey, !showingComparison)}
-                        disabled={isBusy}
-                        fullWidth
-                        sx={{ fontSize: '0.65rem', py: 0.4 }}
-                    >
-                        {showingComparison ? 'Filtered' : 'Compare'}
-                    </Button>
+                    <span style={{ width: '100%' }}>
+                        <Button
+                            size="small"
+                            variant={showingComparison ? 'contained' : 'outlined'}
+                            onClick={() => setShowingComparison(fileKey, !showingComparison)}
+                            disabled={isBusy}
+                            fullWidth
+                            sx={{ fontSize: '0.65rem', py: 0.4 }}
+                        >
+                            {showingComparison ? 'Filtered' : 'Compare'}
+                        </Button>
+                    </span>
                 </Tooltip>
             )}
 
