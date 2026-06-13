@@ -14,9 +14,10 @@ import {
 import { createScene, disposeSceneGeometry } from '../../shared/three/sceneUtils'
 import { palette } from '../../shared/theme/palette'
 import { ZoomModeButton } from '../../shared/components'
-import type { H5Meta, H5TabEntry } from '../../shared/types/viewer.types'
+import type { ColormapType, H5Meta, H5TabEntry } from '../../shared/types/viewer.types'
+import { DEFAULT_COLORMAP } from '../../shared/types/viewer.types'
 import { createAxisLabels, createAxisTickLabels } from './createAxisLabels'
-import { DEFAULT_VOXEL_SIZE_UM, DEFAULT_COLORMAP_RANGE } from '../../shared/constants'
+import { DEFAULT_VOXEL_SIZE_UM, DEFAULT_COLORMAP_RANGE, UINT8_MAX } from '../../shared/constants'
 import {
     vertexShader,
     fragmentShader,
@@ -30,6 +31,15 @@ import { ANNOTATION_PALETTE } from '../annotation/annotationPalette'
 
 // Firefox caps drawArraysInstanced at 30 M vertices per draw call; leave headroom
 const MAX_VERTS_PER_DRAW = 28_000_000
+
+/** Maps a colormap name to its `uColormap` shader-uniform index. */
+const colormapToInt = (c: ColormapType): number => (c === 'jet' ? 1 : c === 'hot' ? 2 : 0)
+
+/** Minimum rendered point size (px) for the object/annotation overlays. */
+const MIN_ANNOTATION_POINT_SIZE = 2
+
+/** Highest label value in the annotation palette (palette is static). */
+const ANNOTATION_MAX_LABEL = Math.max(...ANNOTATION_PALETTE.map((c) => c.label))
 
 // Percentiles used to build the auto-fit colour window. Above-threshold OCT
 // intensities are heavily skewed toward the top, so a plain min/max window maps
@@ -133,7 +143,9 @@ export default function H5Viewer({
     const renderControls = useViewerStore(
         (s) => s.h5PerFileStates[fileKey]?.renderControls ?? defaultRenderControls,
     )
-    const sliceColormap = useViewerStore((s) => s.h5PerFileStates[fileKey]?.sliceColormap ?? 'gray')
+    const sliceColormap = useViewerStore(
+        (s) => s.h5PerFileStates[fileKey]?.sliceColormap ?? DEFAULT_COLORMAP,
+    )
     const colormapRange = useViewerStore(
         (s) => s.h5PerFileStates[fileKey]?.sliceColormapRange ?? DEFAULT_COLORMAP_RANGE,
     )
@@ -184,11 +196,10 @@ export default function H5Viewer({
         // material starts with the user's chosen colormap instead of the gray default;
         // the dedicated colormap effects below keep it in sync on later changes.
         const initialPerFile = useViewerStore.getState().h5PerFileStates[fileKey]
-        const initialColormap = initialPerFile?.sliceColormap ?? 'gray'
+        const initialColormap = initialPerFile?.sliceColormap ?? DEFAULT_COLORMAP
         const [initialColormapMin, initialColormapMax] =
             initialPerFile?.sliceColormapRange ?? DEFAULT_COLORMAP_RANGE
         const initialColorByDepth = initialPerFile?.colorByDepth ?? false
-        const colormapToInt = (c: typeof initialColormap) => (c === 'jet' ? 1 : c === 'hot' ? 2 : 0)
 
         // Group all axis decorations so visibility can be toggled with one flag.
         // The group sits at the box's min corner so the origin coincides with a
@@ -863,7 +874,7 @@ export default function H5Viewer({
             colors[p + 1] = colorByRank[ci + 1]
             colors[p + 2] = colorByRank[ci + 2]
             intensities[k] = normalizedVolume
-                ? normalizedVolume[s * sliceStride + vh * width + vw] / 255
+                ? normalizedVolume[s * sliceStride + vh * width + vw] / UINT8_MAX
                 : 1
             p += 3
             k++
@@ -962,12 +973,11 @@ export default function H5Viewer({
         const { nSlices, height, width } = meta
         const sliceStride = height * width
         // Per-label RGB (0–1) for vertex colours.
-        const maxLabel = Math.max(...ANNOTATION_PALETTE.map((c) => c.label))
-        const colorByLabel = new Float32Array((maxLabel + 1) * 3)
+        const colorByLabel = new Float32Array((ANNOTATION_MAX_LABEL + 1) * 3)
         for (const c of ANNOTATION_PALETTE) {
-            colorByLabel[c.label * 3] = c.rgb[0] / 255
-            colorByLabel[c.label * 3 + 1] = c.rgb[1] / 255
-            colorByLabel[c.label * 3 + 2] = c.rgb[2] / 255
+            colorByLabel[c.label * 3] = c.rgb[0] / UINT8_MAX
+            colorByLabel[c.label * 3 + 1] = c.rgb[1] / UINT8_MAX
+            colorByLabel[c.label * 3 + 2] = c.rgb[2] / UINT8_MAX
         }
 
         const positions = new Float32Array(indices.length * 3)
@@ -995,7 +1005,7 @@ export default function H5Viewer({
             useViewerStore.getState().h5PerFileStates[fileKey]?.renderControls ??
             defaultRenderControls
         const mat = new THREE.PointsMaterial({
-            size: Math.max(initialRc.h5PointSize, 2),
+            size: Math.max(initialRc.h5PointSize, MIN_ANNOTATION_POINT_SIZE),
             sizeAttenuation: false,
             vertexColors: true,
             depthTest: false,
@@ -1016,14 +1026,17 @@ export default function H5Viewer({
         const overlay = annotationOverlayRef.current
         if (!overlay) return
         overlay.scale.y = volumeSpacing / meta.nSlices
-        ;(overlay.material as THREE.PointsMaterial).size = Math.max(h5PointSize, 2)
+        ;(overlay.material as THREE.PointsMaterial).size = Math.max(
+            h5PointSize,
+            MIN_ANNOTATION_POINT_SIZE,
+        )
         needsRenderRef.current = true
     }, [volumeSpacing, h5PointSize, meta])
 
     useEffect(() => {
         const mat = materialRef.current
         if (!mat) return
-        mat.uniforms.uColormap.value = sliceColormap === 'jet' ? 1 : sliceColormap === 'hot' ? 2 : 0
+        mat.uniforms.uColormap.value = colormapToInt(sliceColormap)
         needsRenderRef.current = true
     }, [sliceColormap])
 

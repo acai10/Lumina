@@ -1,4 +1,5 @@
 import { palette } from '../../shared/theme/palette'
+import { eyebrowSx } from '../../shared/theme/uiTokens'
 
 const GRID_INPUT_WIDTH_PX = 68
 
@@ -21,14 +22,7 @@ export const tealOutlineButtonSx = { borderColor: palette.borderGlass, color: pa
 export const subLabelSx = { color: palette.textMuted, mb: 0.5, display: 'block' }
 
 /** Section header above the results tables (matches the app-wide eyebrow style). */
-export const sectionHeaderSx = {
-    color: palette.textSecondary,
-    fontWeight: 600,
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase' as const,
-    mb: 0.75,
-    display: 'block',
-}
+export const sectionHeaderSx = { ...eyebrowSx, mb: 0.75, display: 'block' }
 
 export const metricKeyCellSx = {
     color: palette.textMuted,

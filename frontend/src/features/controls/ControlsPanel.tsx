@@ -28,11 +28,9 @@ import {
     panelSx,
     railSx,
     headerSx,
-    headerTitleSx,
     iconButtonSx,
     controlFontSx,
     accordionSx,
-    accordionTitleSx,
     labelSx,
     NumberInput,
 } from './ControlsPanel.styles'
@@ -41,6 +39,7 @@ import { PreprocessingSection } from './PreprocessingSection'
 import CropSection from './CropSection'
 import { SliderRow, RangeSliderRow } from './SliderRow'
 import type { ColormapType, H5RenderControls } from '../../shared/types/viewer.types'
+import { DEFAULT_COLORMAP } from '../../shared/types/viewer.types'
 import { measureVolume, uploadVolume } from '../../shared/api/client'
 import type { MeasureResult } from '../../shared/api/client'
 import { eyebrowSx, microLabelSx, compactButtonSx } from '../../shared/theme/uiTokens'
@@ -86,7 +85,7 @@ function Section({
     return (
         <Accordion disableGutters defaultExpanded={defaultExpanded} sx={accordionSx}>
             <AccordionSummary expandIcon={<ExpandMoreIcon fontSize="small" sx={iconButtonSx} />}>
-                <Typography sx={accordionTitleSx}>{title}</Typography>
+                <Typography sx={eyebrowSx}>{title}</Typography>
             </AccordionSummary>
             <AccordionDetails>
                 <Stack spacing={2.5}>{children}</Stack>
@@ -171,7 +170,7 @@ export default function ControlsPanel() {
     )
 
     const sliceColormap: ColormapType =
-        (activeKey ? h5PerFileStates[activeKey]?.sliceColormap : undefined) ?? 'gray'
+        (activeKey ? h5PerFileStates[activeKey]?.sliceColormap : undefined) ?? DEFAULT_COLORMAP
     const colormapRange: [number, number] = (activeKey
         ? h5PerFileStates[activeKey]?.sliceColormapRange
         : undefined) ?? [0, 1]
@@ -230,7 +229,7 @@ export default function ControlsPanel() {
     return (
         <Stack spacing={1.5} sx={panelSx}>
             <Box sx={headerSx}>
-                <Typography sx={headerTitleSx}>CONTROLS</Typography>
+                <Typography sx={eyebrowSx}>CONTROLS</Typography>
                 <Stack direction="row" spacing={0.25}>
                     <Tooltip title="Reset">
                         <IconButton
@@ -348,7 +347,15 @@ export default function ControlsPanel() {
                                                         ...voxelSize,
                                                     ]
                                                     next[i] = v
-                                                    setVoxelSize(next)
+                                                    setVoxelSize((prev) => {
+                                                        const updated = [...prev] as [
+                                                            number,
+                                                            number,
+                                                            number,
+                                                        ]
+                                                        updated[i] = v
+                                                        return updated
+                                                    })
                                                     if (activeKey)
                                                         setSliceVoxelSizeUm(activeKey, next)
                                                 }

@@ -201,6 +201,8 @@ frontend/src/
 │   └── theme/
 │       ├── index.ts                  # barrel
 │       ├── palette.ts                # all colour tokens
+│       ├── layout.ts                 # layout dimensions (panel widths, rail width, PANEL_PADDING)
+│       ├── uiTokens.ts               # shared UI text styles: eyebrowSx, microLabelSx, compactButtonSx
 │       └── theme.ts                  # MUI medicalTheme (light mode)
 └── features/
     ├── controls/
@@ -253,7 +255,8 @@ frontend/src/
 ### Frontend conventions
 
 - **Barrel exports**: Every feature and shared folder has an `index.ts`. Import from the barrel (`'../../features/h5'`) not from deep paths, unless the file is internal to the same folder. Internal helpers (e.g. `SlicePanel`, `h5ViewerShaders`, `createAxisLabels`) are NOT exported from the barrel.
-- **Magic numbers**: module-level named constants in `SCREAMING_SNAKE_CASE` in the file that uses them (e.g. `POLL_INTERVAL_MS`, `MAX_VERTS_PER_DRAW`). Only promote to a shared `constants.ts` if used in 3+ files.
+- **Magic numbers**: module-level named constants in `SCREAMING_SNAKE_CASE` in the file that uses them (e.g. `POLL_INTERVAL_MS`, `MAX_VERTS_PER_DRAW`). Only promote to a shared `constants.ts` if used in 3+ files (e.g. `UINT8_MAX`, `DEFAULT_VOXEL_SIZE_UM`). Shared semantic defaults live with their type (e.g. `DEFAULT_COLORMAP` in `shared/types/viewer.types.ts`).
+- **UI text styles**: shared label/header `sx` objects live in `shared/theme/uiTokens.ts` — use `eyebrowSx` (uppercase section/eyebrow headers), `microLabelSx` (`0.625rem` sub-captions), and `compactButtonSx` (dense buttons) instead of hand-rolling font sizes/weights, so the type scale stays consistent across panels.
 - **Custom hooks**: extract side-effectful logic from components into `use*.ts` files. Hooks own state and async operations; components own only layout and event wiring.
 - **Three.js cleanup**: call `disposeSceneGeometry(scene)` from `shared/three/sceneUtils.ts` before `disposeBase()`. Sprite materials with canvas textures need explicit disposal before that call.
 - **VOLUME_DIMS** from `shared/h5/h5Reader.ts` is the single source of truth for `[512, 250, 250]` — derive all slider maxima from it, never hardcode.

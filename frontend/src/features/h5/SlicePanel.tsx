@@ -9,6 +9,7 @@ import type {
     H5Meta,
     ObjectLabeling,
 } from '../../shared/types/viewer.types'
+import { DEFAULT_COLORMAP } from '../../shared/types/viewer.types'
 import { objectColorRgb } from '../controls/cropObjectAnalysis'
 import { ANNOTATION_PALETTE, ANNOTATION_TINT_ALPHA } from '../annotation/annotationPalette'
 import type { StrokePoint } from '../annotation/annotationMask'
@@ -206,12 +207,24 @@ const ZOOM_STEP_FACTOR = 1.03
 const MIN_ZOOM = 1
 const MAX_ZOOM = 20
 
+/** Pointer travel (CSS px) below which a measure press counts as a click, not a drag. */
+const CLICK_DRAG_TOLERANCE_PX = 5
+/** Minimum crop-drag travel (canvas px) before a selection is registered. */
+const MIN_CROP_DRAG_PX = 2
+
 // ── Scale bar helpers ─────────────────────────────────────────────────────────
 const SCALE_NICE_UM = [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000]
+/** Target scale-bar length as a fraction of the canvas dimension. */
+const SCALE_BAR_TARGET_FRACTION = 0.28
+/** Rounds the target length down toward a "nice" value (half-step bias). */
+const SCALE_BAR_ROUND_FACTOR = 0.5
 
 function scaleBarUm(targetPx: number, umPerPx: number): number {
     const targetUm = targetPx * umPerPx
-    return SCALE_NICE_UM.find((v) => v >= targetUm * 0.5) ?? SCALE_NICE_UM[SCALE_NICE_UM.length - 1]
+    return (
+        SCALE_NICE_UM.find((v) => v >= targetUm * SCALE_BAR_ROUND_FACTOR) ??
+        SCALE_NICE_UM[SCALE_NICE_UM.length - 1]
+    )
 }
 
 function formatScaleUm(um: number): string {
@@ -239,7 +252,7 @@ function drawScaleBars(
     ctx.font = `bold ${font}px sans-serif`
 
     // ── Horizontal bar (bottom-left) ──────────────────────────────────────────
-    const hBarUm = scaleBarUm(canvasW * 0.28, hUmPerPx)
+    const hBarUm = scaleBarUm(canvasW * SCALE_BAR_TARGET_FRACTION, hUmPerPx)
     const hBarPx = hBarUm / hUmPerPx
     const hX = margin
     const hY = canvasH - margin
@@ -260,7 +273,7 @@ function drawScaleBars(
     ctx.fillText(formatScaleUm(hBarUm), hX + hBarPx / 2, hY - barH - tickLen - gap)
 
     // ── Vertical bar (top-left) ───────────────────────────────────────────────
-    const vBarUm = scaleBarUm(canvasH * 0.28, vUmPerPx)
+    const vBarUm = scaleBarUm(canvasH * SCALE_BAR_TARGET_FRACTION, vUmPerPx)
     const vBarPx = vBarUm / vUmPerPx
     const vX = margin
     const vY = margin
@@ -291,7 +304,7 @@ export const SlicePanel = memo(function SlicePanel({
     label,
     orient,
     onSliceChange,
-    colormap = 'gray',
+    colormap = DEFAULT_COLORMAP,
     colormapRange = DEFAULT_COLORMAP_RANGE,
     voxelSizeUm = DEFAULT_VOXEL_SIZE_UM,
     cropMode = false,
@@ -327,6 +340,14 @@ export const SlicePanel = memo(function SlicePanel({
     // Measurement state — local to each panel
     const [measuring, setMeasuring] = useState(false)
     const [measurePoints, setMeasurePoints] = useState<{ cx: number; cy: number }[]>([])
+
+    // Clear measurement points when the slice changes (old points no longer valid).
+    // Done during render rather than in an effect to avoid a double render on each scrub.
+    const [measuredSlice, setMeasuredSlice] = useState(sliceIndex)
+    if (measuredSlice !== sliceIndex) {
+        setMeasuredSlice(sliceIndex)
+        setMeasurePoints([])
+    }
 
     // Live crop-drag rectangle/circle in canvas coords (null when not dragging).
     const [cropDrag, setCropDrag] = useState<{
@@ -395,11 +416,6 @@ export const SlicePanel = memo(function SlicePanel({
         })
         return `linear-gradient(to top, ${stops.join(', ')})`
     }, [lut])
-
-    // Clear measurement points when the slice changes (old points no longer valid).
-    useEffect(() => {
-        setMeasurePoints([])
-    }, [sliceIndex])
 
     // Main canvas draw + segmentation overlay + measurement overlay.
     useEffect(() => {
@@ -764,8 +780,8 @@ export const SlicePanel = memo(function SlicePanel({
             if (isRectTool || isCircleTool) {
                 if (cropDrag) {
                     const moved =
-                        Math.abs(cropDrag.s.cx - cropDrag.c.cx) > 2 ||
-                        Math.abs(cropDrag.s.cy - cropDrag.c.cy) > 2
+                        Math.abs(cropDrag.s.cx - cropDrag.c.cx) > MIN_CROP_DRAG_PX ||
+                        Math.abs(cropDrag.s.cy - cropDrag.c.cy) > MIN_CROP_DRAG_PX
                     if (moved) {
                         const a = canvasToOrig(cropDrag.s.cx, cropDrag.s.cy, orient, origW, origH)
                         const b = canvasToOrig(cropDrag.c.cx, cropDrag.c.cy, orient, origW, origH)
@@ -779,7 +795,7 @@ export const SlicePanel = memo(function SlicePanel({
             if (measuring && clickStartRef.current) {
                 const dx = Math.abs(e.clientX - clickStartRef.current.x)
                 const dy = Math.abs(e.clientY - clickStartRef.current.y)
-                if (dx < 5 && dy < 5) {
+                if (dx < CLICK_DRAG_TOLERANCE_PX && dy < CLICK_DRAG_TOLERANCE_PX) {
                     const wrapper = canvasWrapperRef.current
                     const canvas = canvasRef.current
                     if (wrapper && canvas) {
@@ -981,13 +997,13 @@ export const SlicePanel = memo(function SlicePanel({
                 >
                     <Typography
                         sx={{
-                            fontSize: '0.6rem',
+                            fontSize: '0.625rem',
                             lineHeight: 1,
                             opacity: 0.65,
                             color: palette.sceneText,
                         }}
                     >
-                        255
+                        {UINT8_MAX}
                     </Typography>
                     <Box
                         sx={{
@@ -1001,7 +1017,7 @@ export const SlicePanel = memo(function SlicePanel({
                     />
                     <Typography
                         sx={{
-                            fontSize: '0.6rem',
+                            fontSize: '0.625rem',
                             lineHeight: 1,
                             opacity: 0.65,
                             color: palette.sceneText,

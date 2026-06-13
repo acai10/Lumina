@@ -27,7 +27,7 @@ import {
 /** CSS rgb() string for an object's rank colour (1-based), matching the viewers. */
 const rankColorCss = (rank: number): string => {
     const [r, g, b] = objectColorRgb(rank)
-    return `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`
+    return `rgb(${Math.round(r * UINT8_MAX)},${Math.round(g * UINT8_MAX)},${Math.round(b * UINT8_MAX)})`
 }
 
 /** Largest objects listed in the result panel before collapsing into "+N more". */

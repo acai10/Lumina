@@ -21,7 +21,7 @@ import { useStitchSession, type VolumeConfig, type StitchPhase } from './useStit
 import { StitchResults } from './StitchResults'
 import { gridTextFieldSx, subLabelSx, tealOutlineButtonSx } from './StitcherPanel.styles'
 import { STITCHER_WIDTH, PANEL_PADDING } from '../../shared/theme/layout'
-import { eyebrowSx } from '../../shared/theme/uiTokens'
+import { eyebrowSx, compactButtonSx } from '../../shared/theme/uiTokens'
 
 const PANEL_WIDTH = STITCHER_WIDTH
 const MIN_STITCH_VOLUMES = 2
@@ -196,7 +196,7 @@ export default function StitcherPanel() {
                             variant="outlined"
                             color="error"
                             onClick={handleReset}
-                            sx={{ fontSize: '0.72rem', minWidth: 0 }}
+                            sx={{ ...compactButtonSx, minWidth: 0 }}
                         >
                             Clear
                         </Button>

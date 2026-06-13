@@ -9,6 +9,11 @@ const TICK_CANVAS_W = 96
 const TICK_CANVAS_H = 40
 const TICK_FONT = 'bold 26px sans-serif'
 
+/** Tick-label sprite size relative to the axis-letter label scale. */
+const TICK_LABEL_SCALE_FACTOR = 0.55
+/** Perpendicular offset of tick labels from the axis line (× label scale). */
+const TICK_PERP_OFFSET_FACTOR = 0.9
+
 const AXIS_DEFINITIONS = [
     { text: 'X', color: palette.axisX, pos: [1, 0, 0] },
     { text: 'Y', color: palette.axisY, pos: [0, 1, 0] },
@@ -16,9 +21,11 @@ const AXIS_DEFINITIONS = [
 ] as const
 
 const TICK_NICE_UM = [25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000]
+/** Aim for roughly this many ticks per axis when picking a "nice" interval. */
+const TARGET_TICK_COUNT = 6
 
 function niceIntervalUm(fullExtentUm: number): number {
-    const raw = fullExtentUm / 6
+    const raw = fullExtentUm / TARGET_TICK_COUNT
     return TICK_NICE_UM.find((v) => v >= raw) ?? TICK_NICE_UM[TICK_NICE_UM.length - 1]
 }
 
@@ -119,9 +126,9 @@ export function createAxisTickLabels(
 ): THREE.Sprite[] {
     const [dz, dy, dx] = voxelSizeUm
     const { nSlices, height, width } = meta
-    const tickScale = labelScale * 0.55
+    const tickScale = labelScale * TICK_LABEL_SCALE_FACTOR
     // Perpendicular offset so ticks don't sit on the axis line
-    const off = labelScale * 0.9
+    const off = labelScale * TICK_PERP_OFFSET_FACTOR
     const sprites: THREE.Sprite[] = []
 
     // X axis: scene units = pixels, 1 su = dx µm; range [0, width]

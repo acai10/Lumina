@@ -147,7 +147,7 @@ export function FileListPanel() {
                                         </Typography>
                                         <Typography
                                             sx={{
-                                                fontSize: '0.65rem',
+                                                fontSize: '0.625rem',
                                                 opacity: 0.7,
                                                 flexShrink: 0,
                                                 background: palette.primarySoft,

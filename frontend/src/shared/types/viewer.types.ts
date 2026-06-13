@@ -3,6 +3,9 @@ import type { FilterType } from '../api/types'
 
 export type ColormapType = 'gray' | 'jet' | 'hot'
 
+/** Default colormap used when a tab has no explicit colormap selection. */
+export const DEFAULT_COLORMAP: ColormapType = 'gray'
+
 /** Active annotation/crop toolbar tool. `null` = no tool (pan/orbit). */
 export type AnnotationTool = 'brush' | 'eraser' | 'rectCrop' | 'circleCrop' | 'sphereCrop' | null
 

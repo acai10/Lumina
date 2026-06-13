@@ -180,7 +180,9 @@ export default function AnnotationToolbar({ activeH5 }: AnnotationToolbarProps) 
                             spacing={1}
                             sx={{ px: 0.5, minWidth: 130 }}
                         >
-                            <Typography sx={{ fontSize: '0.62rem', color: palette.sceneTextMuted }}>
+                            <Typography
+                                sx={{ fontSize: '0.625rem', color: palette.sceneTextMuted }}
+                            >
                                 Radius
                             </Typography>
                             <Slider
@@ -196,7 +198,7 @@ export default function AnnotationToolbar({ activeH5 }: AnnotationToolbarProps) 
                             />
                             <Typography
                                 sx={{
-                                    fontSize: '0.62rem',
+                                    fontSize: '0.625rem',
                                     color: palette.sceneTextMuted,
                                     minWidth: 18,
                                     textAlign: 'right',

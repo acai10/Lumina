@@ -29,6 +29,12 @@ export const MAX_ANALYSIS_VOXELS = 12_000_000
 /** Components below this size are treated as speckle noise and dropped. */
 export const MIN_OBJECT_VOXELS = 4
 
+/** Initial DFS stack capacity (entries) for the flood fill; grows on demand. */
+const INITIAL_STACK_CAPACITY = 1 << 14
+/** HSV saturation/value for generated per-object colours (vivid, fully opaque). */
+const OBJECT_COLOR_SATURATION = 0.7
+const OBJECT_COLOR_VALUE = 1.0
+
 /** HSV→RGB (all channels 0–1). h in [0,1). */
 function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
     const i = Math.floor(h * 6)
@@ -59,7 +65,7 @@ function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
 export function objectColorRgb(rank: number): [number, number, number] {
     const GOLDEN_ANGLE_DEG = 137.508
     const hue = (((rank - 1) * GOLDEN_ANGLE_DEG) % 360) / 360
-    return hsvToRgb(hue, 0.7, 1.0)
+    return hsvToRgb(hue, OBJECT_COLOR_SATURATION, OBJECT_COLOR_VALUE)
 }
 
 /**
@@ -100,7 +106,7 @@ export function analyzeRegionObjects(
     const labels = new Uint32Array(regionVoxels)
     // DFS stack as a growable typed array, reused across components — avoids the
     // per-push boxing and reallocation of a plain number[].
-    let stack = new Int32Array(1 << 14)
+    let stack = new Int32Array(INITIAL_STACK_CAPACITY)
     const components: { id: number; voxels: number }[] = []
     let nextId = 0
 

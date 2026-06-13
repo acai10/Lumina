@@ -3,6 +3,7 @@ import { Box } from '@mui/material'
 import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore, fullVolumeCropBox } from '../../app/store/viewerSlice'
 import type { H5Meta } from '../../shared/types/viewer.types'
+import { DEFAULT_COLORMAP } from '../../shared/types/viewer.types'
 import { SlicePanel } from './SlicePanel'
 import { DEFAULT_VOXEL_SIZE_UM, DEFAULT_COLORMAP_RANGE } from '../../shared/constants'
 
@@ -52,7 +53,7 @@ export default function H5SliceViewer({ normalizedVolume, meta, fileKey }: H5Sli
             setH5SliceIndex: s.setH5SliceIndex,
             setH5SliceY: s.setH5SliceY,
             setH5SliceX: s.setH5SliceX,
-            sliceColormap: s.h5PerFileStates[fileKey]?.sliceColormap ?? 'gray',
+            sliceColormap: s.h5PerFileStates[fileKey]?.sliceColormap ?? DEFAULT_COLORMAP,
             colormapRange: s.h5PerFileStates[fileKey]?.sliceColormapRange ?? DEFAULT_COLORMAP_RANGE,
             voxelSizeUm: s.h5PerFileStates[fileKey]?.sliceVoxelSizeUm ?? DEFAULT_VOXEL_SIZE_UM,
             cropMode: s.h5PerFileStates[fileKey]?.cropMode ?? false,

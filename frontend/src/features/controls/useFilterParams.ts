@@ -17,9 +17,13 @@ const BLANK_STEP = (): PipelineStep => ({
     params: { ...DEFAULT_STEP_PARAMS },
 })
 
-/** Shared empty pipeline for tabs that have not configured any steps yet. Treated
- *  as immutable — every mutation below commits a fresh array, never edits in place. */
+/** Shared empty pipeline for tabs that have not configured any steps yet. A stable
+ *  reference preserves Zustand snapshot equality; deep-frozen so this shared default
+ *  can never be mutated in place — every mutation below commits a fresh array. */
 const INITIAL_STEPS: PipelineStep[] = [BLANK_STEP()]
+Object.freeze(INITIAL_STEPS[0].params)
+Object.freeze(INITIAL_STEPS[0])
+Object.freeze(INITIAL_STEPS)
 
 /** Build a `FilterStep` from a `PipelineStep`, or `null` for type === 'none'. */
 function buildStep(step: PipelineStep): FilterStep | null {

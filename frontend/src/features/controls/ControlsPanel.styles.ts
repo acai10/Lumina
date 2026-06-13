@@ -76,14 +76,6 @@ export const headerSx = {
     mb: 0.5,
 }
 
-export const headerTitleSx = {
-    fontSize: '0.7rem',
-    fontWeight: 600,
-    letterSpacing: '0.08em',
-    color: palette.textSecondary,
-    userSelect: 'none' as const,
-}
-
 export const sliderStackSx = { width: '100%' }
 
 export const separatorSx = {
@@ -106,12 +98,4 @@ export const accordionSx = {
     '& .MuiAccordionSummary-root': { minHeight: 32, px: 0 },
     '& .MuiAccordionSummary-content': { my: 0.5 },
     '& .MuiAccordionDetails-root': { px: 0, pt: 0.5, pb: 1 },
-}
-
-export const accordionTitleSx = {
-    fontSize: '0.7rem',
-    fontWeight: 600,
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase' as const,
-    color: palette.textSecondary,
 }
