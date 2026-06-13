@@ -4,13 +4,7 @@ import type { FilterType } from '../api/types'
 export type ColormapType = 'gray' | 'jet' | 'hot'
 
 /** Active annotation/crop toolbar tool. `null` = no tool (pan/orbit). */
-export type AnnotationTool =
-    | 'brush'
-    | 'eraser'
-    | 'rectCrop'
-    | 'circleCrop'
-    | 'sphereCrop'
-    | null
+export type AnnotationTool = 'brush' | 'eraser' | 'rectCrop' | 'circleCrop' | 'sphereCrop' | null
 
 /** Crop region shape: box, circle (→ cylinder across Z), or sphere (ellipsoid). */
 export type CropShape = 'rect' | 'circle' | 'sphere'

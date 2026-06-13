@@ -151,6 +151,7 @@ export default function App() {
                                 meta={activeH5.meta}
                                 fileKey={activeH5.name}
                                 stlOverlayFile={stlOverlayTab?.file}
+                                stlOverlayName={stlOverlayTab?.name}
                             />
                         )}
 

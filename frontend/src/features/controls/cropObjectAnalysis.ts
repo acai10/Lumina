@@ -93,64 +93,88 @@ export function analyzeRegionObjects(
     // Local→global index of the box origin; local axis steps map to fixed global offsets.
     const originGlobal = z * sliceStride + y * width + x
 
-    const visited = new Uint8Array(regionVoxels)
-    // Provisional per-voxel component id (1-based, in discovery order); remapped to
+    // Provisional per-voxel component id (1-based, in discovery order), remapped to
     // size-sorted rank at the end so labels line up with the returned `objects`.
+    // `labels` doubles as the foreground "visited" marker (label !== 0), so no
+    // separate visited array is allocated — each voxel is still visited only once.
     const labels = new Uint32Array(regionVoxels)
-    const stack: number[] = []
+    // DFS stack as a growable typed array, reused across components — avoids the
+    // per-push boxing and reallocation of a plain number[].
+    let stack = new Int32Array(1 << 14)
     const components: { id: number; voxels: number }[] = []
     let nextId = 0
 
-    for (let seed = 0; seed < regionVoxels; seed++) {
-        if (visited[seed]) continue
-        const lx0 = seed % w
-        const ly0 = ((seed / w) | 0) % h
-        const lz0 = (seed / wh) | 0
-        if (normalizedVolume[originGlobal + lz0 * sliceStride + ly0 * width + lx0] < thr) {
-            visited[seed] = 1
-            continue
-        }
+    // Seed scan in (lz, ly, lx) order so the global index just increments by 1 per
+    // step — no modulo/division over the (up to 12M) region voxels.
+    let local = 0
+    for (let lz = 0; lz < d; lz++) {
+        for (let ly = 0; ly < h; ly++) {
+            let g = originGlobal + lz * sliceStride + ly * width
+            for (let lx = 0; lx < w; lx++, local++, g++) {
+                if (labels[local] !== 0 || normalizedVolume[g] < thr) continue
 
-        const id = ++nextId
-        let count = 0
-        stack.length = 0
-        stack.push(seed)
-        visited[seed] = 1
-        while (stack.length) {
-            const ci = stack.pop() as number
-            const lx = ci % w
-            const ly = ((ci / w) | 0) % h
-            const lz = (ci / wh) | 0
-            const g = originGlobal + lz * sliceStride + ly * width + lx
-            labels[ci] = id
-            count++
-            if (lx > 0 && !visited[ci - 1] && normalizedVolume[g - 1] >= thr) {
-                visited[ci - 1] = 1
-                stack.push(ci - 1)
-            }
-            if (lx < w - 1 && !visited[ci + 1] && normalizedVolume[g + 1] >= thr) {
-                visited[ci + 1] = 1
-                stack.push(ci + 1)
-            }
-            if (ly > 0 && !visited[ci - w] && normalizedVolume[g - width] >= thr) {
-                visited[ci - w] = 1
-                stack.push(ci - w)
-            }
-            if (ly < h - 1 && !visited[ci + w] && normalizedVolume[g + width] >= thr) {
-                visited[ci + w] = 1
-                stack.push(ci + w)
-            }
-            if (lz > 0 && !visited[ci - wh] && normalizedVolume[g - sliceStride] >= thr) {
-                visited[ci - wh] = 1
-                stack.push(ci - wh)
-            }
-            if (lz < d - 1 && !visited[ci + wh] && normalizedVolume[g + sliceStride] >= thr) {
-                visited[ci + wh] = 1
-                stack.push(ci + wh)
+                // New component — flood fill from this seed (6-connectivity).
+                const id = ++nextId
+                let count = 0
+                let top = 0
+                labels[local] = id
+                stack[top++] = local
+                while (top > 0) {
+                    const ci = stack[--top]
+                    const clz = (ci / wh) | 0
+                    const rem = ci - clz * wh
+                    const cly = (rem / w) | 0
+                    const clx = rem - cly * w
+                    const cg = originGlobal + clz * sliceStride + cly * width + clx
+                    count++
+
+                    // Ensure room for the up-to-6 neighbour pushes below.
+                    if (top + 6 > stack.length) {
+                        const bigger = new Int32Array(stack.length * 2)
+                        bigger.set(stack)
+                        stack = bigger
+                    }
+                    if (clx > 0 && labels[ci - 1] === 0 && normalizedVolume[cg - 1] >= thr) {
+                        labels[ci - 1] = id
+                        stack[top++] = ci - 1
+                    }
+                    if (clx < w - 1 && labels[ci + 1] === 0 && normalizedVolume[cg + 1] >= thr) {
+                        labels[ci + 1] = id
+                        stack[top++] = ci + 1
+                    }
+                    if (cly > 0 && labels[ci - w] === 0 && normalizedVolume[cg - width] >= thr) {
+                        labels[ci - w] = id
+                        stack[top++] = ci - w
+                    }
+                    if (
+                        cly < h - 1 &&
+                        labels[ci + w] === 0 &&
+                        normalizedVolume[cg + width] >= thr
+                    ) {
+                        labels[ci + w] = id
+                        stack[top++] = ci + w
+                    }
+                    if (
+                        clz > 0 &&
+                        labels[ci - wh] === 0 &&
+                        normalizedVolume[cg - sliceStride] >= thr
+                    ) {
+                        labels[ci - wh] = id
+                        stack[top++] = ci - wh
+                    }
+                    if (
+                        clz < d - 1 &&
+                        labels[ci + wh] === 0 &&
+                        normalizedVolume[cg + sliceStride] >= thr
+                    ) {
+                        labels[ci + wh] = id
+                        stack[top++] = ci + wh
+                    }
+                }
+
+                components.push({ id, voxels: count })
             }
         }
-
-        components.push({ id, voxels: count })
     }
 
     // Keep only non-speckle components, largest first; rank = final 1-based label.

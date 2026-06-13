@@ -106,8 +106,16 @@ export default function AnnotationToolbar({ activeH5 }: AnnotationToolbarProps) 
         >
             {/* Fold toggle — kept leftmost so the tool icons stay pinned to the left. */}
             <Tooltip title={expanded ? 'Einklappen' : 'Annotationswerkzeuge'} placement="bottom">
-                <IconButton size="small" onClick={() => setExpanded((v) => !v)} sx={iconBtnSx(false)}>
-                    {expanded ? <ChevronRightIcon fontSize="small" /> : <EditIcon fontSize="small" />}
+                <IconButton
+                    size="small"
+                    onClick={() => setExpanded((v) => !v)}
+                    sx={iconBtnSx(false)}
+                >
+                    {expanded ? (
+                        <ChevronRightIcon fontSize="small" />
+                    ) : (
+                        <EditIcon fontSize="small" />
+                    )}
                 </IconButton>
             </Tooltip>
 

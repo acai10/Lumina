@@ -28,6 +28,13 @@ import type {
 /** Default brush/eraser radius in voxels. */
 export const DEFAULT_BRUSH_RADIUS = 6
 
+/** Rigid+scale transform of an STL overlay relative to the volume, for registration. */
+export interface StlOverlayTransform {
+    position: [number, number, number]
+    quaternion: [number, number, number, number]
+    scale: [number, number, number]
+}
+
 /** Crop box covering the whole volume (the default selection). */
 export const fullVolumeCropBox = (meta: {
     nSlices: number
@@ -122,6 +129,14 @@ interface ViewerState {
     isLoading: boolean
     notification: AppNotification | null
     stlOpacity: number
+    /** When true, a transform gizmo is shown on the STL overlay for registration. */
+    stlGizmoActive: boolean
+    /** Active STL gizmo mode: move / rotate / scale. */
+    stlGizmoMode: 'translate' | 'rotate' | 'scale'
+    /** Per-STL-tab overlay transform (so registration survives view/overlay switches). */
+    stlOverlayTransforms: Record<string, StlOverlayTransform>
+    /** Monotonic counter; bumping it tells the viewer to reset the STL overlay pose. */
+    stlOverlayResetGen: number
     stitchPanelOpen: boolean
     controlsPanelOpen: boolean
     fileListPanelOpen: boolean
@@ -217,6 +232,11 @@ interface ViewerState {
     setNotification: (n: AppNotification) => void
     clearNotification: () => void
     setStlOpacity: (v: number) => void
+    setStlGizmoActive: (v: boolean) => void
+    setStlGizmoMode: (m: 'translate' | 'rotate' | 'scale') => void
+    setStlOverlayTransform: (name: string, t: StlOverlayTransform) => void
+    /** Bumped to ask the viewer to reset the active STL overlay back to identity. */
+    requestStlOverlayReset: () => void
     toggleZoomToCursor: () => void
     toggleAxesVisible: () => void
     reset: () => void
@@ -231,6 +251,10 @@ const initialState = {
     isLoading: false,
     notification: null,
     stlOpacity: DEFAULT_STL_OPACITY,
+    stlGizmoActive: false,
+    stlGizmoMode: 'translate' as 'translate' | 'rotate' | 'scale',
+    stlOverlayTransforms: {} as Record<string, StlOverlayTransform>,
+    stlOverlayResetGen: 0,
     stitchPanelOpen: false,
     fileListPanelOpen: false,
     controlsPanelOpen: true,
@@ -704,8 +728,7 @@ export const useViewerStore = create<ViewerState>((set, get) => {
             set((state) => {
                 const cur = state.h5PerFileStates[fileKey]
                 const mask =
-                    cur?.annotationMask ??
-                    new Uint8Array(meta.nSlices * meta.height * meta.width)
+                    cur?.annotationMask ?? new Uint8Array(meta.nSlices * meta.height * meta.width)
                 paintStroke({ fileKey, mask, meta, axis, sliceIndex, points, radius, label })
                 return {
                     h5PerFileStates: {
@@ -861,6 +884,12 @@ export const useViewerStore = create<ViewerState>((set, get) => {
         setNotification: (notification) => set({ notification }),
         clearNotification: () => set({ notification: null }),
         setStlOpacity: (stlOpacity) => set({ stlOpacity }),
+        setStlGizmoActive: (stlGizmoActive) => set({ stlGizmoActive }),
+        setStlGizmoMode: (stlGizmoMode) => set({ stlGizmoMode }),
+        setStlOverlayTransform: (name, t) =>
+            set((s) => ({ stlOverlayTransforms: { ...s.stlOverlayTransforms, [name]: t } })),
+        requestStlOverlayReset: () =>
+            set((s) => ({ stlOverlayResetGen: (s.stlOverlayResetGen + 1) % 1000 })),
         reset: () => {
             void clearVolumes()
             persisted.clear()

@@ -106,6 +106,11 @@ export default function ControlsPanel() {
         resetFileControls,
         stlOverlayIndex,
         setStlOverlayIndex,
+        stlGizmoActive,
+        stlGizmoMode,
+        setStlGizmoActive,
+        setStlGizmoMode,
+        requestStlOverlayReset,
         controlsPanelOpen,
         toggleControlsPanel,
         setSliceColormap,
@@ -127,6 +132,11 @@ export default function ControlsPanel() {
             resetFileControls: s.resetFileControls,
             stlOverlayIndex: s.stlOverlayIndex,
             setStlOverlayIndex: s.setStlOverlayIndex,
+            stlGizmoActive: s.stlGizmoActive,
+            stlGizmoMode: s.stlGizmoMode,
+            setStlGizmoActive: s.setStlGizmoActive,
+            setStlGizmoMode: s.setStlGizmoMode,
+            requestStlOverlayReset: s.requestStlOverlayReset,
             controlsPanelOpen: s.controlsPanelOpen,
             toggleControlsPanel: s.toggleControlsPanel,
             setSliceColormapRange: s.setSliceColormapRange,
@@ -467,40 +477,109 @@ export default function ControlsPanel() {
                                     onChange={(v) => updateControls({ h5HeightRange: v })}
                                 />
                             </Section>
-                            {stlTabs.length > 0 && (
-                                <Section title="STL OVERLAY" defaultExpanded={false}>
-                                    <Select
-                                        size="small"
-                                        value={stlOverlayIndex ?? NO_OVERLAY_SENTINEL}
-                                        onChange={(e) => {
-                                            const v = Number(e.target.value)
-                                            setStlOverlayIndex(v === NO_OVERLAY_SENTINEL ? null : v)
-                                        }}
-                                        sx={controlFontSx}
+                            <Section title="STL OVERLAY" defaultExpanded={false}>
+                                {stlTabs.length === 0 ? (
+                                    <Typography
+                                        sx={{ ...labelSx, opacity: 0.6, fontSize: '0.62rem' }}
                                     >
-                                        <MenuItem value={NO_OVERLAY_SENTINEL} sx={controlFontSx}>
-                                            None
-                                        </MenuItem>
-                                        {stlTabs.map(({ tab, index }) => (
+                                        Lade eine STL-Datei („Load STL" oben), um sie über das
+                                        Volumen zu legen.
+                                    </Typography>
+                                ) : (
+                                    <>
+                                        <Select
+                                            size="small"
+                                            value={stlOverlayIndex ?? NO_OVERLAY_SENTINEL}
+                                            onChange={(e) => {
+                                                const v = Number(e.target.value)
+                                                setStlOverlayIndex(
+                                                    v === NO_OVERLAY_SENTINEL ? null : v,
+                                                )
+                                            }}
+                                            sx={controlFontSx}
+                                        >
                                             <MenuItem
-                                                key={tab.name}
-                                                value={index}
+                                                value={NO_OVERLAY_SENTINEL}
                                                 sx={controlFontSx}
                                             >
-                                                {tab.name}
+                                                None
                                             </MenuItem>
-                                        ))}
-                                    </Select>
-                                    {stlOverlayIndex !== null && (
-                                        <SliderRow
-                                            label="STL opacity"
-                                            value={stlOpacity}
-                                            {...RENDER_CONTROL_LIMITS.stlOpacity}
-                                            onChange={setStlOpacity}
-                                        />
-                                    )}
-                                </Section>
-                            )}
+                                            {stlTabs.map(({ tab, index }) => (
+                                                <MenuItem
+                                                    key={tab.name}
+                                                    value={index}
+                                                    sx={controlFontSx}
+                                                >
+                                                    {tab.name}
+                                                </MenuItem>
+                                            ))}
+                                        </Select>
+                                        {stlOverlayIndex !== null && (
+                                            <>
+                                                <SliderRow
+                                                    label="STL opacity"
+                                                    value={stlOpacity}
+                                                    {...RENDER_CONTROL_LIMITS.stlOpacity}
+                                                    onChange={setStlOpacity}
+                                                />
+                                                {/* Registration gizmo: position/rotate/scale
+                                                    the overlay onto the volume. */}
+                                                <ToggleButton
+                                                    value="align"
+                                                    selected={stlGizmoActive}
+                                                    size="small"
+                                                    onChange={() =>
+                                                        setStlGizmoActive(!stlGizmoActive)
+                                                    }
+                                                    sx={{
+                                                        fontSize: '0.6rem',
+                                                        py: 0.3,
+                                                        textTransform: 'none',
+                                                        alignSelf: 'flex-start',
+                                                    }}
+                                                >
+                                                    Ausrichten
+                                                </ToggleButton>
+                                                {stlGizmoActive && (
+                                                    <Stack spacing={0.75}>
+                                                        <ToggleButtonGroup
+                                                            exclusive
+                                                            size="small"
+                                                            value={stlGizmoMode}
+                                                            onChange={(_, v) =>
+                                                                v && setStlGizmoMode(v)
+                                                            }
+                                                            sx={{ alignSelf: 'flex-start' }}
+                                                        >
+                                                            <ToggleButton value="translate">
+                                                                Verschieben
+                                                            </ToggleButton>
+                                                            <ToggleButton value="rotate">
+                                                                Drehen
+                                                            </ToggleButton>
+                                                            <ToggleButton value="scale">
+                                                                Skalieren
+                                                            </ToggleButton>
+                                                        </ToggleButtonGroup>
+                                                        <Button
+                                                            size="small"
+                                                            variant="outlined"
+                                                            onClick={() => requestStlOverlayReset()}
+                                                            sx={{
+                                                                fontSize: '0.65rem',
+                                                                py: 0.4,
+                                                                alignSelf: 'flex-start',
+                                                            }}
+                                                        >
+                                                            Ausrichtung zurücksetzen
+                                                        </Button>
+                                                    </Stack>
+                                                )}
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </Section>
                         </>
                     )}
                 </>

@@ -71,7 +71,11 @@ export function usePipeline(fileKey: string) {
         commit(steps.map((s, i) => (i === index ? { ...s, type } : s)))
 
     const updateStepParam = (index: number, key: keyof StepParams, value: number) =>
-        commit(steps.map((s, i) => (i === index ? { ...s, params: { ...s.params, [key]: value } } : s)))
+        commit(
+            steps.map((s, i) =>
+                i === index ? { ...s, params: { ...s.params, [key]: value } } : s,
+            ),
+        )
 
     const buildFilterChain = (): FilterStep[] =>
         steps.flatMap((s) => {

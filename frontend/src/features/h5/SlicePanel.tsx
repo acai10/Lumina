@@ -343,8 +343,7 @@ export const SlicePanel = memo(function SlicePanel({
     const isPaintTool = !measuring && (activeTool === 'brush' || activeTool === 'eraser')
     const isRectTool = !measuring && activeTool === 'rectCrop'
     // Circle and sphere crops both drag out a 2D ellipse on the slice.
-    const isCircleTool =
-        !measuring && (activeTool === 'circleCrop' || activeTool === 'sphereCrop')
+    const isCircleTool = !measuring && (activeTool === 'circleCrop' || activeTool === 'sphereCrop')
     const paintLabel = activeTool === 'eraser' ? 0 : activeColorLabel
 
     const { brightness, contrast } = useViewerStore(
@@ -481,7 +480,9 @@ export const SlicePanel = memo(function SlicePanel({
                             const rank = labels[lz * box.w * box.h + ly * box.w + lx]
                             if (rank > 0) {
                                 const ci = rank * 3
-                                r = r * (1 - OBJECT_TINT_ALPHA) + objColorLut[ci] * OBJECT_TINT_ALPHA
+                                r =
+                                    r * (1 - OBJECT_TINT_ALPHA) +
+                                    objColorLut[ci] * OBJECT_TINT_ALPHA
                                 g =
                                     g * (1 - OBJECT_TINT_ALPHA) +
                                     objColorLut[ci + 1] * OBJECT_TINT_ALPHA
@@ -497,7 +498,9 @@ export const SlicePanel = memo(function SlicePanel({
                         const lab = annotationMask[volIdx]
                         if (lab > 0 && lab <= ANNO_LUT_MAX) {
                             const ai = lab * 3
-                            r = r * (1 - ANNOTATION_TINT_ALPHA) + ANNO_LUT[ai] * ANNOTATION_TINT_ALPHA
+                            r =
+                                r * (1 - ANNOTATION_TINT_ALPHA) +
+                                ANNO_LUT[ai] * ANNOTATION_TINT_ALPHA
                             g =
                                 g * (1 - ANNOTATION_TINT_ALPHA) +
                                 ANNO_LUT[ai + 1] * ANNOTATION_TINT_ALPHA
@@ -739,7 +742,15 @@ export const SlicePanel = memo(function SlicePanel({
             panRef.current = { x: panRef.current.x + dx, y: panRef.current.y + dy }
             applyTransform()
         },
-        [applyTransform, isPaintTool, isRectTool, isCircleTool, cropDrag, paintAtEvent, eventToCanvas],
+        [
+            applyTransform,
+            isPaintTool,
+            isRectTool,
+            isCircleTool,
+            cropDrag,
+            paintAtEvent,
+            eventToCanvas,
+        ],
     )
 
     const handleMouseUp = useCallback(

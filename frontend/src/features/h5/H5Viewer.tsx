@@ -65,7 +65,6 @@ const OBJECT_OVERLAY_RENDER_ORDER = 999
 
 // STL overlay appearance: a semi-transparent blue mesh lit by its own ambient + key light.
 const STL_OVERLAY_COLOR = 0x88aaff
-const STL_OVERLAY_OPACITY = 0.4
 const STL_OVERLAY_LIGHT_COLOR = 0xffffff
 const STL_OVERLAY_AMBIENT_INTENSITY = 0.6
 const STL_OVERLAY_DIR_INTENSITY = 1.2
@@ -83,6 +82,8 @@ interface H5ViewerProps {
     meta: H5Meta
     fileKey: string
     stlOverlayFile?: File
+    /** Name of the overlaid STL tab — keys its persisted registration transform. */
+    stlOverlayName?: string
 }
 
 export default function H5Viewer({
@@ -91,6 +92,7 @@ export default function H5Viewer({
     meta,
     fileKey,
     stlOverlayFile,
+    stlOverlayName,
 }: H5ViewerProps) {
     const containerRef = useRef<HTMLDivElement>(null)
     // Persistent canvas survives StrictMode cleanup so the same WebGL context is
@@ -116,6 +118,13 @@ export default function H5Viewer({
     const cropSphereGroupRef = useRef<THREE.Group | null>(null)
     // Translate gizmo (TransformControls) for moving the crop shape in 3D space.
     const transformControlsRef = useRef<TransformControls | null>(null)
+    // STL overlay mesh group, its material, and its registration gizmo.
+    const stlGroupRef = useRef<THREE.Group | null>(null)
+    const stlMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null)
+    const stlGizmoRef = useRef<TransformControls | null>(null)
+    // Uniform scale that fits the loaded STL inside the green volume box (the default
+    // pose, and the target of "reset alignment").
+    const stlAutoFitRef = useRef(1)
     const axesGroupRef = useRef<THREE.Group | null>(null)
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
     const controlsRef = useRef<OrbitControls | null>(null)
@@ -141,6 +150,9 @@ export default function H5Viewer({
         (s) => s.h5PerFileStates[fileKey]?.annotationVersion ?? 0,
     )
     const cropShape = useViewerStore((s) => s.h5PerFileStates[fileKey]?.cropShape ?? 'rect')
+    const stlOpacity = useViewerStore((s) => s.stlOpacity)
+    const stlGizmoActive = useViewerStore((s) => s.stlGizmoActive)
+    const stlGizmoMode = useViewerStore((s) => s.stlGizmoMode)
 
     useEffect(() => {
         const container = containerRef.current
@@ -454,6 +466,8 @@ export default function H5Viewer({
         const lights: THREE.Light[] = []
         let reader: FileReader | null = null
 
+        let gizmo: TransformControls | null = null
+
         if (stlOverlayFile) {
             const loader = new STLLoader()
             reader = new FileReader()
@@ -465,18 +479,54 @@ export default function H5Viewer({
                 const center = new THREE.Vector3()
                 const bb = geo.boundingBox
                 if (!bb) return
+                const stlSize = new THREE.Vector3()
+                bb.getSize(stlSize)
                 bb.getCenter(center)
                 geo.translate(-center.x, -center.y, -center.z)
+
+                // Uniform scale that fits the STL inside the green box
+                // (width × volumeSpacing × height world extents).
+                const rc =
+                    useViewerStore.getState().h5PerFileStates[fileKey]?.renderControls ??
+                    defaultRenderControls
+                const boxExtent: [number, number, number] = [
+                    meta.width,
+                    rc.volumeSpacing,
+                    meta.height,
+                ]
+                const ratios = [
+                    stlSize.x > 0 ? boxExtent[0] / stlSize.x : 1,
+                    stlSize.y > 0 ? boxExtent[1] / stlSize.y : 1,
+                    stlSize.z > 0 ? boxExtent[2] / stlSize.z : 1,
+                ]
+                const fit = Math.min(...ratios) || 1
+                stlAutoFitRef.current = fit
 
                 const mat = new THREE.MeshStandardMaterial({
                     color: STL_OVERLAY_COLOR,
                     transparent: true,
-                    opacity: STL_OVERLAY_OPACITY,
+                    // Honour the live opacity slider (read imperatively at build time;
+                    // the dedicated effect below keeps it in sync afterwards).
+                    opacity: useViewerStore.getState().stlOpacity,
                     side: THREE.DoubleSide,
                     depthWrite: false,
                 })
                 stlMeshGroup.add(new THREE.Mesh(geo, mat))
+                // Restore the saved registration transform for this STL, if any.
+                const saved = stlOverlayName
+                    ? useViewerStore.getState().stlOverlayTransforms[stlOverlayName]
+                    : undefined
+                if (saved) {
+                    stlMeshGroup.position.fromArray(saved.position)
+                    stlMeshGroup.quaternion.fromArray(saved.quaternion)
+                    stlMeshGroup.scale.fromArray(saved.scale)
+                } else {
+                    // No manual registration yet → auto-fit to the green box.
+                    stlMeshGroup.scale.setScalar(fit)
+                }
                 scene.add(stlMeshGroup)
+                stlGroupRef.current = stlMeshGroup
+                stlMaterialRef.current = mat
 
                 const ambient = new THREE.AmbientLight(
                     STL_OVERLAY_LIGHT_COLOR,
@@ -489,6 +539,41 @@ export default function H5Viewer({
                 dir.position.set(...STL_OVERLAY_DIR_POSITION)
                 lights.push(ambient, dir)
                 lights.forEach((l) => scene.add(l))
+
+                // Registration gizmo — persists the transform to the store per STL tab.
+                const camera = cameraRef.current
+                const controls = controlsRef.current
+                const dom = canvasRef.current
+                if (camera && controls && dom) {
+                    gizmo = new TransformControls(camera, dom)
+                    gizmo.setMode(useViewerStore.getState().stlGizmoMode)
+                    gizmo.setSize(0.7)
+                    gizmo.attach(stlMeshGroup)
+                    const helper = gizmo.getHelper()
+                    helper.visible = useViewerStore.getState().stlGizmoActive
+                    gizmo.enabled = useViewerStore.getState().stlGizmoActive
+                    gizmo.addEventListener('dragging-changed', (ev) => {
+                        controls.enabled = !ev.value
+                    })
+                    gizmo.addEventListener('change', () => {
+                        needsRenderRef.current = true
+                    })
+                    gizmo.addEventListener('objectChange', () => {
+                        if (!stlOverlayName) return
+                        useViewerStore.getState().setStlOverlayTransform(stlOverlayName, {
+                            position: stlMeshGroup.position.toArray() as [number, number, number],
+                            quaternion: stlMeshGroup.quaternion.toArray() as [
+                                number,
+                                number,
+                                number,
+                                number,
+                            ],
+                            scale: stlMeshGroup.scale.toArray() as [number, number, number],
+                        })
+                    })
+                    scene.add(helper)
+                    stlGizmoRef.current = gizmo
+                }
                 needsRenderRef.current = true
             }
             reader.readAsArrayBuffer(stlOverlayFile)
@@ -498,6 +583,11 @@ export default function H5Viewer({
             // Abort an in-flight read so a stale onload can't add a mesh to a scene
             // whose group was already removed (rapid overlay switching).
             reader?.abort()
+            if (gizmo) {
+                gizmo.detach()
+                scene.remove(gizmo.getHelper())
+                gizmo.dispose()
+            }
             stlMeshGroup.traverse((obj) => {
                 if (obj instanceof THREE.Mesh) {
                     obj.geometry.dispose()
@@ -510,9 +600,52 @@ export default function H5Viewer({
             })
             scene.remove(stlMeshGroup)
             lights.forEach((l) => scene.remove(l))
+            stlGroupRef.current = null
+            stlMaterialRef.current = null
+            stlGizmoRef.current = null
             needsRenderRef.current = true
         }
-    }, [stlOverlayFile])
+    }, [stlOverlayFile, stlOverlayName, fileKey, meta])
+
+    // STL overlay opacity follows the slider.
+    useEffect(() => {
+        const mat = stlMaterialRef.current
+        if (!mat) return
+        mat.opacity = stlOpacity
+        needsRenderRef.current = true
+    }, [stlOpacity])
+
+    // STL gizmo mode (move / rotate / scale) and visibility follow the controls.
+    useEffect(() => {
+        const gizmo = stlGizmoRef.current
+        if (!gizmo) return
+        gizmo.setMode(stlGizmoMode)
+        gizmo.enabled = stlGizmoActive
+        gizmo.getHelper().visible = stlGizmoActive
+        needsRenderRef.current = true
+    }, [stlGizmoMode, stlGizmoActive])
+
+    // Reset the STL overlay back to identity when requested from the controls.
+    const stlOverlayResetGen = useViewerStore((s) => s.stlOverlayResetGen)
+    const lastStlResetGenRef = useRef(stlOverlayResetGen)
+    useEffect(() => {
+        if (stlOverlayResetGen === lastStlResetGenRef.current) return
+        lastStlResetGenRef.current = stlOverlayResetGen
+        const group = stlGroupRef.current
+        if (!group) return
+        const fit = stlAutoFitRef.current
+        group.position.set(0, 0, 0)
+        group.quaternion.identity()
+        group.scale.setScalar(fit)
+        if (stlOverlayName) {
+            useViewerStore.getState().setStlOverlayTransform(stlOverlayName, {
+                position: [0, 0, 0],
+                quaternion: [0, 0, 0, 1],
+                scale: [fit, fit, fit],
+            })
+        }
+        needsRenderRef.current = true
+    }, [stlOverlayResetGen, stlOverlayName])
 
     const cameraResetGen = useViewerStore((s) => s.h5PerFileStates[fileKey]?.cameraResetGen ?? 0)
     const lastCameraResetGenRef = useRef(cameraResetGen)
@@ -691,8 +824,8 @@ export default function H5Viewer({
         // cloud uses; falls back to fully-opaque (always pass) if buffers were evicted.
         const normalizedVolume = useViewerStore
             .getState()
-            .tabs.find((t): t is H5TabEntry => t.type === 'h5' && t.name === fileKey)?.data
-            ?.normalizedVolume
+            .tabs.find((t): t is H5TabEntry => t.type === 'h5' && t.name === fileKey)
+            ?.data?.normalizedVolume
 
         // Per-rank colour table so each voxel only does a lookup.
         const colorByRank = new Float32Array((count + 1) * 3)
@@ -741,7 +874,8 @@ export default function H5Viewer({
         geo.setAttribute('aColor', new THREE.BufferAttribute(colors, 3))
         geo.setAttribute('aIntensity', new THREE.BufferAttribute(intensities, 1))
         const initialRc =
-            useViewerStore.getState().h5PerFileStates[fileKey]?.renderControls ?? defaultRenderControls
+            useViewerStore.getState().h5PerFileStates[fileKey]?.renderControls ??
+            defaultRenderControls
         const mat = new THREE.ShaderMaterial({
             glslVersion: THREE.GLSL3,
             uniforms: {

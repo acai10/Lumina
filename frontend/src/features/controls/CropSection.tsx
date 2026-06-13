@@ -8,7 +8,11 @@ import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
 import { useShallow } from 'zustand/react/shallow'
-import { useViewerStore, fullVolumeCropBox, defaultRenderControls } from '../../app/store/viewerSlice'
+import {
+    useViewerStore,
+    fullVolumeCropBox,
+    defaultRenderControls,
+} from '../../app/store/viewerSlice'
 import type { AnnotationTool, CropBox, H5TabEntry } from '../../shared/types/viewer.types'
 import { DEFAULT_VOXEL_SIZE_UM, UINT8_MAX, UM_PER_MM } from '../../shared/constants'
 import { useOpenCrop } from './useOpenCrop'

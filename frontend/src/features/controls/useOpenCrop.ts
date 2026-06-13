@@ -56,11 +56,12 @@ export function useOpenCrop(activeH5: H5TabEntry) {
             // (and any later filtering of it) stays within the cylinder/sphere.
             const backendShape =
                 cropShape === 'circle' ? 'cylinder' : cropShape === 'sphere' ? 'sphere' : 'rect'
-            const { volume_id, n_slices, height: h, width: w } = await cropVolume(
-                sourceId,
-                cropBox,
-                backendShape,
-            )
+            const {
+                volume_id,
+                n_slices,
+                height: h,
+                width: w,
+            } = await cropVolume(sourceId, cropBox, backendShape)
             const data = await fetchNormalizedVolume(volume_id)
 
             const [dz, dy, dx] = voxelSizeUm
