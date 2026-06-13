@@ -1,18 +1,46 @@
 import { create } from 'zustand'
 import { putVolume, getVolume, deleteVolume, clearVolumes } from '../../shared/h5'
 import { VOLUME_DIMS } from '../../shared/h5/h5Constants'
+import {
+    paintStroke,
+    clearAnnotation,
+    disposeAnnotationIndex,
+    type StrokePoint,
+} from '../../features/annotation/annotationMask'
 import type {
+    AnnotationTool,
     ColormapType,
+    CropShape,
     H5FileEntry,
+    H5Meta,
     H5PerFileState,
     H5RenderControls,
     H5TabEntry,
     H5VolumeData,
-    SegmentationOverlay,
+    CropBox,
+    ObjectLabeling,
+    PipelineStep,
     SlicePanelControl,
     StlTabEntry,
     TabEntry,
 } from '../../shared/types/viewer.types'
+
+/** Default brush/eraser radius in voxels. */
+export const DEFAULT_BRUSH_RADIUS = 6
+
+/** Rigid+scale transform of an STL overlay relative to the volume, for registration. */
+export interface StlOverlayTransform {
+    position: [number, number, number]
+    quaternion: [number, number, number, number]
+    scale: [number, number, number]
+}
+
+/** Crop box covering the whole volume (the default selection). */
+export const fullVolumeCropBox = (meta: {
+    nSlices: number
+    height: number
+    width: number
+}): CropBox => ({ x: 0, y: 0, z: 0, w: meta.width, h: meta.height, d: meta.nSlices })
 
 interface AppNotification {
     message: string
@@ -76,7 +104,7 @@ const [VOLUME_N_SLICES, VOLUME_HEIGHT, VOLUME_WIDTH] = VOLUME_DIMS
 
 export const defaultRenderControls: H5RenderControls = {
     volumeSpacing: 250,
-    h5Threshold: 0.8,
+    h5Threshold: 0.75,
     h5Opacity: 0.25,
     h5Brightness: 5.0,
     h5Contrast: 1.0,
@@ -101,11 +129,27 @@ interface ViewerState {
     isLoading: boolean
     notification: AppNotification | null
     stlOpacity: number
+    /** When true, a transform gizmo is shown on the STL overlay for registration. */
+    stlGizmoActive: boolean
+    /** Active STL gizmo mode: move / rotate / scale. */
+    stlGizmoMode: 'translate' | 'rotate' | 'scale'
+    /** Per-STL-tab overlay transform (so registration survives view/overlay switches). */
+    stlOverlayTransforms: Record<string, StlOverlayTransform>
+    /** Monotonic counter; bumping it tells the viewer to reset the STL overlay pose. */
+    stlOverlayResetGen: number
     stitchPanelOpen: boolean
     controlsPanelOpen: boolean
     fileListPanelOpen: boolean
     zoomToCursor: boolean
     axesVisible: boolean
+    /** Monotonic counter for naming confirmed crop tabs ("Crop 1", "Crop 2", …). */
+    cropCounter: number
+    /** Active annotation/crop toolbar tool (global, mutually exclusive). */
+    activeTool: AnnotationTool
+    /** Brush/eraser radius in voxels. */
+    brushRadius: number
+    /** Active colour label (1-based) the brush paints with. */
+    activeColorLabel: number
     // Actions — unified tab management
     toggleStitchPanel: () => void
     toggleControlsPanel: () => void
@@ -136,12 +180,37 @@ interface ViewerState {
     setSliceColormapRange: (fileKey: string, range: [number, number]) => void
     setColorByDepth: (fileKey: string, value: boolean) => void
     setSliceVoxelSizeUm: (fileKey: string, size: [number, number, number]) => void
-    addSegmentationOverlay: (fileKey: string, overlay: SegmentationOverlay) => void
-    removeSegmentationOverlay: (fileKey: string, id: string) => void
-    clearSegmentationOverlays: (fileKey: string) => void
     setMeasurementResult: (fileKey: string, result: H5PerFileState['measurementResult']) => void
     setFilteringState: (fileKey: string, value: boolean) => void
     setH5ViewMode: (fileKey: string, mode: 'pointcloud' | 'slice') => void
+    // Crop-selection actions
+    setCropMode: (fileKey: string, on: boolean) => void
+    setCropBox: (fileKey: string, box: CropBox) => void
+    setCropShape: (fileKey: string, shape: CropShape) => void
+    // Annotation toolbar actions
+    setActiveTool: (tool: AnnotationTool) => void
+    setBrushRadius: (radius: number) => void
+    setActiveColorLabel: (label: number) => void
+    /** Paint (label > 0) or erase (label === 0) a stroke into a tab's annotation mask. */
+    paintAnnotation: (
+        fileKey: string,
+        meta: H5Meta,
+        axis: 'z' | 'y' | 'x',
+        sliceIndex: number,
+        points: StrokePoint[],
+        radius: number,
+        label: number,
+    ) => void
+    /** Clear all annotations for a tab. */
+    clearAnnotations: (fileKey: string) => void
+    /** Replace this tab's preprocessing pipeline (per-file). */
+    setFilterSteps: (fileKey: string, steps: PipelineStep[]) => void
+    /** Store (or clear) the object-count labelling used to colour detected objects. */
+    setObjectLabeling: (fileKey: string, labeling: ObjectLabeling | null) => void
+    /** Toggle whether labelled objects are coloured in the viewers. */
+    setObjectColorsVisible: (fileKey: string, value: boolean) => void
+    /** Reserve the next sequential crop number for tab naming (e.g. "Crop 3"). */
+    nextCropNumber: () => number
     setH5SliceIndex: (fileKey: string, index: number) => void
     setH5SliceY: (fileKey: string, y: number) => void
     setH5SliceX: (fileKey: string, x: number) => void
@@ -151,11 +220,23 @@ interface ViewerState {
         patch: Partial<SlicePanelControl>,
     ) => void
     resetSlicePanelControls: (fileKey: string) => void
+    /**
+     * Reset all view/interaction controls for a file to their defaults — render
+     * controls, clipping, slice-panel adjustments, slice position, crop selection,
+     * voxel spacing and measurement result — and request a camera reset. Filters
+     * (pipeline + applied result) and colormap settings are intentionally preserved.
+     */
+    resetFileControls: (fileKey: string, meta: H5Meta) => void
     // Global actions
     setIsLoading: (v: boolean) => void
     setNotification: (n: AppNotification) => void
     clearNotification: () => void
     setStlOpacity: (v: number) => void
+    setStlGizmoActive: (v: boolean) => void
+    setStlGizmoMode: (m: 'translate' | 'rotate' | 'scale') => void
+    setStlOverlayTransform: (name: string, t: StlOverlayTransform) => void
+    /** Bumped to ask the viewer to reset the active STL overlay back to identity. */
+    requestStlOverlayReset: () => void
     toggleZoomToCursor: () => void
     toggleAxesVisible: () => void
     reset: () => void
@@ -170,11 +251,19 @@ const initialState = {
     isLoading: false,
     notification: null,
     stlOpacity: DEFAULT_STL_OPACITY,
+    stlGizmoActive: false,
+    stlGizmoMode: 'translate' as 'translate' | 'rotate' | 'scale',
+    stlOverlayTransforms: {} as Record<string, StlOverlayTransform>,
+    stlOverlayResetGen: 0,
     stitchPanelOpen: false,
     fileListPanelOpen: false,
     controlsPanelOpen: true,
     zoomToCursor: true,
     axesVisible: true,
+    cropCounter: 0,
+    activeTool: null as AnnotationTool,
+    brushRadius: DEFAULT_BRUSH_RADIUS,
+    activeColorLabel: 1,
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => {
@@ -356,6 +445,7 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 void deleteVolume(closing.name)
                 persisted.delete(closing.name)
                 residentOnly.delete(closing.name)
+                disposeAnnotationIndex(closing.name)
                 newHydrationOrder = hydrationOrder.filter((n) => n !== closing.name)
             }
 
@@ -496,6 +586,11 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                           }
                         : t,
                 ),
+                // The voxels changed — any prior object labelling no longer matches.
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], objectLabeling: null },
+                },
             }))
             bumpLru(fileKey)
             // The cached buffers are now stale — mark unpersisted, then re-write so a
@@ -577,44 +672,6 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 },
             })),
 
-        addSegmentationOverlay: (fileKey, overlay) =>
-            set((state) => {
-                const prev = state.h5PerFileStates[fileKey]
-                return {
-                    h5PerFileStates: {
-                        ...state.h5PerFileStates,
-                        [fileKey]: {
-                            ...prev,
-                            segmentationOverlays: [...(prev?.segmentationOverlays ?? []), overlay],
-                        },
-                    },
-                }
-            }),
-
-        removeSegmentationOverlay: (fileKey, id) =>
-            set((state) => {
-                const prev = state.h5PerFileStates[fileKey]
-                return {
-                    h5PerFileStates: {
-                        ...state.h5PerFileStates,
-                        [fileKey]: {
-                            ...prev,
-                            segmentationOverlays: (prev?.segmentationOverlays ?? []).filter(
-                                (o) => o.id !== id,
-                            ),
-                        },
-                    },
-                }
-            }),
-
-        clearSegmentationOverlays: (fileKey) =>
-            set((state) => ({
-                h5PerFileStates: {
-                    ...state.h5PerFileStates,
-                    [fileKey]: { ...state.h5PerFileStates[fileKey], segmentationOverlays: [] },
-                },
-            })),
-
         setMeasurementResult: (fileKey, result) =>
             set((state) => ({
                 h5PerFileStates: {
@@ -638,6 +695,104 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                     [fileKey]: { ...state.h5PerFileStates[fileKey], viewMode },
                 },
             })),
+
+        setCropMode: (fileKey, cropMode) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], cropMode },
+                },
+            })),
+
+        setCropBox: (fileKey, cropBox) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], cropBox },
+                },
+            })),
+
+        setCropShape: (fileKey, cropShape) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], cropShape },
+                },
+            })),
+
+        setActiveTool: (activeTool) => set({ activeTool }),
+        setBrushRadius: (brushRadius) => set({ brushRadius }),
+        setActiveColorLabel: (activeColorLabel) => set({ activeColorLabel }),
+
+        paintAnnotation: (fileKey, meta, axis, sliceIndex, points, radius, label) =>
+            set((state) => {
+                const cur = state.h5PerFileStates[fileKey]
+                const mask =
+                    cur?.annotationMask ?? new Uint8Array(meta.nSlices * meta.height * meta.width)
+                paintStroke({ fileKey, mask, meta, axis, sliceIndex, points, radius, label })
+                return {
+                    h5PerFileStates: {
+                        ...state.h5PerFileStates,
+                        [fileKey]: {
+                            ...cur,
+                            annotationMask: mask,
+                            annotationVersion: (cur?.annotationVersion ?? 0) + 1,
+                        },
+                    },
+                }
+            }),
+
+        clearAnnotations: (fileKey) =>
+            set((state) => {
+                const cur = state.h5PerFileStates[fileKey]
+                if (cur?.annotationMask) clearAnnotation(fileKey, cur.annotationMask)
+                return {
+                    h5PerFileStates: {
+                        ...state.h5PerFileStates,
+                        [fileKey]: {
+                            ...cur,
+                            annotationVersion: (cur?.annotationVersion ?? 0) + 1,
+                        },
+                    },
+                }
+            }),
+
+        setFilterSteps: (fileKey, filterSteps) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], filterSteps },
+                },
+            })),
+
+        setObjectLabeling: (fileKey, objectLabeling) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: {
+                        ...state.h5PerFileStates[fileKey],
+                        objectLabeling,
+                        // Showing a fresh labelling implies it should be visible.
+                        objectColorsVisible: objectLabeling
+                            ? true
+                            : state.h5PerFileStates[fileKey]?.objectColorsVisible,
+                    },
+                },
+            })),
+
+        setObjectColorsVisible: (fileKey, objectColorsVisible) =>
+            set((state) => ({
+                h5PerFileStates: {
+                    ...state.h5PerFileStates,
+                    [fileKey]: { ...state.h5PerFileStates[fileKey], objectColorsVisible },
+                },
+            })),
+
+        nextCropNumber: () => {
+            const next = get().cropCounter + 1
+            set({ cropCounter: next })
+            return next
+        },
 
         setH5SliceIndex: (fileKey, sliceIndex) =>
             set((state) => ({
@@ -692,10 +847,49 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 },
             })),
 
+        resetFileControls: (fileKey, meta) =>
+            set((state) => {
+                const current = state.h5PerFileStates[fileKey]
+                if (!current) return {}
+                return {
+                    h5PerFileStates: {
+                        ...state.h5PerFileStates,
+                        [fileKey]: {
+                            ...current,
+                            renderControls: {
+                                ...defaultRenderControls,
+                                h5SliceRange: [0, meta.nSlices],
+                                h5HeightRange: [0, meta.height],
+                                h5WidthRange: [0, meta.width],
+                            },
+                            slicePanelControls: defaultSlicePanelControls(),
+                            sliceIndex: undefined,
+                            sliceY: undefined,
+                            sliceX: undefined,
+                            cropMode: false,
+                            cropBox: undefined,
+                            sliceVoxelSizeUm: undefined,
+                            measurementResult: null,
+                            objectLabeling: null,
+                            cameraResetGen: ((current.cameraResetGen ?? 0) + 1) % 1000,
+                            // Preserved on purpose: sliceColormap, sliceColormapRange,
+                            // colorByDepth (colormap) and filterApplied, filterSnapshot,
+                            // showingComparison (filters).
+                        },
+                    },
+                }
+            }),
+
         setIsLoading: (isLoading) => set({ isLoading }),
         setNotification: (notification) => set({ notification }),
         clearNotification: () => set({ notification: null }),
         setStlOpacity: (stlOpacity) => set({ stlOpacity }),
+        setStlGizmoActive: (stlGizmoActive) => set({ stlGizmoActive }),
+        setStlGizmoMode: (stlGizmoMode) => set({ stlGizmoMode }),
+        setStlOverlayTransform: (name, t) =>
+            set((s) => ({ stlOverlayTransforms: { ...s.stlOverlayTransforms, [name]: t } })),
+        requestStlOverlayReset: () =>
+            set((s) => ({ stlOverlayResetGen: (s.stlOverlayResetGen + 1) % 1000 })),
         reset: () => {
             void clearVolumes()
             persisted.clear()

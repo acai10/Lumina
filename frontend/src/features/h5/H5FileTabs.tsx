@@ -4,7 +4,6 @@ import { IconButton, Stack, Tab } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
 import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from '../../app/store/viewerSlice'
-import { cleanupUploads } from '../../shared/api'
 import { H5Tabs, closeIconButtonSx, dragTabSx, stlTabSx } from './H5FileTabs.styles'
 
 interface TabLabelProps {
@@ -17,8 +16,11 @@ const TabLabel = memo(function TabLabel({ name, index, onClose }: TabLabelProps)
     const handleClose = useCallback(
         (e: React.MouseEvent) => {
             e.stopPropagation()
+            // Only close this tab. Do NOT wipe the uploads folder here — that would
+            // delete the backend volumes of every *other* open tab too, breaking their
+            // filtering/measurement. Leftover upload files are cleaned by the app-level
+            // cleanup (toolbar / stitcher reset).
             onClose(index)
-            cleanupUploads().catch(() => {})
         },
         [index, onClose],
     )

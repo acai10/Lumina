@@ -5,6 +5,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from './app/store/viewerSlice'
 import H5FileTabs from './features/h5/H5FileTabs'
 import Toolbar from './features/toolbar/Toolbar'
+import AnnotationToolbar from './features/annotation/AnnotationToolbar'
 import { useFileLoad } from './features/toolbar/useFileLoad'
 import AppSnackbar from './features/notifications/AppSnackbar'
 import ControlsPanel from './features/controls/ControlsPanel'
@@ -150,6 +151,7 @@ export default function App() {
                                 meta={activeH5.meta}
                                 fileKey={activeH5.name}
                                 stlOverlayFile={stlOverlayTab?.file}
+                                stlOverlayName={stlOverlayTab?.name}
                             />
                         )}
 
@@ -165,6 +167,11 @@ export default function App() {
                                 />
                             )}
                     </Suspense>
+
+                    {/* Annotation toolbar — painting is 2D-only, so only over the slice view */}
+                    {activeH5 && renderData && activeViewMode === 'slice' && (
+                        <AnnotationToolbar activeH5={activeH5} />
+                    )}
                 </Box>
                 {stitchPanelOpen && (
                     <Suspense fallback={null}>

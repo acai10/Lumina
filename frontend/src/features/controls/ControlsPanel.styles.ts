@@ -80,7 +80,7 @@ export const headerTitleSx = {
     fontSize: '0.7rem',
     fontWeight: 600,
     letterSpacing: '0.08em',
-    color: palette.textMuted,
+    color: palette.textSecondary,
     userSelect: 'none' as const,
 }
 
@@ -111,6 +111,7 @@ export const accordionSx = {
 export const accordionTitleSx = {
     fontSize: '0.7rem',
     fontWeight: 600,
-    letterSpacing: '0.06em',
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase' as const,
     color: palette.textSecondary,
 }

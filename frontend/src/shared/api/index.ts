@@ -10,6 +10,7 @@ export {
     cleanupUploads,
     filterSessionVolume,
     filterVolume,
+    cropVolume,
 } from './client'
 export type {
     FilterType,

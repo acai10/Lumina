@@ -1,16 +1,8 @@
-import { useState } from 'react'
-import type { FilterStep, FilterType } from '../../shared/api/types'
+import type { FilterStep } from '../../shared/api/types'
+import { useViewerStore } from '../../app/store/viewerSlice'
+import type { FilterTypeOrNone, PipelineStep, StepParams } from '../../shared/types/viewer.types'
 
-export type FilterTypeOrNone = FilterType | 'none'
-
-/** Per-step mutable param bag — only the fields relevant to the chosen type are used. */
-export interface StepParams {
-    gaussianSigma: number
-    medianRadius: number
-    meanSize: number
-    normalizeLow: number
-    normalizeHigh: number
-}
+export type { FilterTypeOrNone, PipelineStep, StepParams } from '../../shared/types/viewer.types'
 
 const DEFAULT_STEP_PARAMS: StepParams = {
     gaussianSigma: 1.5,
@@ -20,15 +12,14 @@ const DEFAULT_STEP_PARAMS: StepParams = {
     normalizeHigh: 98.0,
 }
 
-export interface PipelineStep {
-    type: FilterTypeOrNone
-    params: StepParams
-}
-
 const BLANK_STEP = (): PipelineStep => ({
     type: 'none',
     params: { ...DEFAULT_STEP_PARAMS },
 })
+
+/** Shared empty pipeline for tabs that have not configured any steps yet. Treated
+ *  as immutable — every mutation below commits a fresh array, never edits in place. */
+const INITIAL_STEPS: PipelineStep[] = [BLANK_STEP()]
 
 /** Build a `FilterStep` from a `PipelineStep`, or `null` for type === 'none'. */
 function buildStep(step: PipelineStep): FilterStep | null {
@@ -54,28 +45,36 @@ function buildStep(step: PipelineStep): FilterStep | null {
     }
 }
 
-export function usePipeline() {
-    const [steps, setSteps] = useState<PipelineStep[]>([BLANK_STEP()])
+/**
+ * Per-tab preprocessing pipeline. The steps live in the viewer store keyed by
+ * `fileKey`, so selecting a filter in one tab and switching tabs no longer carries
+ * that selection over — each tab keeps its own pipeline.
+ */
+export function usePipeline(fileKey: string) {
+    const steps = useViewerStore((s) => s.h5PerFileStates[fileKey]?.filterSteps) ?? INITIAL_STEPS
+    const setFilterSteps = useViewerStore((s) => s.setFilterSteps)
+    const commit = (next: PipelineStep[]) => setFilterSteps(fileKey, next)
 
-    const addStep = () => setSteps((prev) => [...prev, BLANK_STEP()])
+    const addStep = () => commit([...steps, BLANK_STEP()])
 
-    const removeStep = (index: number) => setSteps((prev) => prev.filter((_, i) => i !== index))
+    const removeStep = (index: number) => commit(steps.filter((_, i) => i !== index))
 
-    const moveStep = (index: number, direction: 'up' | 'down') =>
-        setSteps((prev) => {
-            const next = [...prev]
-            const target = direction === 'up' ? index - 1 : index + 1
-            if (target < 0 || target >= next.length) return prev
-            ;[next[index], next[target]] = [next[target], next[index]]
-            return next
-        })
+    const moveStep = (index: number, direction: 'up' | 'down') => {
+        const next = [...steps]
+        const target = direction === 'up' ? index - 1 : index + 1
+        if (target < 0 || target >= next.length) return
+        ;[next[index], next[target]] = [next[target], next[index]]
+        commit(next)
+    }
 
     const updateStepType = (index: number, type: FilterTypeOrNone) =>
-        setSteps((prev) => prev.map((s, i) => (i === index ? { ...s, type } : s)))
+        commit(steps.map((s, i) => (i === index ? { ...s, type } : s)))
 
     const updateStepParam = (index: number, key: keyof StepParams, value: number) =>
-        setSteps((prev) =>
-            prev.map((s, i) => (i === index ? { ...s, params: { ...s.params, [key]: value } } : s)),
+        commit(
+            steps.map((s, i) =>
+                i === index ? { ...s, params: { ...s.params, [key]: value } } : s,
+            ),
         )
 
     const buildFilterChain = (): FilterStep[] =>
@@ -84,7 +83,7 @@ export function usePipeline() {
             return step ? [step] : []
         })
 
-    const reset = () => setSteps([BLANK_STEP()])
+    const reset = () => commit([BLANK_STEP()])
 
     return {
         pipeline: { steps, addStep, removeStep, moveStep, updateStepType, updateStepParam, reset },

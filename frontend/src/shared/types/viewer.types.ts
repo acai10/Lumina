@@ -1,13 +1,58 @@
 import type { MeasureResult } from '../api/client'
+import type { FilterType } from '../api/types'
 
 export type ColormapType = 'gray' | 'jet' | 'hot'
 
-export interface SegmentationOverlay {
-    id: string
+/** Active annotation/crop toolbar tool. `null` = no tool (pan/orbit). */
+export type AnnotationTool = 'brush' | 'eraser' | 'rectCrop' | 'circleCrop' | 'sphereCrop' | null
+
+/** Crop region shape: box, circle (→ cylinder across Z), or sphere (ellipsoid). */
+export type CropShape = 'rect' | 'circle' | 'sphere'
+
+/** A filter step's type, or 'none' for an unconfigured slot. */
+export type FilterTypeOrNone = FilterType | 'none'
+
+/** Per-step mutable param bag — only the fields relevant to the chosen type are used. */
+export interface StepParams {
+    gaussianSigma: number
+    medianRadius: number
+    meanSize: number
+    normalizeLow: number
+    normalizeHigh: number
+}
+
+/** One configured step in the preprocessing pipeline. */
+export interface PipelineStep {
+    type: FilterTypeOrNone
+    params: StepParams
+}
+
+/**
+ * Result of an on-demand connected-component analysis over a crop region, kept so
+ * the detected objects can be coloured in both the slice and 3D viewers.
+ */
+export interface ObjectLabeling {
+    /** Region the labels cover, in source-volume voxel coords. */
+    box: CropBox
+    /** Threshold (0–1) the analysis was run at. */
     threshold: number
-    map: Int32Array
-    color: [number, number, number]
-    label: string
+    /** Per-region-voxel label: 0 = background, else 1-based rank (1 = largest object). */
+    labels: Uint32Array
+    /** Number of distinct objects (== max label). */
+    count: number
+}
+
+/**
+ * Axis-aligned crop bounding box in source-volume voxel coordinates.
+ * Axes match the volume layout: `x` indexes width, `y` height, `z` slices.
+ */
+export interface CropBox {
+    x: number
+    y: number
+    z: number
+    w: number
+    h: number
+    d: number
 }
 
 export interface H5Meta {
@@ -108,10 +153,28 @@ export interface H5PerFileState {
     sliceColormapRange?: [number, number]
     /** When true the 3D viewer colors points by slice depth instead of intensity. */
     colorByDepth?: boolean
-    /** Segmentation overlays — multiple thresholds can be compared side-by-side. */
-    segmentationOverlays?: SegmentationOverlay[]
     /** Voxel spacing (µm/vox) used for interactive slice-panel distance measurement [dz, dy, dx]. */
     sliceVoxelSizeUm?: [number, number, number]
     /** Last computed geometric measurement result for this volume. */
     measurementResult?: MeasureResult | null
+    /** When true, the crop selection box is shown/editable in the 2D & 3D viewers. */
+    cropMode?: boolean
+    /** Current crop selection in voxel coords; defaults to the full volume. */
+    cropBox?: CropBox
+    /** Crop region shape (box vs inscribed cylinder). Defaults to 'rect'. */
+    cropShape?: CropShape
+    /**
+     * Per-voxel annotation labels (0 = none, else palette label). Allocated lazily on
+     * first paint; mutated in place with `annotationVersion` bumped to notify viewers.
+     * Non-destructive — never written back to the HDF5 volume.
+     */
+    annotationMask?: Uint8Array
+    /** Bumped on every mask edit so 2D/3D overlays know to redraw. */
+    annotationVersion?: number
+    /** Configured preprocessing pipeline for this tab (per-file, persisted on switch). */
+    filterSteps?: PipelineStep[]
+    /** Last object-count labelling, used to colour detected objects in the viewers. */
+    objectLabeling?: ObjectLabeling | null
+    /** When true, the labelled objects are coloured in the slice and 3D viewers. */
+    objectColorsVisible?: boolean
 }

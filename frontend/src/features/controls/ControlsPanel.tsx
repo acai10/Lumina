@@ -9,7 +9,6 @@ import CircularProgress from '@mui/material/CircularProgress'
 import IconButton from '@mui/material/IconButton'
 import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
-import Slider from '@mui/material/Slider'
 import Stack from '@mui/material/Stack'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
@@ -19,7 +18,6 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import TuneIcon from '@mui/icons-material/Tune'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
-import DeleteIcon from '@mui/icons-material/Delete'
 import { useShallow } from 'zustand/react/shallow'
 import {
     useViewerStore,
@@ -36,14 +34,16 @@ import {
     accordionSx,
     accordionTitleSx,
     labelSx,
+    NumberInput,
 } from './ControlsPanel.styles'
 import { RENDER_CONTROL_LIMITS, getRenderControlLimits } from './renderControlLimits'
 import { PreprocessingSection } from './PreprocessingSection'
+import CropSection from './CropSection'
 import { SliderRow, RangeSliderRow } from './SliderRow'
 import type { ColormapType, H5RenderControls } from '../../shared/types/viewer.types'
-import { segmentVolume, measureVolume, uploadVolume } from '../../shared/api/client'
+import { measureVolume, uploadVolume } from '../../shared/api/client'
 import type { MeasureResult } from '../../shared/api/client'
-import { palette } from '../../shared/theme/palette'
+import { eyebrowSx, microLabelSx, compactButtonSx } from '../../shared/theme/uiTokens'
 import { DEFAULT_VOXEL_SIZE_UM, UM_PER_MM } from '../../shared/constants'
 
 const NO_OVERLAY_SENTINEL = -1
@@ -55,12 +55,12 @@ const isColormapType = (v: string): v is ColormapType => (COLORMAP_VALUES as str
 
 function MeasurementResultPanel({ result }: { result: MeasureResult }) {
     const rows: [string, string][] = [
-        ['Volumen', `${(result.volume_um3 / UM3_PER_MM3).toFixed(4)} mm³`],
-        ['Oberfläche', `${(result.surface_area_um2 / UM2_PER_MM2).toFixed(4)} mm²`],
-        ['Ø Dicke', `${(result.mean_thickness_um / UM_PER_MM).toFixed(3)} mm`],
-        ['Max Dicke', `${(result.max_thickness_um / UM_PER_MM).toFixed(3)} mm`],
-        ['Lat. Durchm.', `${(result.lateral_diameter_um / UM_PER_MM).toFixed(3)} mm`],
-        ['Voxel', result.voxel_count.toLocaleString()],
+        ['Volume', `${(result.volume_um3 / UM3_PER_MM3).toFixed(4)} mm³`],
+        ['Surface area', `${(result.surface_area_um2 / UM2_PER_MM2).toFixed(4)} mm²`],
+        ['Mean thickness', `${(result.mean_thickness_um / UM_PER_MM).toFixed(3)} mm`],
+        ['Max thickness', `${(result.max_thickness_um / UM_PER_MM).toFixed(3)} mm`],
+        ['Lateral diameter', `${(result.lateral_diameter_um / UM_PER_MM).toFixed(3)} mm`],
+        ['Voxels', result.voxel_count.toLocaleString()],
     ]
     return (
         <Stack spacing={0.25}>
@@ -73,15 +73,6 @@ function MeasurementResultPanel({ result }: { result: MeasureResult }) {
         </Stack>
     )
 }
-
-const OVERLAY_COLORS: [number, number, number][] = [
-    [255, 80, 80],
-    [80, 200, 120],
-    [80, 160, 255],
-    [255, 180, 50],
-    [200, 80, 255],
-    [80, 230, 230],
-]
 
 function Section({
     title,
@@ -113,14 +104,16 @@ export default function ControlsPanel() {
         stlOpacity,
         setStlOpacity,
         setH5ViewMode,
-        resetSlicePanelControls,
+        resetFileControls,
         stlOverlayIndex,
         setStlOverlayIndex,
+        stlGizmoActive,
+        stlGizmoMode,
+        setStlGizmoActive,
+        setStlGizmoMode,
+        requestStlOverlayReset,
         controlsPanelOpen,
         toggleControlsPanel,
-        addSegmentationOverlay,
-        removeSegmentationOverlay,
-        clearSegmentationOverlays,
         setSliceColormap,
         setSliceColormapRange,
         setColorByDepth,
@@ -128,7 +121,6 @@ export default function ControlsPanel() {
         setMeasurementResult,
         setBackendVolumeId,
         setNotification,
-        requestCameraReset,
     } = useViewerStore(
         useShallow((s) => ({
             tabs: s.tabs,
@@ -138,29 +130,28 @@ export default function ControlsPanel() {
             stlOpacity: s.stlOpacity,
             setStlOpacity: s.setStlOpacity,
             setH5ViewMode: s.setH5ViewMode,
-            resetSlicePanelControls: s.resetSlicePanelControls,
+            resetFileControls: s.resetFileControls,
             stlOverlayIndex: s.stlOverlayIndex,
             setStlOverlayIndex: s.setStlOverlayIndex,
+            stlGizmoActive: s.stlGizmoActive,
+            stlGizmoMode: s.stlGizmoMode,
+            setStlGizmoActive: s.setStlGizmoActive,
+            setStlGizmoMode: s.setStlGizmoMode,
+            requestStlOverlayReset: s.requestStlOverlayReset,
             controlsPanelOpen: s.controlsPanelOpen,
             toggleControlsPanel: s.toggleControlsPanel,
             setSliceColormapRange: s.setSliceColormapRange,
             setColorByDepth: s.setColorByDepth,
-            addSegmentationOverlay: s.addSegmentationOverlay,
-            removeSegmentationOverlay: s.removeSegmentationOverlay,
-            clearSegmentationOverlays: s.clearSegmentationOverlays,
             setSliceColormap: s.setSliceColormap,
             setSliceVoxelSizeUm: s.setSliceVoxelSizeUm,
             setMeasurementResult: s.setMeasurementResult,
             setBackendVolumeId: s.setBackendVolumeId,
             setNotification: s.setNotification,
-            requestCameraReset: s.requestCameraReset,
         })),
     )
 
-    const [isSegmenting, setIsSegmenting] = useState(false)
     const [isMeasuring, setIsMeasuring] = useState(false)
     const [voxelSize, setVoxelSize] = useState<[number, number, number]>(DEFAULT_VOXEL_SIZE_UM)
-    const [segThreshold, setSegThreshold] = useState(0.5)
 
     const activeTab = tabs[activeTabIndex]
     const activeH5 = activeTab?.type === 'h5' ? activeTab : null
@@ -185,9 +176,6 @@ export default function ControlsPanel() {
         ? h5PerFileStates[activeKey]?.sliceColormapRange
         : undefined) ?? [0, 1]
     const colorByDepth = (activeKey ? h5PerFileStates[activeKey]?.colorByDepth : undefined) ?? false
-    const segmentationOverlays = activeKey
-        ? (h5PerFileStates[activeKey]?.segmentationOverlays ?? [])
-        : []
 
     const stlTabs = useMemo(
         () => tabs.flatMap((t, i) => (t.type === 'stl' ? [{ tab: t, index: i }] : [])),
@@ -210,31 +198,15 @@ export default function ControlsPanel() {
     }, [activeH5, activeKey, setBackendVolumeId])
 
     const handleReset = useCallback(() => {
-        if (activeH5) {
-            if (viewMode === 'slice' && activeKey) {
-                resetSlicePanelControls(activeKey)
-            } else {
-                const { nSlices, height, width } = activeH5.meta
-                updateActiveRenderState({
-                    ...defaultRenderControls,
-                    h5SliceRange: [0, nSlices],
-                    h5HeightRange: [0, height],
-                    h5WidthRange: [0, width],
-                })
-                if (activeKey) requestCameraReset(activeKey)
-            }
+        // Reset every view/interaction control (3D + slice) back to defaults, but
+        // keep the active filters and colormap so a reset never undoes preprocessing.
+        if (activeH5 && activeKey) {
+            resetFileControls(activeKey, activeH5.meta)
+            setVoxelSize(DEFAULT_VOXEL_SIZE_UM)
         } else {
             setStlOpacity(DEFAULT_STL_OPACITY)
         }
-    }, [
-        activeH5,
-        viewMode,
-        activeKey,
-        resetSlicePanelControls,
-        updateActiveRenderState,
-        setStlOpacity,
-        requestCameraReset,
-    ])
+    }, [activeH5, activeKey, resetFileControls, setStlOpacity])
 
     if (tabs.length === 0) return null
 
@@ -301,9 +273,7 @@ export default function ControlsPanel() {
 
                     {/* Colormap selector — applies to both 3D and slice view */}
                     <Stack spacing={0.5}>
-                        <Typography sx={{ ...labelSx, letterSpacing: '0.08em', opacity: 0.7 }}>
-                            COLORMAP
-                        </Typography>
+                        <Typography sx={eyebrowSx}>COLORMAP</Typography>
                         <ToggleButtonGroup
                             value={sliceColormap}
                             exclusive
@@ -319,7 +289,7 @@ export default function ControlsPanel() {
                             <ToggleButton value="hot">HOT</ToggleButton>
                         </ToggleButtonGroup>
                         <RangeSliderRow
-                            label="Intensität"
+                            label="Intensity"
                             value={colormapRange}
                             min={0}
                             max={1}
@@ -337,155 +307,21 @@ export default function ControlsPanel() {
                                 }}
                                 sx={{ alignSelf: 'flex-start' }}
                             >
-                                <ToggleButton value="intensity">Intensität</ToggleButton>
-                                <ToggleButton value="depth">Tiefe</ToggleButton>
+                                <ToggleButton value="intensity">Intensity</ToggleButton>
+                                <ToggleButton value="depth">Depth</ToggleButton>
                             </ToggleButtonGroup>
                         )}
                     </Stack>
 
                     <PreprocessingSection />
 
-                    {/* Segmentation */}
-                    {hasVolumeSource && (
-                        <Stack spacing={0.75}>
-                            <Typography sx={{ ...labelSx, letterSpacing: '0.08em', opacity: 0.7 }}>
-                                SEGMENTIERUNG
-                            </Typography>
-
-                            {/* Threshold slider */}
-                            <Stack direction="row" alignItems="center" spacing={1}>
-                                <Typography sx={{ ...labelSx, minWidth: 60 }}>Threshold</Typography>
-                                <Slider
-                                    size="small"
-                                    value={segThreshold}
-                                    min={0}
-                                    max={1}
-                                    step={0.01}
-                                    onChange={(_, v) =>
-                                        setSegThreshold(typeof v === 'number' ? v : v[0])
-                                    }
-                                    sx={{ flex: 1 }}
-                                />
-                                <Typography sx={{ ...labelSx, minWidth: 30, textAlign: 'right' }}>
-                                    {segThreshold.toFixed(2)}
-                                </Typography>
-                            </Stack>
-
-                            {/* Segment + Clear buttons */}
-                            <Box
-                                sx={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 1,
-                                    flexWrap: 'wrap',
-                                }}
-                            >
-                                <Button
-                                    size="small"
-                                    variant="outlined"
-                                    disabled={isSegmenting}
-                                    onClick={async () => {
-                                        if (!activeKey) return
-                                        setIsSegmenting(true)
-                                        try {
-                                            const volumeId = await resolveVolumeId()
-                                            if (!volumeId) return
-                                            const { data } = await segmentVolume(
-                                                volumeId,
-                                                segThreshold,
-                                            )
-                                            const colorIdx =
-                                                segmentationOverlays.length % OVERLAY_COLORS.length
-                                            addSegmentationOverlay(activeKey, {
-                                                id: `${Date.now()}`,
-                                                threshold: segThreshold,
-                                                map: data,
-                                                color: OVERLAY_COLORS[colorIdx],
-                                                label: `t=${segThreshold.toFixed(2)}`,
-                                            })
-                                            setNotification({
-                                                message:
-                                                    'Segmentierung abgeschlossen — Slices-Ansicht öffnen',
-                                                severity: 'success',
-                                            })
-                                        } catch (err) {
-                                            setNotification({
-                                                message:
-                                                    err instanceof Error
-                                                        ? err.message
-                                                        : 'Segmentierung fehlgeschlagen',
-                                                severity: 'error',
-                                            })
-                                        } finally {
-                                            setIsSegmenting(false)
-                                        }
-                                    }}
-                                    sx={{ fontSize: '0.65rem', py: 0.4 }}
-                                >
-                                    Segmentierung starten
-                                </Button>
-                                {segmentationOverlays.length > 0 && (
-                                    <Button
-                                        size="small"
-                                        variant="outlined"
-                                        color="error"
-                                        onClick={() =>
-                                            activeKey && clearSegmentationOverlays(activeKey)
-                                        }
-                                        disabled={isSegmenting}
-                                        sx={{ fontSize: '0.65rem', py: 0.4 }}
-                                    >
-                                        Alle löschen
-                                    </Button>
-                                )}
-                                {isSegmenting && <CircularProgress size={12} thickness={5} />}
-                            </Box>
-
-                            {/* Per-overlay list */}
-                            {segmentationOverlays.length > 0 && (
-                                <Stack spacing={0.4}>
-                                    {segmentationOverlays.map((ov) => (
-                                        <Stack
-                                            key={ov.id}
-                                            direction="row"
-                                            alignItems="center"
-                                            spacing={0.75}
-                                        >
-                                            <Box
-                                                sx={{
-                                                    width: 12,
-                                                    height: 12,
-                                                    borderRadius: 0.5,
-                                                    flexShrink: 0,
-                                                    background: `rgb(${ov.color[0]},${ov.color[1]},${ov.color[2]})`,
-                                                }}
-                                            />
-                                            <Typography sx={{ ...labelSx, flex: 1 }}>
-                                                {ov.label}
-                                            </Typography>
-                                            <IconButton
-                                                size="small"
-                                                onClick={() =>
-                                                    activeKey &&
-                                                    removeSegmentationOverlay(activeKey, ov.id)
-                                                }
-                                                sx={{ p: 0.25, color: 'error.main', opacity: 0.7 }}
-                                            >
-                                                <DeleteIcon sx={{ fontSize: 12 }} />
-                                            </IconButton>
-                                        </Stack>
-                                    ))}
-                                </Stack>
-                            )}
-                        </Stack>
-                    )}
+                    {/* Crop selection → opens the sub-volume as a new independent tab */}
+                    <CropSection activeH5={activeH5} />
 
                     {/* Measurements */}
                     {hasVolumeSource && (
                         <Stack spacing={0.75}>
-                            <Typography sx={{ ...labelSx, letterSpacing: '0.08em', opacity: 0.7 }}>
-                                MESSUNGEN
-                            </Typography>
+                            <Typography sx={eyebrowSx}>MEASUREMENTS</Typography>
                             {/* Voxel spacing inputs (dz, dy, dx) in µm */}
                             <Stack direction="row" spacing={0.5} alignItems="center">
                                 <Typography sx={{ ...labelSx, minWidth: 56 }}>µm/vox</Typography>
@@ -499,12 +335,8 @@ export default function ControlsPanel() {
                                             gap: 0.25,
                                         }}
                                     >
-                                        <Typography
-                                            sx={{ ...labelSx, fontSize: '0.6rem', opacity: 0.6 }}
-                                        >
-                                            {label}
-                                        </Typography>
-                                        <input
+                                        <Typography sx={microLabelSx}>{label}</Typography>
+                                        <NumberInput
                                             type="number"
                                             min={0.001}
                                             step={0.1}
@@ -520,16 +352,6 @@ export default function ControlsPanel() {
                                                     if (activeKey)
                                                         setSliceVoxelSizeUm(activeKey, next)
                                                 }
-                                            }}
-                                            style={{
-                                                width: 52,
-                                                fontSize: '0.72rem',
-                                                padding: '2px 4px',
-                                                borderRadius: 4,
-                                                border: `1px solid ${palette.borderGlass}`,
-                                                background: palette.surfaceSolid,
-                                                color: palette.textPrimary,
-                                                textAlign: 'right',
                                             }}
                                         />
                                     </Box>
@@ -556,16 +378,16 @@ export default function ControlsPanel() {
                                                 message:
                                                     err instanceof Error
                                                         ? err.message
-                                                        : 'Messung fehlgeschlagen',
+                                                        : 'Measurement failed',
                                                 severity: 'error',
                                             })
                                         } finally {
                                             setIsMeasuring(false)
                                         }
                                     }}
-                                    sx={{ fontSize: '0.65rem', py: 0.4 }}
+                                    sx={compactButtonSx}
                                 >
-                                    Messung starten
+                                    Start measurement
                                 </Button>
                                 {isMeasuring && <CircularProgress size={12} thickness={5} />}
                             </Box>
@@ -637,40 +459,105 @@ export default function ControlsPanel() {
                                     onChange={(v) => updateControls({ h5HeightRange: v })}
                                 />
                             </Section>
-                            {stlTabs.length > 0 && (
-                                <Section title="STL OVERLAY" defaultExpanded={false}>
-                                    <Select
-                                        size="small"
-                                        value={stlOverlayIndex ?? NO_OVERLAY_SENTINEL}
-                                        onChange={(e) => {
-                                            const v = Number(e.target.value)
-                                            setStlOverlayIndex(v === NO_OVERLAY_SENTINEL ? null : v)
-                                        }}
-                                        sx={controlFontSx}
-                                    >
-                                        <MenuItem value={NO_OVERLAY_SENTINEL} sx={controlFontSx}>
-                                            None
-                                        </MenuItem>
-                                        {stlTabs.map(({ tab, index }) => (
+                            <Section title="STL OVERLAY" defaultExpanded={false}>
+                                {stlTabs.length === 0 ? (
+                                    <Typography sx={microLabelSx}>
+                                        Load an STL file ("Load STL" above) to overlay it on the
+                                        volume.
+                                    </Typography>
+                                ) : (
+                                    <>
+                                        <Select
+                                            size="small"
+                                            value={stlOverlayIndex ?? NO_OVERLAY_SENTINEL}
+                                            onChange={(e) => {
+                                                const v = Number(e.target.value)
+                                                setStlOverlayIndex(
+                                                    v === NO_OVERLAY_SENTINEL ? null : v,
+                                                )
+                                            }}
+                                            sx={controlFontSx}
+                                        >
                                             <MenuItem
-                                                key={tab.name}
-                                                value={index}
+                                                value={NO_OVERLAY_SENTINEL}
                                                 sx={controlFontSx}
                                             >
-                                                {tab.name}
+                                                None
                                             </MenuItem>
-                                        ))}
-                                    </Select>
-                                    {stlOverlayIndex !== null && (
-                                        <SliderRow
-                                            label="STL opacity"
-                                            value={stlOpacity}
-                                            {...RENDER_CONTROL_LIMITS.stlOpacity}
-                                            onChange={setStlOpacity}
-                                        />
-                                    )}
-                                </Section>
-                            )}
+                                            {stlTabs.map(({ tab, index }) => (
+                                                <MenuItem
+                                                    key={tab.name}
+                                                    value={index}
+                                                    sx={controlFontSx}
+                                                >
+                                                    {tab.name}
+                                                </MenuItem>
+                                            ))}
+                                        </Select>
+                                        {stlOverlayIndex !== null && (
+                                            <>
+                                                <SliderRow
+                                                    label="STL opacity"
+                                                    value={stlOpacity}
+                                                    {...RENDER_CONTROL_LIMITS.stlOpacity}
+                                                    onChange={setStlOpacity}
+                                                />
+                                                {/* Registration gizmo: position/rotate/scale
+                                                    the overlay onto the volume. */}
+                                                <ToggleButton
+                                                    value="align"
+                                                    selected={stlGizmoActive}
+                                                    size="small"
+                                                    onChange={() =>
+                                                        setStlGizmoActive(!stlGizmoActive)
+                                                    }
+                                                    sx={{
+                                                        ...compactButtonSx,
+                                                        textTransform: 'none',
+                                                        alignSelf: 'flex-start',
+                                                    }}
+                                                >
+                                                    Align
+                                                </ToggleButton>
+                                                {stlGizmoActive && (
+                                                    <Stack spacing={0.75}>
+                                                        <ToggleButtonGroup
+                                                            exclusive
+                                                            size="small"
+                                                            value={stlGizmoMode}
+                                                            onChange={(_, v) =>
+                                                                v && setStlGizmoMode(v)
+                                                            }
+                                                            sx={{ alignSelf: 'flex-start' }}
+                                                        >
+                                                            <ToggleButton value="translate">
+                                                                Move
+                                                            </ToggleButton>
+                                                            <ToggleButton value="rotate">
+                                                                Rotate
+                                                            </ToggleButton>
+                                                            <ToggleButton value="scale">
+                                                                Scale
+                                                            </ToggleButton>
+                                                        </ToggleButtonGroup>
+                                                        <Button
+                                                            size="small"
+                                                            variant="outlined"
+                                                            onClick={() => requestStlOverlayReset()}
+                                                            sx={{
+                                                                ...compactButtonSx,
+                                                                alignSelf: 'flex-start',
+                                                            }}
+                                                        >
+                                                            Reset alignment
+                                                        </Button>
+                                                    </Stack>
+                                                )}
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </Section>
                         </>
                     )}
                 </>

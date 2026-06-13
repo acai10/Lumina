@@ -85,4 +85,15 @@ export const palette = {
     // zoom-to-cursor toggle). Shared across SlicePanel, H5Viewer, STLViewer.
     accentBlue: '#4fa3ff',
     accentBlueHoverBg: 'rgba(79,163,255,0.18)',
+    accentBlueBorder: 'rgba(79,163,255,0.5)', // measurement-readout hairline
+
+    // Scale-bar / colorbar accent on the dark slice canvas.
+    scaleBar: '#a8caff',
+
+    // Crop selection overlay (orange) — shared by the 2D rectangle and the 3D box.
+    cropAccent: '#ff9800',
+    cropAccentSoft: 'rgba(255,152,0,0.15)',
+
+    // Strong dark scrim behind floating readouts over the scene (measurement chip).
+    overlayScrimStrong: 'rgba(10,20,50,0.82)',
 } as const

@@ -19,6 +19,7 @@ import { useServerVolumes } from '../../shared/components'
 import { useFileLoad } from '../toolbar/useFileLoad'
 import { palette } from '../../shared/theme/palette'
 import { FILE_LIST_WIDTH, PANEL_PADDING } from '../../shared/theme/layout'
+import { eyebrowSx } from '../../shared/theme/uiTokens'
 import { groupByFolder } from '../../shared/utils'
 
 const panelSx = {
@@ -31,14 +32,6 @@ const panelSx = {
     backdropFilter: 'blur(12px)',
     borderRight: `1px solid ${palette.borderGlass}`,
     boxShadow: `inset 0 1px 0 ${palette.glassHighlight}`,
-}
-
-const titleSx = {
-    fontSize: '0.7rem',
-    fontWeight: 600,
-    letterSpacing: '0.08em',
-    color: palette.textMuted,
-    userSelect: 'none' as const,
 }
 
 const iconBtnSx = {
@@ -69,21 +62,21 @@ export function FileListPanel() {
                 justifyContent="space-between"
                 sx={{ px: PANEL_PADDING, pt: PANEL_PADDING, pb: 0.5, flexShrink: 0 }}
             >
-                <Typography sx={titleSx}>DATEIEN ({volumes.length})</Typography>
+                <Typography sx={eyebrowSx}>FILES ({volumes.length})</Typography>
                 <Stack direction="row" spacing={0}>
-                    <Tooltip title="Aktualisieren">
+                    <Tooltip title="Refresh">
                         <IconButton size="small" onClick={refresh} sx={iconBtnSx}>
                             <RefreshIcon sx={{ fontSize: 14 }} />
                         </IconButton>
                     </Tooltip>
-                    <Tooltip title="Schließen">
+                    <Tooltip title="Close">
                         <IconButton size="small" onClick={toggleFileListPanel} sx={iconBtnSx}>
                             <ChevronLeftIcon sx={{ fontSize: 14 }} />
                         </IconButton>
                     </Tooltip>
                 </Stack>
             </Stack>
-            <Divider sx={{ opacity: 0.35 }} />
+            <Divider sx={{ borderColor: palette.borderGlass }} />
 
             {/* File list */}
             <Box sx={{ flex: 1, overflowY: 'auto' }}>
@@ -99,7 +92,7 @@ export function FileListPanel() {
                 )}
                 {!loading && !error && volumes.length === 0 && (
                     <Typography sx={{ fontSize: '0.7rem', opacity: 0.6, p: 1.5 }}>
-                        Keine .h5-Dateien gefunden.
+                        No .h5 files found.
                     </Typography>
                 )}
                 {!loading && !error && volumes.length > 0 && (

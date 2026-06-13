@@ -8,12 +8,6 @@ class UploadResponse(BaseModel):
     width: int
 
 
-class VolumeInfo(BaseModel):
-    volume_id: str
-    shape: list[int]
-    dtype: str
-
-
 class LocalVolume(BaseModel):
     """A source ``.h5`` file discovered under ``settings.data_dir``."""
 
