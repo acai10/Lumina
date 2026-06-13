@@ -83,7 +83,7 @@ const OBJECT_TINT_ALPHA = 0.55
 const LUT_SIZE = 256
 const TONE_MAP_PIVOT = 0.5
 const MEASURE_RADIUS = 5
-const SCALE_BAR_COLOR = '#a8caff'
+const SCALE_BAR_COLOR = palette.scaleBar
 const COLORBAR_STOPS = 12
 
 function applyToneMap(value: number, brightness: number, contrast: number): number {
@@ -154,8 +154,8 @@ function origToCanvas(
 }
 
 // Crop-rectangle overlay colours (orange, matching the 3D crop box).
-const CROP_STROKE = '#ff9800'
-const CROP_FILL = 'rgba(255,152,0,0.15)'
+const CROP_STROKE = palette.cropAccent
+const CROP_FILL = palette.cropAccentSoft
 
 // Map canvas pixel (cx, cy) to original (pre-orientation-transform) volume coords.
 function canvasToOrig(
@@ -980,7 +980,12 @@ export const SlicePanel = memo(function SlicePanel({
                     }}
                 >
                     <Typography
-                        sx={{ fontSize: '0.48rem', lineHeight: 1, opacity: 0.65, color: '#fff' }}
+                        sx={{
+                            fontSize: '0.6rem',
+                            lineHeight: 1,
+                            opacity: 0.65,
+                            color: palette.sceneText,
+                        }}
                     >
                         255
                     </Typography>
@@ -990,12 +995,17 @@ export const SlicePanel = memo(function SlicePanel({
                             maxHeight: '55%',
                             width: 10,
                             background: colormapCss,
-                            border: '1px solid rgba(255,255,255,0.15)',
+                            border: `1px solid ${palette.sceneHairline}`,
                             borderRadius: 0.5,
                         }}
                     />
                     <Typography
-                        sx={{ fontSize: '0.48rem', lineHeight: 1, opacity: 0.65, color: '#fff' }}
+                        sx={{
+                            fontSize: '0.6rem',
+                            lineHeight: 1,
+                            opacity: 0.65,
+                            color: palette.sceneText,
+                        }}
                     >
                         0
                     </Typography>
@@ -1013,14 +1023,16 @@ export const SlicePanel = memo(function SlicePanel({
                         zIndex: 3,
                         px: 1,
                         py: 0.25,
-                        background: 'rgba(10,20,50,0.82)',
-                        border: '1px solid rgba(79,163,255,0.5)',
+                        background: palette.overlayScrimStrong,
+                        border: `1px solid ${palette.accentBlueBorder}`,
                         borderRadius: 1,
                         pointerEvents: 'none',
                         whiteSpace: 'nowrap',
                     }}
                 >
-                    <Typography sx={{ fontSize: '0.72rem', color: '#4fa3ff', fontWeight: 600 }}>
+                    <Typography
+                        sx={{ fontSize: '0.72rem', color: palette.accentBlue, fontWeight: 600 }}
+                    >
                         {distanceMm.toFixed(3)} mm
                     </Typography>
                 </Box>

@@ -8,6 +8,7 @@ import InputLabel from '@mui/material/InputLabel'
 import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
+import ToggleButton from '@mui/material/ToggleButton'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import AddIcon from '@mui/icons-material/Add'
@@ -24,6 +25,7 @@ import type { FilterPhase } from './useFilterJob'
 import { usePipeline } from './useFilterParams'
 import type { FilterTypeOrNone, PipelineStep } from './useFilterParams'
 import { labelSx, controlFontSx, iconButtonSx } from './ControlsPanel.styles'
+import { eyebrowSx, compactButtonSx } from '../../shared/theme/uiTokens'
 import { palette } from '../../shared/theme/palette'
 
 const FILTER_LABELS: Record<FilterTypeOrNone, string> = {
@@ -166,9 +168,7 @@ export function PreprocessingSection() {
 
     return (
         <Stack spacing={1.5}>
-            <Typography sx={{ ...labelSx, letterSpacing: '0.08em', opacity: 0.7 }}>
-                PREPROCESSING
-            </Typography>
+            <Typography sx={eyebrowSx}>PREPROCESSING</Typography>
 
             {/* Pipeline steps */}
             <Stack spacing={1}>
@@ -274,7 +274,7 @@ export function PreprocessingSection() {
                 startIcon={<AddIcon />}
                 onClick={addStep}
                 disabled={isBusy}
-                sx={{ fontSize: '0.65rem', py: 0.4, alignSelf: 'flex-start' }}
+                sx={{ ...compactButtonSx, alignSelf: 'flex-start' }}
             >
                 Add step
             </Button>
@@ -283,10 +283,10 @@ export function PreprocessingSection() {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                 <Button
                     size="small"
-                    variant="outlined"
+                    variant="contained"
                     onClick={handleApply}
                     disabled={isBusy || !hasActiveSteps}
-                    sx={{ fontSize: '0.65rem', py: 0.4 }}
+                    sx={compactButtonSx}
                 >
                     Apply
                 </Button>
@@ -296,7 +296,7 @@ export function PreprocessingSection() {
                     color="error"
                     onClick={handleReset}
                     disabled={isBusy}
-                    sx={{ fontSize: '0.65rem', py: 0.4 }}
+                    sx={compactButtonSx}
                 >
                     Reset
                 </Button>
@@ -314,16 +314,16 @@ export function PreprocessingSection() {
             {filterApplied && (
                 <Tooltip title={showingComparison ? 'Show filtered image' : 'Show original'}>
                     <span style={{ width: '100%' }}>
-                        <Button
+                        <ToggleButton
+                            value="compare"
                             size="small"
-                            variant={showingComparison ? 'contained' : 'outlined'}
-                            onClick={() => setShowingComparison(fileKey, !showingComparison)}
+                            selected={showingComparison}
+                            onChange={() => setShowingComparison(fileKey, !showingComparison)}
                             disabled={isBusy}
-                            fullWidth
-                            sx={{ fontSize: '0.65rem', py: 0.4 }}
+                            sx={{ ...compactButtonSx, textTransform: 'none', width: '100%' }}
                         >
                             {showingComparison ? 'Filtered' : 'Compare'}
-                        </Button>
+                        </ToggleButton>
                     </span>
                 </Tooltip>
             )}

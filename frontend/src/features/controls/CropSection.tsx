@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
-import Slider from '@mui/material/Slider'
 import Stack from '@mui/material/Stack'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
@@ -16,8 +15,8 @@ import {
 import type { AnnotationTool, CropBox, H5TabEntry } from '../../shared/types/viewer.types'
 import { DEFAULT_VOXEL_SIZE_UM, UINT8_MAX, UM_PER_MM } from '../../shared/constants'
 import { useOpenCrop } from './useOpenCrop'
-import { RangeSliderRow } from './SliderRow'
-import { labelSx } from './ControlsPanel.styles'
+import { SliderRow, RangeSliderRow } from './SliderRow'
+import { eyebrowSx, microLabelSx, compactButtonSx } from '../../shared/theme/uiTokens'
 import {
     analyzeRegionObjects,
     objectColorRgb,
@@ -203,7 +202,7 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
 
     return (
         <Stack spacing={0.75}>
-            <Typography sx={{ ...labelSx, letterSpacing: '0.08em', opacity: 0.7 }}>CROP</Typography>
+            <Typography sx={eyebrowSx}>CROP</Typography>
 
             {/* Region shape — selecting one enables crop drawing (2D drag + 3D move
                 gizmo); selecting the active one again turns it off. */}
@@ -218,7 +217,7 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
                         key={shape}
                         value={shape}
                         onClick={() => selectCropShape(shape, tool)}
-                        sx={{ fontSize: '0.6rem', py: 0.3, px: 0.9, textTransform: 'none' }}
+                        sx={{ ...compactButtonSx, px: 0.9, textTransform: 'none' }}
                     >
                         {label}
                     </ToggleButton>
@@ -250,7 +249,7 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
                 onChange={(v) => setAxis('y', v)}
             />
 
-            <Typography sx={{ ...labelSx, opacity: 0.6, fontSize: '0.62rem' }}>
+            <Typography sx={microLabelSx}>
                 {cropBox.w}×{cropBox.h}×{cropBox.d} vox · {sizeMm[0].toFixed(2)}×
                 {sizeMm[1].toFixed(2)}×{sizeMm[2].toFixed(2)} mm
             </Typography>
@@ -259,26 +258,15 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
                 over from the removed segmentation tool. */}
             {signal && (
                 <Stack spacing={0.25}>
-                    <Stack direction="row" alignItems="center" spacing={1}>
-                        <Typography sx={{ ...labelSx, minWidth: 64 }}>Visible ≥</Typography>
-                        <Slider
-                            size="small"
-                            value={threshold}
-                            min={0}
-                            max={1}
-                            step={0.01}
-                            onChange={(_, v) =>
-                                updateActiveRenderState({
-                                    h5Threshold: typeof v === 'number' ? v : v[0],
-                                })
-                            }
-                            sx={{ flex: 1 }}
-                        />
-                        <Typography sx={{ ...labelSx, minWidth: 30, textAlign: 'right' }}>
-                            {threshold.toFixed(2)}
-                        </Typography>
-                    </Stack>
-                    <Typography sx={{ ...labelSx, opacity: 0.6, fontSize: '0.62rem' }}>
+                    <SliderRow
+                        label="Visible ≥"
+                        value={threshold}
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        onChange={(v) => updateActiveRenderState({ h5Threshold: v })}
+                    />
+                    <Typography sx={microLabelSx}>
                         {(signal.fraction * 100).toFixed(1)}% · ~
                         {signal.aboveVoxEst.toLocaleString()} vox · {signal.signalMm3.toFixed(4)}{' '}
                         mm³
@@ -292,34 +280,35 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
                             variant="outlined"
                             disabled={isAnalyzing}
                             onClick={handleAnalyzeObjects}
-                            sx={{ fontSize: '0.65rem', py: 0.4 }}
+                            sx={compactButtonSx}
                         >
                             Count objects
                         </Button>
                         {objectResult && !objectResult.tooLarge && objectResult.count > 0 && (
-                            <Button
+                            <ToggleButton
+                                value="coloring"
                                 size="small"
-                                variant={objectColorsVisible ? 'contained' : 'outlined'}
-                                onClick={() =>
+                                selected={objectColorsVisible}
+                                onChange={() =>
                                     setObjectColorsVisible(fileKey, !objectColorsVisible)
                                 }
-                                sx={{ fontSize: '0.65rem', py: 0.4 }}
+                                sx={{ ...compactButtonSx, textTransform: 'none' }}
                             >
                                 {objectColorsVisible ? 'Coloring on' : 'Coloring off'}
-                            </Button>
+                            </ToggleButton>
                         )}
                         {isAnalyzing && <CircularProgress size={12} thickness={5} />}
                     </Box>
 
                     {objectResult?.tooLarge && (
-                        <Typography sx={{ ...labelSx, opacity: 0.7, fontSize: '0.62rem' }}>
+                        <Typography sx={microLabelSx}>
                             Region too large ({objectResult.regionVoxels.toLocaleString()} vox) —
                             please narrow it down
                         </Typography>
                     )}
                     {objectResult && !objectResult.tooLarge && (
                         <Stack spacing={0.25}>
-                            <Typography sx={{ ...labelSx, fontWeight: 600, fontSize: '0.66rem' }}>
+                            <Typography sx={{ ...microLabelSx, fontWeight: 600 }}>
                                 {objectResult.count}{' '}
                                 {objectResult.count === 1 ? 'object' : 'objects'} (≥{' '}
                                 {MIN_OBJECT_VOXELS} vox)
@@ -342,18 +331,16 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
                                                 backgroundColor: rankColorCss(i + 1),
                                             }}
                                         />
-                                        <Typography sx={{ ...labelSx, fontSize: '0.6rem' }}>
-                                            #{i + 1}
-                                        </Typography>
+                                        <Typography sx={microLabelSx}>#{i + 1}</Typography>
                                     </Stack>
-                                    <Typography sx={{ ...labelSx, fontSize: '0.6rem' }}>
+                                    <Typography sx={microLabelSx}>
                                         {o.volumeMm3.toFixed(5)} mm³ · {o.voxels.toLocaleString()}{' '}
                                         vox
                                     </Typography>
                                 </Stack>
                             ))}
                             {objectResult.count > OBJECT_LIST_LIMIT && (
-                                <Typography sx={{ ...labelSx, opacity: 0.5, fontSize: '0.6rem' }}>
+                                <Typography sx={microLabelSx}>
                                     + {objectResult.count - OBJECT_LIST_LIMIT} more
                                 </Typography>
                             )}
@@ -365,10 +352,10 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                 <Button
                     size="small"
-                    variant="outlined"
+                    variant="contained"
                     disabled={isCropping || isFullVolume}
                     onClick={() => void openCrop()}
-                    sx={{ fontSize: '0.65rem', py: 0.4 }}
+                    sx={compactButtonSx}
                 >
                     Open Crop
                 </Button>
@@ -376,10 +363,10 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
                     <Button
                         size="small"
                         variant="outlined"
-                        color="inherit"
+                        color="error"
                         disabled={isCropping}
                         onClick={() => setCropBox(fileKey, fullVolumeCropBox(activeH5.meta))}
-                        sx={{ fontSize: '0.65rem', py: 0.4 }}
+                        sx={compactButtonSx}
                     >
                         Reset
                     </Button>

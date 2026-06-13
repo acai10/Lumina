@@ -18,7 +18,6 @@ from src.schemas.volumes import (
     RegisterBatchRequest,
     RegisterRequest,
     UploadResponse,
-    VolumeInfo,
 )
 
 logger = logging.getLogger(__name__)
@@ -193,20 +192,6 @@ def filter_volume(volume_id: str, req: FilterRequest) -> Response:
     content, headers = pack_normalized_response(filtered)
     del filtered
     return Response(content=content, media_type="application/octet-stream", headers=headers)
-
-
-@router.get(
-    "/{volume_id}/info",
-    response_model=VolumeInfo,
-    summary="Get volume metadata",
-    description="Return the shape and dtype for a previously uploaded volume.",
-    responses={404: {"description": "Volume not found"}},
-)
-def volume_info(volume_id: str) -> VolumeInfo:
-    path = settings.uploads_dir / f"{volume_id}.h5"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Volume not found.")
-    return VolumeInfo(volume_id=volume_id, shape=list(OCT_DIMS), dtype="float32")
 
 
 @router.get(

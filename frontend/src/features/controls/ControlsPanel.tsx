@@ -34,6 +34,7 @@ import {
     accordionSx,
     accordionTitleSx,
     labelSx,
+    NumberInput,
 } from './ControlsPanel.styles'
 import { RENDER_CONTROL_LIMITS, getRenderControlLimits } from './renderControlLimits'
 import { PreprocessingSection } from './PreprocessingSection'
@@ -42,7 +43,7 @@ import { SliderRow, RangeSliderRow } from './SliderRow'
 import type { ColormapType, H5RenderControls } from '../../shared/types/viewer.types'
 import { measureVolume, uploadVolume } from '../../shared/api/client'
 import type { MeasureResult } from '../../shared/api/client'
-import { palette } from '../../shared/theme/palette'
+import { eyebrowSx, microLabelSx, compactButtonSx } from '../../shared/theme/uiTokens'
 import { DEFAULT_VOXEL_SIZE_UM, UM_PER_MM } from '../../shared/constants'
 
 const NO_OVERLAY_SENTINEL = -1
@@ -272,9 +273,7 @@ export default function ControlsPanel() {
 
                     {/* Colormap selector — applies to both 3D and slice view */}
                     <Stack spacing={0.5}>
-                        <Typography sx={{ ...labelSx, letterSpacing: '0.08em', opacity: 0.7 }}>
-                            COLORMAP
-                        </Typography>
+                        <Typography sx={eyebrowSx}>COLORMAP</Typography>
                         <ToggleButtonGroup
                             value={sliceColormap}
                             exclusive
@@ -322,9 +321,7 @@ export default function ControlsPanel() {
                     {/* Measurements */}
                     {hasVolumeSource && (
                         <Stack spacing={0.75}>
-                            <Typography sx={{ ...labelSx, letterSpacing: '0.08em', opacity: 0.7 }}>
-                                MEASUREMENTS
-                            </Typography>
+                            <Typography sx={eyebrowSx}>MEASUREMENTS</Typography>
                             {/* Voxel spacing inputs (dz, dy, dx) in µm */}
                             <Stack direction="row" spacing={0.5} alignItems="center">
                                 <Typography sx={{ ...labelSx, minWidth: 56 }}>µm/vox</Typography>
@@ -338,12 +335,8 @@ export default function ControlsPanel() {
                                             gap: 0.25,
                                         }}
                                     >
-                                        <Typography
-                                            sx={{ ...labelSx, fontSize: '0.6rem', opacity: 0.6 }}
-                                        >
-                                            {label}
-                                        </Typography>
-                                        <input
+                                        <Typography sx={microLabelSx}>{label}</Typography>
+                                        <NumberInput
                                             type="number"
                                             min={0.001}
                                             step={0.1}
@@ -359,16 +352,6 @@ export default function ControlsPanel() {
                                                     if (activeKey)
                                                         setSliceVoxelSizeUm(activeKey, next)
                                                 }
-                                            }}
-                                            style={{
-                                                width: 52,
-                                                fontSize: '0.72rem',
-                                                padding: '2px 4px',
-                                                borderRadius: 4,
-                                                border: `1px solid ${palette.borderGlass}`,
-                                                background: palette.surfaceSolid,
-                                                color: palette.textPrimary,
-                                                textAlign: 'right',
                                             }}
                                         />
                                     </Box>
@@ -402,7 +385,7 @@ export default function ControlsPanel() {
                                             setIsMeasuring(false)
                                         }
                                     }}
-                                    sx={{ fontSize: '0.65rem', py: 0.4 }}
+                                    sx={compactButtonSx}
                                 >
                                     Start measurement
                                 </Button>
@@ -478,9 +461,7 @@ export default function ControlsPanel() {
                             </Section>
                             <Section title="STL OVERLAY" defaultExpanded={false}>
                                 {stlTabs.length === 0 ? (
-                                    <Typography
-                                        sx={{ ...labelSx, opacity: 0.6, fontSize: '0.62rem' }}
-                                    >
+                                    <Typography sx={microLabelSx}>
                                         Load an STL file ("Load STL" above) to overlay it on the
                                         volume.
                                     </Typography>
@@ -531,8 +512,7 @@ export default function ControlsPanel() {
                                                         setStlGizmoActive(!stlGizmoActive)
                                                     }
                                                     sx={{
-                                                        fontSize: '0.6rem',
-                                                        py: 0.3,
+                                                        ...compactButtonSx,
                                                         textTransform: 'none',
                                                         alignSelf: 'flex-start',
                                                     }}
@@ -565,8 +545,7 @@ export default function ControlsPanel() {
                                                             variant="outlined"
                                                             onClick={() => requestStlOverlayReset()}
                                                             sx={{
-                                                                fontSize: '0.65rem',
-                                                                py: 0.4,
+                                                                ...compactButtonSx,
                                                                 alignSelf: 'flex-start',
                                                             }}
                                                         >

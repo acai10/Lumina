@@ -68,32 +68,6 @@ def get_session(session_id: str) -> SessionStatusResponse:
 
 
 @router.get(
-    "/{session_id}/mip",
-    summary="Get Maximum Intensity Projection of stitched volume",
-    description="Returns raw float32 bytes; shape in ``X-Shape`` header (height,width).",
-    responses={
-        404: {"description": "Session or MIP not found"},
-        202: {"description": "Session not yet complete"},
-    },
-)
-def get_session_mip(session_id: str) -> Response:
-    state = session_store.get(session_id)
-    if state is None:
-        raise HTTPException(status_code=404, detail="Session not found.")
-
-    path = settings.uploads_dir / f"{session_id}_mip.npy"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="MIP not available yet.")
-
-    mip: np.ndarray = np.load(path)
-    return Response(
-        content=mip.astype(np.float32).tobytes(),
-        media_type="application/octet-stream",
-        headers={"X-Shape": ",".join(str(d) for d in mip.shape)},
-    )
-
-
-@router.get(
     "/{session_id}/merged",
     summary="Get merged OCT volume",
     description=(

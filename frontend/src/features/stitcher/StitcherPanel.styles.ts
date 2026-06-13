@@ -20,10 +20,12 @@ export const tealOutlineButtonSx = { borderColor: palette.borderGlass, color: pa
 /** Small muted caption above an input group (volume list, method selector). */
 export const subLabelSx = { color: palette.textMuted, mb: 0.5, display: 'block' }
 
-/** Section header above the results tables. */
+/** Section header above the results tables (matches the app-wide eyebrow style). */
 export const sectionHeaderSx = {
     color: palette.textSecondary,
-    letterSpacing: '0.06em',
+    fontWeight: 600,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase' as const,
     mb: 0.75,
     display: 'block',
 }

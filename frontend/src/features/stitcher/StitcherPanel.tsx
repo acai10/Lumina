@@ -20,7 +20,8 @@ import { useViewerStore } from '../../app/store/viewerSlice'
 import { useStitchSession, type VolumeConfig, type StitchPhase } from './useStitchSession'
 import { StitchResults } from './StitchResults'
 import { gridTextFieldSx, subLabelSx, tealOutlineButtonSx } from './StitcherPanel.styles'
-import { STITCHER_WIDTH } from '../../shared/theme/layout'
+import { STITCHER_WIDTH, PANEL_PADDING } from '../../shared/theme/layout'
+import { eyebrowSx } from '../../shared/theme/uiTokens'
 
 const PANEL_WIDTH = STITCHER_WIDTH
 const MIN_STITCH_VOLUMES = 2
@@ -179,7 +180,7 @@ export default function StitcherPanel() {
                 backdropFilter: 'blur(12px)',
                 borderLeft: `1px solid ${palette.borderGlass}`,
                 boxShadow: `inset 1px 0 0 ${palette.glassHighlight}`,
-                p: 2,
+                p: PANEL_PADDING,
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 2,
@@ -187,24 +188,15 @@ export default function StitcherPanel() {
         >
             {/* Header */}
             <Stack direction="row" alignItems="center" justifyContent="space-between">
-                <Typography
-                    variant="subtitle2"
-                    sx={{
-                        color: palette.textSecondary,
-                        letterSpacing: '0.08em',
-                        textTransform: 'uppercase',
-                        fontSize: '0.72rem',
-                    }}
-                >
-                    Volume Stitching
-                </Typography>
+                <Typography sx={eyebrowSx}>Volume Stitching</Typography>
                 <Stack direction="row" alignItems="center" spacing={0.5}>
                     {(configs.length > 0 || phase !== 'idle') && (
                         <Button
                             size="small"
-                            variant="text"
+                            variant="outlined"
+                            color="error"
                             onClick={handleReset}
-                            sx={{ color: palette.danger, fontSize: '0.72rem', minWidth: 0 }}
+                            sx={{ fontSize: '0.72rem', minWidth: 0 }}
                         >
                             Clear
                         </Button>
@@ -416,7 +408,7 @@ export default function StitcherPanel() {
                 fullWidth
                 disabled={!canRun}
                 onClick={() => run(configs, method)}
-                sx={{ borderColor: palette.borderGlass, color: palette.primary }}
+                sx={tealOutlineButtonSx}
             >
                 {isBusy ? (
                     <Stack direction="row" spacing={1} alignItems="center">

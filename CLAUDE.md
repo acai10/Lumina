@@ -92,12 +92,12 @@ backend/
     │   ├── enums.py          # JobStatus (str Enum): PENDING, RUNNING, DONE, ERROR
     │   ├── jobs.py           # FilterStep, FilterRequest, JobRequest, JobCreated, JobStatusResponse
     │   ├── sessions.py       # VolumeEntry, SessionRequest, SessionStatusResponse
-    │   └── volumes.py        # UploadResponse, VolumeInfo
+    │   └── volumes.py        # UploadResponse, LocalVolume, Register(Batch)Request
     ├── routers/
-    │   ├── volumes.py        # upload, register(-batch), info, normalized, filter
+    │   ├── volumes.py        # upload, register(-batch), normalized, filter
     │   ├── jobs.py           # POST /jobs/ (201), GET /jobs/{id}
     │   ├── results.py        # GET /jobs/{id}/volume/{stitcher} → normalised binary
-    │   ├── sessions.py       # POST+GET /sessions/, /merged, /mip, POST /filter
+    │   ├── sessions.py       # POST+GET /sessions/, /merged, POST /filter
     │   ├── measurements.py   # POST /volumes/{id}/measure
     │   ├── crop.py           # POST /volumes/{id}/crop → new independent sub-volume
     │   └── cleanup.py        # DELETE /cleanup
@@ -130,7 +130,6 @@ backend/
 | --- | --- | --- | --- |
 | POST | `/volumes/upload` | 200 | Upload `.h5` → `{ volume_id, n_slices, height, width }` |
 | POST | `/volumes/register` · `/volumes/register-batch` | 200 | Register local file(s) by path (zero-copy, no upload) |
-| GET | `/volumes/{id}/info` | 200 | Volume shape/dtype |
 | GET | `/volumes/{id}/normalized` | 200 | Render-ready normalised binary |
 | POST | `/volumes/{id}/filter` | 200 | Apply filter chain → normalised binary (no stitch/metrics) |
 | POST | `/volumes/{id}/measure` | 200 | Geometric measurements |
@@ -139,7 +138,7 @@ backend/
 | GET | `/jobs/{id}` | 200 | Poll status + metric results |
 | GET | `/jobs/{id}/volume/{stitcher}` | 200 | Normalised binary result volume |
 | POST/GET | `/sessions/` · `/sessions/{id}` | 200/201 | Multi-volume stitch session + poll |
-| GET | `/sessions/{id}/merged` · `/mip` | 200 | Merged volume / MIP |
+| GET | `/sessions/{id}/merged` | 200 | Merged volume |
 | POST | `/sessions/{id}/filter` | 200 | Filter the merged volume |
 | DELETE | `/cleanup` | 200 | Delete all files in `uploads/` |
 
