@@ -19,10 +19,10 @@ interface ToolDef {
     label: string
 }
 
-// Painting tools only — crop shapes live in the sidebar ("ZUSCHNEIDEN").
+// Painting tools only — crop shapes live in the sidebar ("CROP").
 const TOOLS: ToolDef[] = [
-    { tool: 'brush', icon: <BrushIcon fontSize="small" />, label: 'Pinsel' },
-    { tool: 'eraser', icon: <CleaningServicesIcon fontSize="small" />, label: 'Radierer' },
+    { tool: 'brush', icon: <BrushIcon fontSize="small" />, label: 'Brush' },
+    { tool: 'eraser', icon: <CleaningServicesIcon fontSize="small" />, label: 'Eraser' },
 ]
 
 interface AnnotationToolbarProps {
@@ -105,7 +105,7 @@ export default function AnnotationToolbar({ activeH5 }: AnnotationToolbarProps) 
             onWheel={(e) => e.stopPropagation()}
         >
             {/* Fold toggle — kept leftmost so the tool icons stay pinned to the left. */}
-            <Tooltip title={expanded ? 'Einklappen' : 'Annotationswerkzeuge'} placement="bottom">
+            <Tooltip title={expanded ? 'Collapse' : 'Annotation tools'} placement="bottom">
                 <IconButton
                     size="small"
                     onClick={() => setExpanded((v) => !v)}
@@ -132,7 +132,7 @@ export default function AnnotationToolbar({ activeH5 }: AnnotationToolbarProps) 
                             </IconButton>
                         </Tooltip>
                     ))}
-                    <Tooltip title="Annotationen löschen" placement="bottom">
+                    <Tooltip title="Clear annotations" placement="bottom">
                         <span>
                             <IconButton
                                 size="small"

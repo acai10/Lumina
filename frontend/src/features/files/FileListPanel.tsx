@@ -69,14 +69,14 @@ export function FileListPanel() {
                 justifyContent="space-between"
                 sx={{ px: PANEL_PADDING, pt: PANEL_PADDING, pb: 0.5, flexShrink: 0 }}
             >
-                <Typography sx={titleSx}>DATEIEN ({volumes.length})</Typography>
+                <Typography sx={titleSx}>FILES ({volumes.length})</Typography>
                 <Stack direction="row" spacing={0}>
-                    <Tooltip title="Aktualisieren">
+                    <Tooltip title="Refresh">
                         <IconButton size="small" onClick={refresh} sx={iconBtnSx}>
                             <RefreshIcon sx={{ fontSize: 14 }} />
                         </IconButton>
                     </Tooltip>
-                    <Tooltip title="Schließen">
+                    <Tooltip title="Close">
                         <IconButton size="small" onClick={toggleFileListPanel} sx={iconBtnSx}>
                             <ChevronLeftIcon sx={{ fontSize: 14 }} />
                         </IconButton>
@@ -99,7 +99,7 @@ export function FileListPanel() {
                 )}
                 {!loading && !error && volumes.length === 0 && (
                     <Typography sx={{ fontSize: '0.7rem', opacity: 0.6, p: 1.5 }}>
-                        Keine .h5-Dateien gefunden.
+                        No .h5 files found.
                     </Typography>
                 )}
                 {!loading && !error && volumes.length > 0 && (

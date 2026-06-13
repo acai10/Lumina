@@ -339,7 +339,7 @@ export const SlicePanel = memo(function SlicePanel({
     const lastPaintOrig = useRef<{ ox: number; oy: number } | null>(null)
 
     // The per-panel measurement mode takes precedence over annotation/crop tools, so
-    // toggling "Messung" always works regardless of the globally-active tool.
+    // toggling measurement always works regardless of the globally-active tool.
     const isPaintTool = !measuring && (activeTool === 'brush' || activeTool === 'eraser')
     const isRectTool = !measuring && activeTool === 'rectCrop'
     // Circle and sphere crops both drag out a 2D ellipse on the slice.
@@ -900,7 +900,7 @@ export const SlicePanel = memo(function SlicePanel({
             </Typography>
 
             {/* Measure toggle button */}
-            <Tooltip title={measuring ? 'Messung beenden' : 'Messung starten'} placement="left">
+            <Tooltip title={measuring ? 'Stop measuring' : 'Start measuring'} placement="left">
                 <IconButton
                     size="small"
                     onClick={(e) => {

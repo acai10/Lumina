@@ -15,16 +15,11 @@ export interface AnnotationColor {
 }
 
 export const ANNOTATION_PALETTE: AnnotationColor[] = [
-    { label: 1, name: 'Gewebe', hex: '#ff5252', rgb: [255, 82, 82] },
-    { label: 2, name: 'Hintergrund', hex: '#448aff', rgb: [68, 138, 255] },
-    { label: 3, name: 'Struktur', hex: '#69f0ae', rgb: [105, 240, 174] },
+    { label: 1, name: 'Tissue', hex: '#ff5252', rgb: [255, 82, 82] },
+    { label: 2, name: 'Background', hex: '#448aff', rgb: [68, 138, 255] },
+    { label: 3, name: 'Structure', hex: '#69f0ae', rgb: [105, 240, 174] },
     { label: 4, name: 'Marker', hex: '#ffd740', rgb: [255, 215, 64] },
 ]
-
-/** Look up a palette entry by label, falling back to the first colour. */
-export function colorForLabel(label: number): AnnotationColor {
-    return ANNOTATION_PALETTE.find((c) => c.label === label) ?? ANNOTATION_PALETTE[0]
-}
 
 /** Opacity of the annotation tint over the slice / the 3D voxel highlight points. */
 export const ANNOTATION_TINT_ALPHA = 0.45

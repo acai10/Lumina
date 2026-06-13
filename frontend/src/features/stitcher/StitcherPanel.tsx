@@ -209,7 +209,7 @@ export default function StitcherPanel() {
                             Clear
                         </Button>
                     )}
-                    <Tooltip title="Einklappen">
+                    <Tooltip title="Collapse">
                         <IconButton
                             size="small"
                             onClick={toggleStitchPanel}
@@ -282,8 +282,8 @@ export default function StitcherPanel() {
                     <Tooltip
                         title={
                             loadableH5Tabs.length === 0
-                                ? 'Keine geladenen H5-Dateien verfügbar'
-                                : 'Geladene H5-Datei hinzufügen'
+                                ? 'No loaded H5 files available'
+                                : 'Add loaded H5 file'
                         }
                     >
                         <span>

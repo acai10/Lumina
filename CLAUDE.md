@@ -165,7 +165,7 @@ Session registration methods: `"phase_correlation"`, `"cross_correlation"`.
 
 ## Frontend Architecture
 
-Loaded files (H5 and STL, mixed freely) live in a single unified `tabs: TabEntry[]` array in Zustand with an `activeTabIndex`; view switching is state-based off the active tab's `type` (`'h5' | 'stl'`) and, for H5, its per-file `viewMode` (`'pointcloud' | 'slice'`) — no URL routing. **Crop** (`features/controls/CropSection.tsx`, per-file `cropBox`/`cropMode`/`cropThreshold`; box drawn in 3D via `H5Viewer` and as a draggable rectangle in `SlicePanel`) extracts a sub-volume server-side (`POST /volumes/{id}/crop`) and adds it through the normal `loadH5` path as a brand-new tab keyed by a unique name (`Crop N: …`), so each crop is a fully independent dataset with its own per-file state. The crop panel also shows the selection's physical size (mm), a strided client-side signal-content readout at an adjustable threshold, and an on-demand object count (`cropObjectAnalysis.ts`: 3D 6-connectivity flood fill over the in-memory normalised volume → distinct structures + per-object mm³). Both quantifications are carried over from the former segmentation tool. MUI is the sole styling system; no CSS files. All colour tokens are in `frontend/src/shared/theme/palette.ts`.
+Loaded files (H5 and STL, mixed freely) live in a single unified `tabs: TabEntry[]` array in Zustand with an `activeTabIndex`; view switching is state-based off the active tab's `type` (`'h5' | 'stl'`) and, for H5, its per-file `viewMode` (`'pointcloud' | 'slice'`) — no URL routing. **Crop** (`features/controls/CropSection.tsx`, per-file `cropBox`/`cropMode`/`cropShape`; box drawn in 3D via `H5Viewer` and as a draggable shape in `SlicePanel`) extracts a sub-volume server-side (`POST /volumes/{id}/crop` with `shape` ∈ `rect`/`cylinder`/`sphere`) and adds it through the normal `loadH5` path as a brand-new tab keyed by a unique name (`Crop N: …`), registered via `registeredVolumeId` so filtering, measurement and re-cropping all work — full parity with a loaded file. The crop panel shows the selection's physical size (mm), a strided client-side signal-content readout at the render visibility threshold (`renderControls.h5Threshold` — the same threshold that gates the 3D cloud, so "signal" means "currently visible"), and an on-demand object count (`cropObjectAnalysis.ts`: 3D 6-connectivity flood fill over the in-memory normalised volume → distinct structures + per-object mm³, optionally coloured in both viewers). **Annotation** (`features/annotation/`, `AnnotationToolbar.tsx`) adds non-destructive per-tab brush/eraser painting over the 2D slice view, with the mask stored per-file in Zustand and mirrored into the 3D voxel overlay. MUI is the sole styling system; no CSS files. All colour tokens are in `frontend/src/shared/theme/palette.ts`.
 
 Complex component styles with pseudo-selectors go in co-located `.styles.ts` files; simple 1–3 property overrides stay as inline `sx` props.
 
@@ -207,11 +207,14 @@ frontend/src/
     ├── controls/
     │   ├── index.ts                  # barrel
     │   ├── ControlsPanel.tsx         # right sidebar; delegates to hooks + sub-components
-    │   ├── PreprocessingSection.tsx  # filter UI; uses useFilterJob + useFilterParams
+    │   ├── PreprocessingSection.tsx  # filter pipeline UI; uses useFilterJob + useFilterParams
+    │   ├── CropSection.tsx           # crop shape/range/threshold UI + object count; uses useOpenCrop
+    │   ├── cropObjectAnalysis.ts     # analyzeRegionObjects(): 3D connected-component labelling
     │   ├── SliderRow.tsx             # SliderRow + RangeSliderRow (named exports)
     │   ├── renderControlLimits.ts    # RENDER_CONTROL_LIMITS; derived from VOLUME_DIMS
     │   ├── useFilterJob.ts           # Hook: lean filter apply/revert (single request, no polling)
-    │   ├── useFilterParams.ts        # Hook: filter type + param state + buildFilterStep()
+    │   ├── useFilterParams.ts        # Hook: filter pipeline steps + buildFilterChain()
+    │   ├── useOpenCrop.ts            # Hook: resolve volume → POST /crop → open as new tab
     │   └── useNumberInput.ts         # Hook: controlled number input with clamping
     ├── h5/
     │   ├── index.ts                  # barrel (H5Viewer, H5SliceViewer, H5FileTabs)
@@ -229,6 +232,20 @@ frontend/src/
     │   ├── index.ts                  # barrel
     │   ├── Toolbar.tsx               # top toolbar; delegates to useFileLoad
     │   └── useFileLoad.ts            # Hook: file input refs + H5/STL load handlers
+    ├── annotation/
+    │   ├── AnnotationToolbar.tsx     # foldable 2D brush/eraser toolbar over the slice view
+    │   ├── annotationMask.ts         # per-tab voxel mask: paintStroke/clear/annotatedCount
+    │   └── annotationPalette.ts      # fixed label-colour palette + tint alpha
+    ├── files/
+    │   └── FileListPanel.tsx         # left sidebar: server .h5 files grouped by folder
+    ├── onboarding/
+    │   ├── index.ts                  # barrel
+    │   └── EmptyState.tsx            # drag-and-drop landing screen when no file is loaded
+    ├── stitcher/
+    │   ├── index.ts                  # barrel
+    │   ├── StitcherPanel.tsx         # right-docked multi-volume stitch UI
+    │   ├── StitchResults.tsx         # quality-metric + offset tables
+    │   └── useStitchSession.ts       # Hook: session create/poll/download
     └── notifications/
         ├── index.ts                  # barrel
         └── AppSnackbar.tsx           # notification snackbar

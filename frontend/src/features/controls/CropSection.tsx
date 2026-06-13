@@ -94,9 +94,9 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
     // Shape buttons drive crop mode + the active crop tool (so the 2D drag and 3D
     // gizmo respond). Picking the active shape again turns cropping off.
     const CROP_SHAPES = [
-        { shape: 'rect' as const, tool: 'rectCrop' as const, label: 'Rechteck' },
-        { shape: 'circle' as const, tool: 'circleCrop' as const, label: 'Kreis/Zylinder' },
-        { shape: 'sphere' as const, tool: 'sphereCrop' as const, label: 'Kugel' },
+        { shape: 'rect' as const, tool: 'rectCrop' as const, label: 'Rectangle' },
+        { shape: 'circle' as const, tool: 'circleCrop' as const, label: 'Circle/Cylinder' },
+        { shape: 'sphere' as const, tool: 'sphereCrop' as const, label: 'Sphere' },
     ]
     const selectCropShape = (shape: 'rect' | 'circle' | 'sphere', tool: AnnotationTool) => {
         const isActive = cropMode && cropShape === shape
@@ -203,9 +203,7 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
 
     return (
         <Stack spacing={0.75}>
-            <Typography sx={{ ...labelSx, letterSpacing: '0.08em', opacity: 0.7 }}>
-                ZUSCHNEIDEN
-            </Typography>
+            <Typography sx={{ ...labelSx, letterSpacing: '0.08em', opacity: 0.7 }}>CROP</Typography>
 
             {/* Region shape — selecting one enables crop drawing (2D drag + 3D move
                 gizmo); selecting the active one again turns it off. */}
@@ -228,7 +226,7 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
             </ToggleButtonGroup>
 
             <RangeSliderRow
-                label="X (Breite)"
+                label="X (Width)"
                 value={[cropBox.x, cropBox.x + cropBox.w]}
                 min={0}
                 max={width}
@@ -244,7 +242,7 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
                 onChange={(v) => setAxis('z', v)}
             />
             <RangeSliderRow
-                label="Z (Tiefe)"
+                label="Z (Depth)"
                 value={[cropBox.y, cropBox.y + cropBox.h]}
                 min={0}
                 max={height}
@@ -262,7 +260,7 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
             {signal && (
                 <Stack spacing={0.25}>
                     <Stack direction="row" alignItems="center" spacing={1}>
-                        <Typography sx={{ ...labelSx, minWidth: 64 }}>Sichtbar ≥</Typography>
+                        <Typography sx={{ ...labelSx, minWidth: 64 }}>Visible ≥</Typography>
                         <Slider
                             size="small"
                             value={threshold}
@@ -296,7 +294,7 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
                             onClick={handleAnalyzeObjects}
                             sx={{ fontSize: '0.65rem', py: 0.4 }}
                         >
-                            Objekte zählen
+                            Count objects
                         </Button>
                         {objectResult && !objectResult.tooLarge && objectResult.count > 0 && (
                             <Button
@@ -307,7 +305,7 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
                                 }
                                 sx={{ fontSize: '0.65rem', py: 0.4 }}
                             >
-                                {objectColorsVisible ? 'Färbung an' : 'Färbung aus'}
+                                {objectColorsVisible ? 'Coloring on' : 'Coloring off'}
                             </Button>
                         )}
                         {isAnalyzing && <CircularProgress size={12} thickness={5} />}
@@ -315,15 +313,15 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
 
                     {objectResult?.tooLarge && (
                         <Typography sx={{ ...labelSx, opacity: 0.7, fontSize: '0.62rem' }}>
-                            Bereich zu groß ({objectResult.regionVoxels.toLocaleString()} vox) —
-                            bitte eingrenzen
+                            Region too large ({objectResult.regionVoxels.toLocaleString()} vox) —
+                            please narrow it down
                         </Typography>
                     )}
                     {objectResult && !objectResult.tooLarge && (
                         <Stack spacing={0.25}>
                             <Typography sx={{ ...labelSx, fontWeight: 600, fontSize: '0.66rem' }}>
                                 {objectResult.count}{' '}
-                                {objectResult.count === 1 ? 'Objekt' : 'Objekte'} (≥{' '}
+                                {objectResult.count === 1 ? 'object' : 'objects'} (≥{' '}
                                 {MIN_OBJECT_VOXELS} vox)
                             </Typography>
                             {objectResult.objects.slice(0, OBJECT_LIST_LIMIT).map((o, i) => (
@@ -356,7 +354,7 @@ export default function CropSection({ activeH5 }: CropSectionProps) {
                             ))}
                             {objectResult.count > OBJECT_LIST_LIMIT && (
                                 <Typography sx={{ ...labelSx, opacity: 0.5, fontSize: '0.6rem' }}>
-                                    + {objectResult.count - OBJECT_LIST_LIMIT} weitere
+                                    + {objectResult.count - OBJECT_LIST_LIMIT} more
                                 </Typography>
                             )}
                         </Stack>

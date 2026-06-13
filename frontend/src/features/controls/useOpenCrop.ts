@@ -47,7 +47,7 @@ export function useOpenCrop(activeH5: H5TabEntry) {
             const sourceId = await resolveVolumeId()
             if (!sourceId) {
                 setNotification({
-                    message: 'Keine Volumen-Quelle zum Zuschneiden',
+                    message: 'No volume source to crop',
                     severity: 'error',
                 })
                 return
@@ -81,12 +81,12 @@ export function useOpenCrop(activeH5: H5TabEntry) {
             await loadH5([entry])
             setCropMode(fileKey, false)
             setNotification({
-                message: `Crop geöffnet (${w}×${h}×${n_slices}${cropShape === 'circle' ? ', zylindrisch' : cropShape === 'sphere' ? ', sphärisch' : ''})`,
+                message: `Crop opened (${w}×${h}×${n_slices}${cropShape === 'circle' ? ', cylindrical' : cropShape === 'sphere' ? ', spherical' : ''})`,
                 severity: 'success',
             })
         } catch (err) {
             setNotification({
-                message: err instanceof Error ? err.message : 'Crop fehlgeschlagen',
+                message: err instanceof Error ? err.message : 'Crop failed',
                 severity: 'error',
             })
         } finally {

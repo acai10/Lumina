@@ -139,7 +139,7 @@ export default function Toolbar() {
                         sx={[h5ButtonSx, { opacity: fileListPanelOpen ? 1 : 0.7 }]}
                         onClick={toggleFileListPanel}
                     >
-                        Dateien {serverVolumes.length > 0 ? `(${serverVolumes.length})` : ''}
+                        Files {serverVolumes.length > 0 ? `(${serverVolumes.length})` : ''}
                     </Button>
                     <Menu
                         anchorEl={h5MenuAnchor}

@@ -54,12 +54,12 @@ const isColormapType = (v: string): v is ColormapType => (COLORMAP_VALUES as str
 
 function MeasurementResultPanel({ result }: { result: MeasureResult }) {
     const rows: [string, string][] = [
-        ['Volumen', `${(result.volume_um3 / UM3_PER_MM3).toFixed(4)} mm³`],
-        ['Oberfläche', `${(result.surface_area_um2 / UM2_PER_MM2).toFixed(4)} mm²`],
-        ['Ø Dicke', `${(result.mean_thickness_um / UM_PER_MM).toFixed(3)} mm`],
-        ['Max Dicke', `${(result.max_thickness_um / UM_PER_MM).toFixed(3)} mm`],
-        ['Lat. Durchm.', `${(result.lateral_diameter_um / UM_PER_MM).toFixed(3)} mm`],
-        ['Voxel', result.voxel_count.toLocaleString()],
+        ['Volume', `${(result.volume_um3 / UM3_PER_MM3).toFixed(4)} mm³`],
+        ['Surface area', `${(result.surface_area_um2 / UM2_PER_MM2).toFixed(4)} mm²`],
+        ['Mean thickness', `${(result.mean_thickness_um / UM_PER_MM).toFixed(3)} mm`],
+        ['Max thickness', `${(result.max_thickness_um / UM_PER_MM).toFixed(3)} mm`],
+        ['Lateral diameter', `${(result.lateral_diameter_um / UM_PER_MM).toFixed(3)} mm`],
+        ['Voxels', result.voxel_count.toLocaleString()],
     ]
     return (
         <Stack spacing={0.25}>
@@ -290,7 +290,7 @@ export default function ControlsPanel() {
                             <ToggleButton value="hot">HOT</ToggleButton>
                         </ToggleButtonGroup>
                         <RangeSliderRow
-                            label="Intensität"
+                            label="Intensity"
                             value={colormapRange}
                             min={0}
                             max={1}
@@ -308,8 +308,8 @@ export default function ControlsPanel() {
                                 }}
                                 sx={{ alignSelf: 'flex-start' }}
                             >
-                                <ToggleButton value="intensity">Intensität</ToggleButton>
-                                <ToggleButton value="depth">Tiefe</ToggleButton>
+                                <ToggleButton value="intensity">Intensity</ToggleButton>
+                                <ToggleButton value="depth">Depth</ToggleButton>
                             </ToggleButtonGroup>
                         )}
                     </Stack>
@@ -319,12 +319,11 @@ export default function ControlsPanel() {
                     {/* Crop selection → opens the sub-volume as a new independent tab */}
                     <CropSection activeH5={activeH5} />
 
-                    {/* Segmentation */}
                     {/* Measurements */}
                     {hasVolumeSource && (
                         <Stack spacing={0.75}>
                             <Typography sx={{ ...labelSx, letterSpacing: '0.08em', opacity: 0.7 }}>
-                                MESSUNGEN
+                                MEASUREMENTS
                             </Typography>
                             {/* Voxel spacing inputs (dz, dy, dx) in µm */}
                             <Stack direction="row" spacing={0.5} alignItems="center">
@@ -396,7 +395,7 @@ export default function ControlsPanel() {
                                                 message:
                                                     err instanceof Error
                                                         ? err.message
-                                                        : 'Messung fehlgeschlagen',
+                                                        : 'Measurement failed',
                                                 severity: 'error',
                                             })
                                         } finally {
@@ -405,7 +404,7 @@ export default function ControlsPanel() {
                                     }}
                                     sx={{ fontSize: '0.65rem', py: 0.4 }}
                                 >
-                                    Messung starten
+                                    Start measurement
                                 </Button>
                                 {isMeasuring && <CircularProgress size={12} thickness={5} />}
                             </Box>
@@ -482,8 +481,8 @@ export default function ControlsPanel() {
                                     <Typography
                                         sx={{ ...labelSx, opacity: 0.6, fontSize: '0.62rem' }}
                                     >
-                                        Lade eine STL-Datei („Load STL" oben), um sie über das
-                                        Volumen zu legen.
+                                        Load an STL file ("Load STL" above) to overlay it on the
+                                        volume.
                                     </Typography>
                                 ) : (
                                     <>
@@ -538,7 +537,7 @@ export default function ControlsPanel() {
                                                         alignSelf: 'flex-start',
                                                     }}
                                                 >
-                                                    Ausrichten
+                                                    Align
                                                 </ToggleButton>
                                                 {stlGizmoActive && (
                                                     <Stack spacing={0.75}>
@@ -552,13 +551,13 @@ export default function ControlsPanel() {
                                                             sx={{ alignSelf: 'flex-start' }}
                                                         >
                                                             <ToggleButton value="translate">
-                                                                Verschieben
+                                                                Move
                                                             </ToggleButton>
                                                             <ToggleButton value="rotate">
-                                                                Drehen
+                                                                Rotate
                                                             </ToggleButton>
                                                             <ToggleButton value="scale">
-                                                                Skalieren
+                                                                Scale
                                                             </ToggleButton>
                                                         </ToggleButtonGroup>
                                                         <Button
@@ -571,7 +570,7 @@ export default function ControlsPanel() {
                                                                 alignSelf: 'flex-start',
                                                             }}
                                                         >
-                                                            Ausrichtung zurücksetzen
+                                                            Reset alignment
                                                         </Button>
                                                     </Stack>
                                                 )}
