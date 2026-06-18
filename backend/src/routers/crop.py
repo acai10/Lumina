@@ -114,9 +114,7 @@ def crop_volume(volume_id: str, req: CropRequest) -> UploadResponse:
     new_id = uuid.uuid4().hex
     dest = settings.uploads_dir / f"{new_id}.h5"
     save_oct_volume(dest, sub)
-    logger.info(
-        "Cropped volume %s %s -> %s shape %s", volume_id, volume.shape, new_id, sub.shape
-    )
+    logger.info("Cropped volume %s %s -> %s shape %s", volume_id, volume.shape, new_id, sub.shape)
 
     d, h, w = sub.shape
     return UploadResponse(volume_id=new_id, n_slices=d, height=h, width=w)

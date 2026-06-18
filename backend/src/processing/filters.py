@@ -81,24 +81,37 @@ def apply_normalize(volume: np.ndarray, params: dict) -> np.ndarray:
 def apply_edge_highlight(volume: np.ndarray, params: dict) -> np.ndarray:
     """Per-slice Sobel edge magnitude, normalised to [0, 1].
 
-    Computes the gradient magnitude using Sobel operators along both in-plane
-    axes and clips the result to the original intensity range so that edge maps
-    can be stacked in a pipeline alongside other filters.
+    Each slice is optionally Gaussian-smoothed first (so the derivative is not
+    dominated by speckle noise), then the in-plane gradient magnitude is computed
+    with Sobel operators. The whole volume is normalised together against a high
+    percentile rather than the absolute maximum, so a single bright outlier pixel
+    no longer washes out the real edges and contrast stays consistent between
+    slices. Output stays in [0, 1] so edge maps can be stacked in a pipeline.
 
     Args:
         volume: Float32 array of shape (n_slices, height, width).
-        params: No parameters required (reserved for future use).
+        params: Accepts ``sigma`` (float, default 1.0) for pre-smoothing — set to
+            0 to disable — and ``high_percentile`` (float, default 99.0) for the
+            normalization reference.
 
     Returns:
         Edge-magnitude volume of the same shape and dtype, values in [0, 1].
     """
+    sigma = float(params.get("sigma", 1.0))
+    high_pct = float(params.get("high_percentile", 99.0))
+
     out = np.empty_like(volume)
     for i in range(volume.shape[0]):
-        sx = ndi.sobel(volume[i], axis=0)
-        sy = ndi.sobel(volume[i], axis=1)
-        mag = np.hypot(sx, sy)
-        max_val = float(mag.max())
-        out[i] = (mag / max_val).astype(np.float32) if max_val > 0 else mag.astype(np.float32)
+        plane = ndi.gaussian_filter(volume[i], sigma=sigma) if sigma > 0 else volume[i]
+        sx = ndi.sobel(plane, axis=0)
+        sy = ndi.sobel(plane, axis=1)
+        out[i] = np.hypot(sx, sy)
+
+    # Normalise the whole volume together for consistent slice-to-slice contrast,
+    # using a high percentile so outlier pixels do not crush the dynamic range.
+    ref = float(np.percentile(out, high_pct))
+    if ref > 0:
+        np.clip(out / ref, 0.0, 1.0, out=out)
     return out
 
 

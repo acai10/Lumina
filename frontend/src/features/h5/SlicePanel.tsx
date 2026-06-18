@@ -1,6 +1,8 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Box, IconButton, Slider, Stack, Tooltip, Typography } from '@mui/material'
 import StraightenIcon from '@mui/icons-material/Straighten'
+import TimelineIcon from '@mui/icons-material/Timeline'
+import CropSquareIcon from '@mui/icons-material/CropSquare'
 import CloseIcon from '@mui/icons-material/Close'
 import { useViewerStore, DEFAULT_SLICE_PANEL_CONTROL } from '../../app/store/viewerSlice'
 import type {
@@ -84,6 +86,8 @@ const OBJECT_TINT_ALPHA = 0.55
 const LUT_SIZE = 256
 const TONE_MAP_PIVOT = 0.5
 const MEASURE_RADIUS = 5
+/** Stroke width (canvas px, divided by zoom) for measurement lines/rectangles. */
+const MEASURE_LINE_WIDTH = 4
 const SCALE_BAR_COLOR = palette.scaleBar
 const COLORBAR_STOPS = 12
 
@@ -201,6 +205,38 @@ function computeDistanceMm(
         d2Um = (r2.oy - r1.oy) * dy
     }
     return Math.sqrt(d1Um * d1Um + d2Um * d2Um) / UM_PER_MM
+}
+
+// Area in mm² of the rectangle spanned by two canvas-coordinate corners, using the
+// same per-axis voxel spacing mapping as computeDistanceMm. The rectangle edges are
+// taken parallel to the orig (pre-orientation) axes, so each edge maps to one spacing.
+function computeAreaMm2(
+    p1: { cx: number; cy: number },
+    p2: { cx: number; cy: number },
+    axis: 'z' | 'y' | 'x',
+    orient: string | undefined,
+    origW: number,
+    origH: number,
+    voxelSizeUm: [number, number, number],
+): number {
+    const r1 = canvasToOrig(p1.cx, p1.cy, orient, origW, origH)
+    const r2 = canvasToOrig(p2.cx, p2.cy, orient, origW, origH)
+    const [dz, dy, dx] = voxelSizeUm
+    let wUm: number, hUm: number
+    if (axis === 'z') {
+        // XY plane: ox → volume-x (width), oy → volume-y (height)
+        wUm = Math.abs(r2.ox - r1.ox) * dx
+        hUm = Math.abs(r2.oy - r1.oy) * dy
+    } else if (axis === 'y') {
+        // XZ plane: ox → volume-x, oy → volume-z (nSlices)
+        wUm = Math.abs(r2.ox - r1.ox) * dx
+        hUm = Math.abs(r2.oy - r1.oy) * dz
+    } else {
+        // YZ plane: ox → volume-z (nSlices), oy → volume-y (height)
+        wUm = Math.abs(r2.ox - r1.ox) * dz
+        hUm = Math.abs(r2.oy - r1.oy) * dy
+    }
+    return (wUm * hUm) / (UM_PER_MM * UM_PER_MM)
 }
 
 const ZOOM_STEP_FACTOR = 1.03
@@ -339,14 +375,22 @@ export const SlicePanel = memo(function SlicePanel({
 
     // Measurement state — local to each panel
     const [measuring, setMeasuring] = useState(false)
+    const [measureMode, setMeasureMode] = useState<'distance' | 'area'>('distance')
     const [measurePoints, setMeasurePoints] = useState<{ cx: number; cy: number }[]>([])
+    // Rectangle (area mode) in canvas coords; null when none drawn. Updated live on drag.
+    const [measureRect, setMeasureRect] = useState<{
+        s: { cx: number; cy: number }
+        c: { cx: number; cy: number }
+    } | null>(null)
+    const isMeasureDragging = useRef(false)
 
-    // Clear measurement points when the slice changes (old points no longer valid).
+    // Clear measurements when the slice changes (old points/rect no longer valid).
     // Done during render rather than in an effect to avoid a double render on each scrub.
     const [measuredSlice, setMeasuredSlice] = useState(sliceIndex)
     if (measuredSlice !== sliceIndex) {
         setMeasuredSlice(sliceIndex)
         setMeasurePoints([])
+        setMeasureRect(null)
     }
 
     // Live crop-drag rectangle/circle in canvas coords (null when not dragging).
@@ -539,7 +583,7 @@ export const SlicePanel = memo(function SlicePanel({
                 ctx.save()
                 ctx.strokeStyle = palette.accentBlue
                 ctx.fillStyle = palette.accentBlue
-                ctx.lineWidth = 2 / (zoomRef.current || 1)
+                ctx.lineWidth = MEASURE_LINE_WIDTH / (zoomRef.current || 1)
 
                 for (const pt of measurePoints) {
                     ctx.beginPath()
@@ -554,6 +598,19 @@ export const SlicePanel = memo(function SlicePanel({
                     ctx.stroke()
                 }
 
+                ctx.restore()
+            }
+
+            // Area-measurement rectangle (area mode) — outline on top of the canvas.
+            if (measuring && measureRect) {
+                const rx = Math.min(measureRect.s.cx, measureRect.c.cx)
+                const ry = Math.min(measureRect.s.cy, measureRect.c.cy)
+                const rw = Math.abs(measureRect.c.cx - measureRect.s.cx)
+                const rh = Math.abs(measureRect.c.cy - measureRect.s.cy)
+                ctx.save()
+                ctx.strokeStyle = palette.accentBlue
+                ctx.lineWidth = MEASURE_LINE_WIDTH / (zoomRef.current || 1)
+                ctx.strokeRect(rx, ry, rw, rh)
                 ctx.restore()
             }
 
@@ -618,6 +675,7 @@ export const SlicePanel = memo(function SlicePanel({
         canvasH,
         measuring,
         measurePoints,
+        measureRect,
         voxelSizeUm,
         cropMode,
         cropRectOrig,
@@ -732,11 +790,28 @@ export const SlicePanel = memo(function SlicePanel({
                 if (pt) setCropDrag({ s: pt, c: pt })
                 return
             }
+            // Area-measurement: drag out a rectangle instead of placing points / panning.
+            if (measuring && measureMode === 'area') {
+                const pt = eventToCanvas(e)
+                if (pt) {
+                    setMeasureRect({ s: pt, c: pt })
+                    isMeasureDragging.current = true
+                }
+                return
+            }
             isDragging.current = true
             lastPos.current = { x: e.clientX, y: e.clientY }
             clickStartRef.current = { x: e.clientX, y: e.clientY }
         },
-        [isPaintTool, isRectTool, isCircleTool, paintAtEvent, eventToCanvas],
+        [
+            isPaintTool,
+            isRectTool,
+            isCircleTool,
+            measuring,
+            measureMode,
+            paintAtEvent,
+            eventToCanvas,
+        ],
     )
 
     const handleMouseMove = useCallback(
@@ -751,6 +826,12 @@ export const SlicePanel = memo(function SlicePanel({
                 if (pt) setCropDrag((d) => (d ? { ...d, c: pt } : d))
                 return
             }
+            if (measuring && measureMode === 'area') {
+                if (!isMeasureDragging.current) return
+                const pt = eventToCanvas(e)
+                if (pt) setMeasureRect((d) => (d ? { ...d, c: pt } : d))
+                return
+            }
             if (!isDragging.current) return
             const dx = e.clientX - lastPos.current.x
             const dy = e.clientY - lastPos.current.y
@@ -763,6 +844,8 @@ export const SlicePanel = memo(function SlicePanel({
             isPaintTool,
             isRectTool,
             isCircleTool,
+            measuring,
+            measureMode,
             cropDrag,
             paintAtEvent,
             eventToCanvas,
@@ -790,6 +873,18 @@ export const SlicePanel = memo(function SlicePanel({
                     }
                     setCropDrag(null)
                 }
+                return
+            }
+            if (measuring && measureMode === 'area') {
+                isMeasureDragging.current = false
+                // A negligible drag is a stray click — drop the rectangle.
+                setMeasureRect((d) => {
+                    if (!d) return d
+                    const tiny =
+                        Math.abs(d.s.cx - d.c.cx) <= MIN_CROP_DRAG_PX &&
+                        Math.abs(d.s.cy - d.c.cy) <= MIN_CROP_DRAG_PX
+                    return tiny ? null : d
+                })
                 return
             }
             if (measuring && clickStartRef.current) {
@@ -826,6 +921,7 @@ export const SlicePanel = memo(function SlicePanel({
         },
         [
             measuring,
+            measureMode,
             canvasW,
             canvasH,
             isPaintTool,
@@ -851,14 +947,25 @@ export const SlicePanel = memo(function SlicePanel({
         setMeasuring((m) => {
             const next = !m
             setCursorStyle(next ? 'crosshair' : zoomRef.current > MIN_ZOOM ? 'grab' : 'default')
-            if (!next) setMeasurePoints([])
+            if (!next) {
+                setMeasurePoints([])
+                setMeasureRect(null)
+            }
             return next
         })
     }, [])
 
-    // Distance in mm if 2 points are placed.
+    // Switch between distance (two-point) and area (rectangle) measurement; clear the
+    // other mode's overlay so a stale point/rect never lingers.
+    const switchMeasureMode = useCallback(() => {
+        setMeasureMode((m) => (m === 'distance' ? 'area' : 'distance'))
+        setMeasurePoints([])
+        setMeasureRect(null)
+    }, [])
+
+    // Distance in mm if 2 points are placed (distance mode).
     const distanceMm =
-        measuring && measurePoints.length === 2
+        measuring && measureMode === 'distance' && measurePoints.length === 2
             ? computeDistanceMm(
                   measurePoints[0],
                   measurePoints[1],
@@ -868,6 +975,12 @@ export const SlicePanel = memo(function SlicePanel({
                   origH,
                   voxelSizeUm,
               )
+            : null
+
+    // Area in mm² if a rectangle is drawn (area mode).
+    const areaMm2 =
+        measuring && measureMode === 'area' && measureRect
+            ? computeAreaMm2(measureRect.s, measureRect.c, axis, orient, origW, origH, voxelSizeUm)
             : null
 
     return (
@@ -914,6 +1027,44 @@ export const SlicePanel = memo(function SlicePanel({
             >
                 {label}
             </Typography>
+
+            {/* Measure-mode switch (distance ⇄ area) — only while measuring */}
+            {measuring && (
+                <Tooltip
+                    title={
+                        measureMode === 'distance'
+                            ? 'Measuring distance — switch to area'
+                            : 'Measuring area — switch to distance'
+                    }
+                    placement="left"
+                >
+                    <IconButton
+                        size="small"
+                        onClick={(e) => {
+                            e.stopPropagation()
+                            switchMeasureMode()
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        sx={{
+                            position: 'absolute',
+                            top: 4,
+                            right: 36,
+                            zIndex: 3,
+                            p: 0.6,
+                            color: palette.accentBlue,
+                            background: palette.overlayScrim,
+                            borderRadius: 0.5,
+                            '&:hover': { background: palette.accentBlueHoverBg },
+                        }}
+                    >
+                        {measureMode === 'distance' ? (
+                            <TimelineIcon sx={{ fontSize: 18 }} />
+                        ) : (
+                            <CropSquareIcon sx={{ fontSize: 18 }} />
+                        )}
+                    </IconButton>
+                </Tooltip>
+            )}
 
             {/* Measure toggle button */}
             <Tooltip title={measuring ? 'Stop measuring' : 'Start measuring'} placement="left">
@@ -1050,6 +1201,32 @@ export const SlicePanel = memo(function SlicePanel({
                         sx={{ fontSize: '0.72rem', color: palette.accentBlue, fontWeight: 600 }}
                     >
                         {distanceMm.toFixed(3)} mm
+                    </Typography>
+                </Box>
+            )}
+
+            {/* Live area-measurement result */}
+            {measuring && areaMm2 !== null && areaMm2 > 0 && (
+                <Box
+                    sx={{
+                        position: 'absolute',
+                        bottom: 64,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        zIndex: 3,
+                        px: 1,
+                        py: 0.25,
+                        background: palette.overlayScrimStrong,
+                        border: `1px solid ${palette.accentBlueBorder}`,
+                        borderRadius: 1,
+                        pointerEvents: 'none',
+                        whiteSpace: 'nowrap',
+                    }}
+                >
+                    <Typography
+                        sx={{ fontSize: '0.72rem', color: palette.accentBlue, fontWeight: 600 }}
+                    >
+                        {areaMm2.toFixed(4)} mm²
                     </Typography>
                 </Box>
             )}

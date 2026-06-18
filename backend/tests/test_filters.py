@@ -49,6 +49,28 @@ def test_edge_highlight_range(volume: np.ndarray) -> None:
     assert float(result.max()) <= 1.0 + 1e-5
 
 
+def test_edge_highlight_robust_to_outlier() -> None:
+    # On a realistically sized volume, a single hot pixel sits far inside the
+    # percentile tail, so it must not crush the dynamic range of the real edges.
+    rng = np.random.default_rng(1)
+    base = rng.random((4, 64, 64)).astype(np.float32)
+    spiked = base.copy()
+    spiked[0, 32, 32] = 1e6
+    result = apply_filter_chain(spiked, [{"type": "edge", "params": {}}])
+    assert float(result.max()) <= 1.0 + 1e-5
+    # Edges in other slices stay clearly visible despite the outlier; max-based
+    # normalization would have collapsed them toward zero.
+    assert float(result[1:].max()) > 0.1
+
+
+def test_edge_highlight_sigma_zero_disables_smoothing(volume: np.ndarray) -> None:
+    smoothed = apply_filter_chain(volume, [{"type": "edge", "params": {"sigma": 2.0}}])
+    raw = apply_filter_chain(volume, [{"type": "edge", "params": {"sigma": 0}}])
+    assert smoothed.shape == raw.shape == volume.shape
+    # Smoothing should change the result (fewer high-frequency edges).
+    assert not np.allclose(smoothed, raw)
+
+
 def test_chained_filters_preserve_shape(volume: np.ndarray) -> None:
     chain = [
         {"type": "gaussian", "params": {"sigma": 0.5}},
