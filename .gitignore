@@ -2,6 +2,7 @@
 dist/
 build/
 .vite/
+*.tsbuildinfo
 
 # Node
 node_modules/
@@ -27,6 +28,15 @@ __pycache__/
 *.pyc
 .venv/
 backend/uploads/
+*.egg-info/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage/
 
 # Logs
 *.log

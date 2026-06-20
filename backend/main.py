@@ -22,6 +22,56 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+#: Top-of-page description rendered in the Swagger UI (`/docs`) and ReDoc (`/redoc`).
+API_DESCRIPTION = """
+Backend for **Lumina**, an OCT volume viewer & stitching platform. It does all the
+heavy computation (reading `.h5` volumes, filtering, stitching, measuring) and
+returns render-ready data to the browser frontend.
+
+### Volume format
+Fixed HDF5 layout: dataset name `"OCT"`, shape `(512, 250, 250)` =
+`(nSlices, height, width)`. Merged (stitched) volumes may be larger laterally.
+
+### Packed binary responses
+Most volume endpoints return a *packed binary* instead of JSON, with two headers:
+
+* `X-Shape` — `"<nSlices>,<height>,<width>"`
+* `X-VCount` — number of above-threshold voxels
+
+Body layout (one contiguous buffer):
+`[vIndices: vCount×float32][vIntensities: vCount×float32][normalizedVolume: total×uint8]`
+
+### Long-running work
+Filter **jobs** (`/jobs`) and stitching **sessions** (`/sessions`) run in the
+background: the create call returns immediately with an id; poll the matching
+`GET` endpoint until `status` is `done`, then download the result.
+
+See the full project documentation in the repository's `docs/` directory.
+"""
+
+#: Per-tag descriptions shown as collapsible groups in the Swagger/ReDoc UI.
+OPENAPI_TAGS = [
+    {"name": "volumes", "description": "Upload, register, normalise, and filter single volumes."},
+    {
+        "name": "crop",
+        "description": "Extract an axis-aligned sub-volume as a new independent volume.",
+    },
+    {
+        "name": "measurements",
+        "description": "Geometric measurements (volume, surface area, thickness, diameter).",
+    },
+    {
+        "name": "jobs",
+        "description": "Single-volume filter + stitcher comparison jobs (background).",
+    },
+    {"name": "results", "description": "Download stitcher result volumes produced by jobs."},
+    {
+        "name": "sessions",
+        "description": "Multi-volume stitching sessions: register, merge, filter (background).",
+    },
+    {"name": "cleanup", "description": "Remove all files from the uploads directory."},
+]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,7 +79,13 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Lumina Backend", version="0.3.0", lifespan=lifespan)
+app = FastAPI(
+    title="Lumina Backend",
+    version="0.3.0",
+    description=API_DESCRIPTION,
+    openapi_tags=OPENAPI_TAGS,
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,

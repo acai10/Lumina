@@ -2,6 +2,22 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Documentation
+
+Comprehensive, domain-by-domain documentation lives in [`docs/`](docs/README.md) —
+one file per domain (architecture, ingestion, normalization/rendering, filters,
+slice viewer & measurements, cropping, annotation, stitching, jobs/sessions, STL,
+frontend shell, API reference). Each explains the features, the functions behind
+them, and **every formula** with variable definitions and worked numeric examples.
+Start at [`docs/README.md`](docs/README.md). When you change behaviour or a formula,
+update the matching `docs/` file.
+
+The backend also serves auto-generated, always-accurate API docs from the running
+app: Swagger UI at `/docs`, ReDoc at `/redoc`, and the raw schema at
+`/openapi.json`. These are generated from the route decorators (`summary`/
+`description`), the Pydantic schemas, and the app-level `description`/`openapi_tags`
+in `backend/main.py` — keep those current so the live docs never drift.
+
 ## Commands
 
 ### Docker (recommended)
@@ -129,6 +145,7 @@ backend/
 | Method | Path | Status | Description |
 | --- | --- | --- | --- |
 | POST | `/volumes/upload` | 200 | Upload `.h5` → `{ volume_id, n_slices, height, width }` |
+| GET | `/volumes/local` | 200 | List `.h5` files under `data_dir` (relative path + name) |
 | POST | `/volumes/register` · `/volumes/register-batch` | 200 | Register local file(s) by path (zero-copy, no upload) |
 | GET | `/volumes/{id}/normalized` | 200 | Render-ready normalised binary |
 | POST | `/volumes/{id}/filter` | 200 | Apply filter chain → normalised binary (no stitch/metrics) |
@@ -141,6 +158,8 @@ backend/
 | GET | `/sessions/{id}/merged` | 200 | Merged volume |
 | POST | `/sessions/{id}/filter` | 200 | Filter the merged volume |
 | DELETE | `/cleanup` | 200 | Delete all files in `uploads/` |
+
+Full request/response shapes, status codes, and headers: [`docs/12-api-reference.md`](docs/12-api-reference.md). Most volume endpoints return the packed binary (`X-Shape`/`X-VCount` headers) described there.
 
 ### Job request body
 
