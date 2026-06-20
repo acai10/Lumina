@@ -65,3 +65,24 @@ export interface SessionStatus {
 export interface SessionFilterRequest {
     filter_chain: FilterStep[]
 }
+
+// ── Challenge submission ─────────────────────────────────────────────────────
+
+/** Options for building a challenge submission from a stored/stitched volume. */
+export interface SubmissionOptions {
+    /** Tissue dataset → also produce a muscle/fat mask. */
+    tissue?: boolean
+    /** Voxel spacing in mm; defaults to the backend's 0.004 mm/px. */
+    dx?: number
+    dy?: number
+    dz?: number
+}
+
+/** Result of building a submission: file name, base64 PNG previews, and stats. */
+export interface SubmissionResult {
+    volume_id: string
+    h5_filename: string
+    surface_png: string
+    mask_png: string | null
+    stats: Record<string, number | number[]>
+}

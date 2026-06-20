@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
 import Divider from '@mui/material/Divider'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
@@ -7,6 +9,7 @@ import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
 import { palette } from '../../shared/theme/palette'
 import type { SessionStatus } from '../../shared/api'
+import { SubmissionDialog } from './SubmissionDialog'
 import {
     metricKeyCellSx,
     metricValueCellSx,
@@ -25,6 +28,9 @@ interface StitchResultsProps {
 
 /** Quality-metrics + detected-offsets tables shown after a stitching session completes. */
 export function StitchResults({ status }: StitchResultsProps) {
+    const [submissionOpen, setSubmissionOpen] = useState(false)
+    const mergedId = status.merged_volume_id
+
     return (
         <>
             <Divider sx={{ borderColor: palette.borderGlass }} />
@@ -77,6 +83,24 @@ export function StitchResults({ status }: StitchResultsProps) {
             >
                 Result loaded into viewer
             </Typography>
+
+            {/* Build the challenge submission (surface + optional mask) from the merge */}
+            {mergedId && (
+                <Button
+                    variant="contained"
+                    size="small"
+                    fullWidth
+                    onClick={() => setSubmissionOpen(true)}
+                    sx={{ mt: 1 }}
+                >
+                    Build submission
+                </Button>
+            )}
+            <SubmissionDialog
+                open={submissionOpen}
+                volumeId={mergedId ?? ''}
+                onClose={() => setSubmissionOpen(false)}
+            />
         </>
     )
 }

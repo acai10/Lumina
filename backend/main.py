@@ -13,6 +13,7 @@ from src.routers import (
     measurements,
     results,
     sessions,
+    submission,
     volumes,
 )
 
@@ -61,6 +62,10 @@ OPENAPI_TAGS = [
         "description": "Geometric measurements (volume, surface area, thickness, diameter).",
     },
     {
+        "name": "submission",
+        "description": "Build challenge-submission files (surface depth map + muscle/fat mask).",
+    },
+    {
         "name": "jobs",
         "description": "Single-volume filter + stitcher comparison jobs (background).",
     },
@@ -97,6 +102,7 @@ app.add_middleware(
 )
 
 app.include_router(volumes.router, prefix="/volumes", tags=["volumes"])
+app.include_router(submission.router, prefix="/volumes", tags=["submission"])
 app.include_router(crop.router, tags=["crop"])
 app.include_router(measurements.router, tags=["measurements"])
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])

@@ -3,6 +3,8 @@ import type {
     LocalVolume,
     SessionRequest,
     SessionStatus,
+    SubmissionOptions,
+    SubmissionResult,
     UploadResponse,
 } from './types'
 import type { CropBox, H5VolumeData } from '../types/viewer.types'
@@ -61,6 +63,23 @@ export async function cropVolume(
     })
     if (!res.ok) throw new Error(`Crop failed: ${await res.text()}`)
     return getJson<UploadResponse>(res)
+}
+
+/**
+ * Build the challenge-submission files from a (stitched) volume on the backend.
+ * Returns the written `.h5` name, base64 PNG previews, and depth/mask statistics.
+ */
+export async function buildSubmission(
+    volumeId: string,
+    opts: SubmissionOptions = {},
+): Promise<SubmissionResult> {
+    const res = await fetch(`${BASE_URL}/volumes/${volumeId}/submission`, {
+        method: 'POST',
+        headers: { 'Content-Type': CONTENT_TYPE_JSON },
+        body: JSON.stringify(opts),
+    })
+    if (!res.ok) throw new Error(`Build submission failed: ${await res.text()}`)
+    return getJson<SubmissionResult>(res)
 }
 
 export async function uploadVolume(file: File): Promise<UploadResponse> {
