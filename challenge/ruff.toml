@@ -1,0 +1,8 @@
+# Standalone config for the challenge submission tools. Mirrors the backend's
+# line length and core rule set, but allows `print` (T201) because challenge_io.py
+# ships a small CLI whose stdout *is* the intended output.
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "I", "UP", "B"]

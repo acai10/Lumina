@@ -30,6 +30,11 @@ __pycache__/
 backend/uploads/
 *.egg-info/
 
+# Challenge datasets (large raw .h5 inputs — never commit, ~8 GB)
+challenge/data/
+# Generated submission outputs
+challenge/submissions/
+
 # Tool caches
 .pytest_cache/
 .ruff_cache/
