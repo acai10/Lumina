@@ -7,6 +7,31 @@ slice views entirely in the browser.
 
 ## Quick start (Docker)
 
+Set up your configuration via a `.env` file, then start. Do it this way — a `.env`
+next to `docker-compose.yml` is read automatically by Docker Compose and works
+identically on **Windows, macOS, and Linux** (no inline shell variables, which only
+work in bash).
+
+**1. Create your `.env` from the template:**
+
+```bash
+cp .env.example .env          # Windows: copy .env.example .env
+```
+
+**2. Edit `.env`** and set `LUMINA_DATA_DIR` to the absolute path of the folder that
+holds your source `.h5` files:
+
+```bash
+# macOS / Linux
+LUMINA_DATA_DIR=/Users/you/oct-data
+# Windows
+LUMINA_DATA_DIR=C:\Users\you\oct-data
+```
+
+(Leave it as the default `./data` to just use the repo's local `data/` folder.)
+
+**3. Start:**
+
 ```bash
 docker compose up --build
 ```
@@ -17,22 +42,12 @@ docker compose up --build
 | <http://localhost:8000> | Backend API |
 | <http://localhost:8000/docs> | Swagger / OpenAPI |
 
-### Optional: load source files by path (no upload)
-
-If your `.h5` files live on the backend machine, you can skip uploads entirely:
-the backend registers a file by **symlink** (zero-copy, instant) and serves it
-pre-normalised. Point it at the host directory of your source files:
-
-```bash
-LUMINA_DATA_DIR=/abs/path/to/h5 docker compose up --build
-# or persist it in a .env file next to docker-compose.yml:
-# LUMINA_DATA_DIR=/abs/path/to/h5
-```
-
-The directory is bind-mounted **read-only** at `/data` inside the backend
-container, so originals are never modified. Then use **Load H5 → From server…**
-in the toolbar (or **From Server** in the Stitch panel). The classic browser file
-picker works regardless.
+The directory in `LUMINA_DATA_DIR` is bind-mounted **read-only** at `/data` inside
+the backend container, so your originals are never modified. Once running, use
+**Load H5 → From server…** in the toolbar (or **From Server** in the Stitch panel)
+to pick those files with no upload — the backend registers each by symlink
+(zero-copy, instant) and serves it pre-normalised. The classic browser file picker
+still works regardless of this setting.
 
 ## Development (without Docker)
 
@@ -77,7 +92,7 @@ The backend reads settings from environment variables (or a `.env` file). See
 | Variable | Default | Purpose |
 | -------- | ------- | ------- |
 | `DATA_DIR` | `data` | Root of registerable source `.h5` files (`/data` in Docker). |
-| `LUMINA_DATA_DIR` | `./data` | **Host** path bind-mounted to `/data` (Docker Compose only). |
+| `LUMINA_DATA_DIR` | `./data` | **Host** path bind-mounted to `/data`; set it in `.env` (see `.env.example`). Docker Compose only. |
 | `CORS_ORIGINS` | `http://localhost:5173` | Allowed browser origins (comma-separated). |
 | `VITE_API_URL` | `http://localhost:8000` | Backend base URL the frontend calls. |
 

@@ -111,8 +111,19 @@ The backend's settings come from `backend/src/config.py` (a Pydantic
 
 A small customization, `_CommaSepEnvSource` (`config.py:7`), lets `CORS_ORIGINS`
 be a plain comma-separated string (e.g. `http://a.com,http://b.com`) instead of
-requiring JSON — convenient for Docker. In Docker Compose, the host directory of
-source files is chosen with the `LUMINA_DATA_DIR` variable and mounted to `/data`.
+requiring JSON — convenient for Docker.
+
+In Docker Compose, the host directory of source files is chosen with the
+`LUMINA_DATA_DIR` variable and mounted to `/data`. Set it in a **`.env` file next
+to `docker-compose.yml`** (copy `.env.example` to `.env` and edit the path). Compose
+loads `.env` automatically, so the same setup works on Windows, macOS, and Linux —
+no inline shell variables (which only work in bash) required:
+
+```bash
+cp .env.example .env          # Windows: copy .env.example .env
+# edit LUMINA_DATA_DIR in .env, then:
+docker compose up --build
+```
 
 ## Path 3 — In-browser read
 

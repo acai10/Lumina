@@ -30,11 +30,16 @@ docker compose down         # stop services
 #### Loading local source volumes by path (no upload)
 
 To make on-disk `.h5` files selectable via **Load H5 → From server…** (registered by
-path, zero-copy, no ~128 MB upload), point the backend at the host directory holding them:
+path, zero-copy, no ~128 MB upload), point the backend at the host directory holding them
+via a `.env` file next to `docker-compose.yml` (cross-platform — Compose reads `.env`
+automatically, so no inline shell vars that only work on bash):
 
 ```bash
-LUMINA_DATA_DIR=/abs/path/to/h5 docker compose up --build
-# or persist it in a .env file next to docker-compose.yml: LUMINA_DATA_DIR=/abs/path/to/h5
+cp .env.example .env          # Windows: copy .env.example .env
+# then edit LUMINA_DATA_DIR in .env to the absolute path of your .h5 folder, e.g.
+#   LUMINA_DATA_DIR=/Users/you/oct-data   (macOS/Linux)
+#   LUMINA_DATA_DIR=C:\Users\you\oct-data  (Windows)
+docker compose up --build
 ```
 
 The directory is bind-mounted read-only at `/data` (`DATA_DIR=/data`), so originals are

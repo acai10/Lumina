@@ -7,8 +7,9 @@ services:
       - ./backend:/app
       - /app/.venv
       # Host directory with source .h5 files, mounted read-only so originals can
-      # never be modified. Set LUMINA_DATA_DIR to the absolute host path (e.g. in a
-      # .env file next to this compose file); defaults to ./data so `up` still works.
+      # never be modified. Set LUMINA_DATA_DIR in a .env file next to this compose
+      # file (copy .env.example → .env); Compose loads it automatically on every
+      # platform. Defaults to ./data so `docker compose up` still works without it.
       - ${LUMINA_DATA_DIR:-./data}:/data:ro
     environment:
       - PYTHONUNBUFFERED=1

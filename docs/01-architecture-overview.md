@@ -173,7 +173,7 @@ sequenceDiagram
     F->>F: Re-render
 
     U->>F: Measure / crop / annotate
-    Note over F,B: Measurement & crop hit the backend;<br/>annotation is purely client-side.
+    Note over F,B: Measurement and crop hit the backend. Annotation is client-side.
 ```
 
 There are two distinct "long job" pipelines for heavier work — single-volume

@@ -183,7 +183,7 @@ sequenceDiagram
     end
     B-->>J: packed binary
     J->>J: parseNormalizedVolume → applyBackendFilter (Zustand)
-    P-->>U: Re-render; Compare toggles before/after
+    P-->>U: Re-render, Compare toggles before/after
 ```
 
 - **`useFilterParams.ts`** (`usePipeline`) manages the per-file list of
