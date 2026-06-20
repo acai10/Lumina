@@ -126,7 +126,7 @@ The algorithm, per slice:
    convolution that estimates the rate of change along one axis.
 3. **Gradient magnitude:**
 
-$$M(y,x) = \sqrt{s_x(y,x)^2 + s_y(y,x)^2}$$
+   $$M(y,x) = \sqrt{s_x(y,x)^2 + s_y(y,x)^2}$$
 
    computed as `np.hypot(sx, sy)`. This combines the horizontal and vertical
    change into a single "edge strength", regardless of edge orientation.

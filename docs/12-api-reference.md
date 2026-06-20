@@ -57,37 +57,49 @@ zero-copy typed-array views.
 ## Volumes (`routers/volumes.py`, prefix `/volumes`)
 
 ### POST `/volumes/upload`
+
 Upload an `.h5` file (multipart). Streamed to disk in 1 MB chunks; validated by
 metadata only.
+
 - **Response:** `UploadResponse` = `{ volume_id, n_slices, height, width }`.
 - **Errors:** 400 non-`.h5`; 400 invalid dataset/shape.
 
 ### GET `/volumes/local`
+
 List `.h5` files discovered under `data_dir`.
+
 - **Response:** `list[LocalVolume]` = `[{ path, name }]` (path relative to
   `data_dir`).
 
 ### POST `/volumes/register` · `/volumes/register-batch`
+
 Register local source file(s) by path via symlink (zero-copy).
+
 - **Body:** `{ path }` / `{ paths: [...] }`.
 - **Response:** `UploadResponse` / `list[UploadResponse]`.
 - **Errors:** 400 path escapes `data_dir`; 400 non-`.h5`; 404 not found.
 
 ### POST `/volumes/{id}/filter`
+
 Apply a filter chain ([doc 4](04-preprocessing-filters.md)); no stitching, no
 metrics.
+
 - **Body:** `FilterRequest` = `{ filter_chain: [{ type, params }] }`.
 - **Response:** packed binary (`X-Shape`, `X-VCount`).
 
 ### GET `/volumes/{id}/normalized`
+
 Return the render-ready packed binary for a stored/registered volume.
+
 - **Response:** packed binary.
 
 ## Crop (`routers/crop.py`)
 
 ### POST `/volumes/{id}/crop`
+
 Extract an axis-aligned sub-volume (optionally cylinder/sphere-masked) as a new
 independent volume ([doc 6](06-cropping-object-analysis.md)).
+
 - **Body:** `CropRequest` = `{ x, y, z, width, height, depth, shape }`,
   `shape ∈ {rect, cylinder, sphere}`.
 - **Response:** `UploadResponse` for the new crop.
@@ -96,8 +108,10 @@ independent volume ([doc 6](06-cropping-object-analysis.md)).
 ## Measurements (`routers/measurements.py`)
 
 ### POST `/volumes/{id}/measure`
+
 Geometric measurements of the thresholded tissue
 ([doc 5](05-slice-viewer-measurements.md)).
+
 - **Body:** `{ threshold (0.05), voxel_size_um: [dz, dy, dx] }`.
 - **Response:** `{ voxel_count, volume_um3, surface_area_um2, mean_thickness_um,
   max_thickness_um, lateral_diameter_um }`.
@@ -106,61 +120,76 @@ Geometric measurements of the thresholded tissue
 ## Jobs (`routers/jobs.py` + `routers/results.py`, prefix `/jobs`)
 
 ### POST `/jobs/` → **201**
+
 Submit a single-volume job: filter chain + stitcher algorithms + metrics
-([doc 9](09-jobs-sessions-lifecycle.md)). Returns immediately.
-- **Body:** `JobRequest`:
-  ```json
-  {
-    "volume_id": "uuid",
-    "filter_chain": [{ "type": "gaussian", "params": { "sigma": 1.0 } }],
-    "stitchers": ["phase_correlation", "simpleitk_affine"],
-    "stitcher_params": { "phase_correlation": { "upsample_factor": 20 } }
-  }
-  ```
+([doc 9](09-jobs-sessions-lifecycle.md)). Returns immediately. Request body
+(`JobRequest`):
+
+```json
+{
+  "volume_id": "uuid",
+  "filter_chain": [{ "type": "gaussian", "params": { "sigma": 1.0 } }],
+  "stitchers": ["phase_correlation", "simpleitk_affine"],
+  "stitcher_params": { "phase_correlation": { "upsample_factor": 20 } }
+}
+```
+
 - **Response:** `{ job_id }`.
 - **Errors:** 404 volume not found; 400 unknown stitcher(s).
 
 ### GET `/jobs/{id}`
+
 Poll a job.
+
 - **Response:** `JobStatusResponse` = `{ status, results, error }` where `status ∈
   {pending, running, done, error}` and `results` maps stitcher name → metrics
   (`{ ncc, mi, mse, rmse }`, plus `dice` when masks given).
 
 ### GET `/jobs/{id}/volume/{stitcher}`
+
 Download a stitcher's result volume as packed binary (memory-mapped read).
+
 - **Errors:** 404 job/result not found; 409 job not `done`.
 
 ## Sessions (`routers/sessions.py`, prefix `/sessions`)
 
 ### POST `/sessions/` → **201**
+
 Create a multi-volume stitching session ([doc 8](08-stitching-registration.md),
-[doc 9](09-jobs-sessions-lifecycle.md)). Returns immediately.
-- **Body:** `SessionRequest`:
-  ```json
-  {
-    "volumes": [{ "volume_id": "a", "row": 0, "col": 0 },
-                { "volume_id": "b", "row": 0, "col": 1 }],
-    "method": "phase_correlation",
-    "method_params": {}
-  }
-  ```
-  `method ∈ {phase_correlation, cross_correlation}`.
+[doc 9](09-jobs-sessions-lifecycle.md)). Returns immediately. Request body
+(`SessionRequest`); `method ∈ {phase_correlation, cross_correlation}`:
+
+```json
+{
+  "volumes": [{ "volume_id": "a", "row": 0, "col": 0 },
+              { "volume_id": "b", "row": 0, "col": 1 }],
+  "method": "phase_correlation",
+  "method_params": {}
+}
+```
+
 - **Response:** `{ session_id }`.
 - **Errors:** 400 fewer than 2 volumes.
 
 ### GET `/sessions/{id}`
+
 Poll a session.
+
 - **Response:** `SessionStatusResponse` = `{ status, offsets, metrics,
   merged_volume_id, error }`. `offsets` maps volume_id → `[dy, dx]`; `metrics`
   holds e.g. `{ rmse }`.
 
 ### GET `/sessions/{id}/merged`
+
 Download the merged volume as packed binary (served from the pre-computed file
 when available, else computed on demand).
+
 - **Errors:** 404 session not found; 404 merged not available yet.
 
 ### POST `/sessions/{id}/filter`
+
 Apply a filter chain to the merged volume.
+
 - **Body:** `SessionFilterRequest` = `{ filter_chain }`.
 - **Response:** packed binary.
 - **Errors:** 404 merged HDF5 not found.
@@ -168,8 +197,10 @@ Apply a filter chain to the merged volume.
 ## Cleanup (`routers/cleanup.py`, prefix `/cleanup`)
 
 ### DELETE `/cleanup`
+
 Delete every file/symlink in `uploads_dir` and clear the volume cache. Symlinks to
 `data_dir` sources are unlinked without touching the originals.
+
 - **Response:** `{ deleted, errors }`.
 
 ## Interactive API documentation
