@@ -53,8 +53,12 @@ def test_write_submission_format(tmp_path, volume):
     with h5py.File(path, "r") as f:
         assert f["surface"].dtype == np.float64
         assert f["mask"].dtype == np.float64
-        assert float(f["surface"].attrs["dx"]) == pytest.approx(0.004)
-        assert float(f["surface"].attrs["dy"]) == pytest.approx(0.008)
+        # dx/dy are stored as 1-element float64 arrays (shape (1,)) to match the
+        # reference SubmissionExample.h5 produced by MATLAB's h5writeatt.
+        assert f["surface"].attrs["dx"].shape == (1,)
+        assert f["surface"].attrs["dy"].shape == (1,)
+        assert float(f["surface"].attrs["dx"][0]) == pytest.approx(0.004)
+        assert float(f["surface"].attrs["dy"][0]) == pytest.approx(0.008)
 
 
 def test_write_submission_phantom_has_no_mask(tmp_path, volume):

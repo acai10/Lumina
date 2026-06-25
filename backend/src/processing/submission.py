@@ -104,8 +104,11 @@ def write_submission(
     path = Path(path)
     with h5py.File(path, "w") as f:
         ds = f.create_dataset(SURFACE_DATASET, data=surface)
-        ds.attrs["dx"] = float(dx)
-        ds.attrs["dy"] = float(dy)
+        # Store dx/dy as 1-element float64 arrays (shape (1,)) to match the
+        # reference SubmissionExample.h5 exactly — MATLAB's h5writeatt writes a
+        # scalar as a 1x1 (HDF5 dataspace [1]), not a 0-D scalar.
+        ds.attrs.create("dx", np.array([dx], dtype=np.float64))
+        ds.attrs.create("dy", np.array([dy], dtype=np.float64))
         if mask is not None:
             f.create_dataset(MASK_DATASET, data=np.ascontiguousarray(mask, dtype=np.float64))
     return path
@@ -228,7 +231,8 @@ def describe_submission(path: str | Path) -> str:
             if ds.attrs:
                 lines.append("        Attributes:")
                 for key, value in ds.attrs.items():
-                    lines.append(f"            '{key}': {float(value):.6f}")
+                    scalar = float(np.ravel(value)[0])
+                    lines.append(f"            '{key}': {scalar:.6f}")
         if SURFACE_DATASET in f:
             s = np.asarray(f[SURFACE_DATASET])
             d = s[s > 0]
