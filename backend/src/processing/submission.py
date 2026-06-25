@@ -26,11 +26,14 @@ from skimage.filters import threshold_otsu
 
 logger = logging.getLogger(__name__)
 
-# Voxel spacing [mm]. Mirrors the frontend's DEFAULT_VOXEL_SIZE_UM = [4, 4, 4]
-# µm/px ("250 px = 1 mm" -> 0.004 mm/px), the value Lumina uses everywhere.
+# Voxel spacing [mm], from the PBL acquisition parameters:
+#   * Lateral (dx, dy): each 250 px volume spans 1 mm of the 5x5 mm / 25-volume
+#     grid -> 1 mm / 250 px = 0.004 mm/px (4 µm/px).
+#   * Axial (dz): "Pixelabstand in Luft" / axial resolution in air = 5.19 µm
+#     -> 0.00519 mm/px. Used to scale the surface depth map into millimetres.
 DEFAULT_DX_MM = 0.004
 DEFAULT_DY_MM = 0.004
-DEFAULT_DZ_MM = 0.004
+DEFAULT_DZ_MM = 0.00519
 
 SURFACE_DATASET = "surface"
 MASK_DATASET = "mask"
