@@ -12,6 +12,7 @@ dependencies = [
     "scipy>=1.13.0",
     "scikit-image>=0.24.0",
     "SimpleITK>=2.4.0",
+    "pillow>=10.0.0",
 ]
 
 [project.optional-dependencies]

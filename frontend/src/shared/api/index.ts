@@ -11,6 +11,7 @@ export {
     filterSessionVolume,
     filterVolume,
     cropVolume,
+    buildSubmission,
 } from './client'
 export type {
     FilterType,
@@ -22,4 +23,6 @@ export type {
     SessionRequest,
     SessionStatus,
     SessionFilterRequest,
+    SubmissionOptions,
+    SubmissionResult,
 } from './types'

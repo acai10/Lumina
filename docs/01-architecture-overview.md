@@ -81,10 +81,13 @@ from the `VITE_API_URL` environment variable.
 
 A **voxel** is one 3-D sample. Each voxel has a physical size in micrometres
 (µm), described by a triple `[dz, dy, dx]` — the spacing along the slice axis
-(z), the row axis (y), and the column axis (x). The default is `[4, 4, 4]` µm
-(`frontend/src/shared/constants.ts:2`), meaning each voxel represents a
-4 µm × 4 µm × 4 µm cube. Because `1 mm = 1000 µm`, the constant `UM_PER_MM = 1000`
-(`frontend/src/shared/constants.ts:5`) converts between the two.
+(z), the row axis (y), and the column axis (x). The default is `[5.19, 20, 20]` µm
+(`frontend/src/shared/constants.ts`): axial `dz = 5.19` µm ("Pixelabstand in Luft")
+and lateral `dy = dx = 20` µm (5 mm galvo field of view / 250 px, calibrated from
+the Circle phantom's robot steps vs. tile overlap and cross-checked against the
+14 mm CAD STL). The spacing is therefore **anisotropic** — voxels are ~4× finer
+along depth than laterally. Because `1 mm = 1000 µm`, the constant `UM_PER_MM = 1000`
+(`frontend/src/shared/constants.ts`) converts between the two.
 
 ### The three axes
 
