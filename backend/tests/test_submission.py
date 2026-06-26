@@ -88,8 +88,8 @@ def test_build_submission_tissue_has_mask(volume):
 
 def test_describe_submission_text(tmp_path, volume):
     res = build_submission(volume, with_mask=True)
-    write_submission(tmp_path / "s.h5", res["surface"], 0.004, 0.004, res["mask"])
+    write_submission(tmp_path / "s.h5", res["surface"], 0.02, 0.02, res["mask"])
     text = describe_submission(tmp_path / "s.h5")
     assert "surface" in text and "double" in text
-    assert "0.004000" in text
+    assert "0.020000" in text
     assert "muscle" in text

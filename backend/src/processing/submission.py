@@ -27,12 +27,18 @@ from skimage.filters import threshold_otsu
 logger = logging.getLogger(__name__)
 
 # Voxel spacing [mm], from the PBL acquisition parameters:
-#   * Lateral (dx, dy): each 250 px volume spans 1 mm of the 5x5 mm / 25-volume
-#     grid -> 1 mm / 250 px = 0.004 mm/px (4 µm/px).
+#   * Lateral (dx, dy): each single volume has a 5x5 mm galvo field of view at
+#     250 px / direction -> 5 mm / 250 px = 0.02 mm/px (20 µm/px). Verified by
+#     phase-correlating adjacent Circle-phantom tiles against the robPositions.txt
+#     robot steps (~2.1 mm/tile -> ~108 px): 0.0200 mm/px over 40 tile pairs
+#     (std 0.0005), and cross-checked against the 14 mm CAD_Circle STL diameter.
 #   * Axial (dz): "Pixelabstand in Luft" / axial resolution in air = 5.19 µm
-#     -> 0.00519 mm/px. Used to scale the surface depth map into millimetres.
-DEFAULT_DX_MM = 0.004
-DEFAULT_DY_MM = 0.004
+#     -> 0.00519 mm/px. This air spacing is correct for the surface depth map,
+#     which is the top (air->sample) interface reached through air; the refractive
+#     index only rescales spacing for structures *below* the surface, which the
+#     deliverable does not include.
+DEFAULT_DX_MM = 0.02
+DEFAULT_DY_MM = 0.02
 DEFAULT_DZ_MM = 0.00519
 
 SURFACE_DATASET = "surface"

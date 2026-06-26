@@ -72,8 +72,8 @@ export interface SessionFilterRequest {
 export interface SubmissionOptions {
     /** Tissue dataset → also produce a muscle/fat mask. */
     tissue?: boolean
-    /** Voxel spacing in mm; defaults to the backend's lateral 0.004 mm/px (dx, dy)
-     *  and axial 0.00519 mm/px (dz). */
+    /** Voxel spacing in mm; defaults to the backend's lateral 0.02 mm/px (dx, dy,
+     *  = 5 mm FOV / 250 px) and axial 0.00519 mm/px (dz). */
     dx?: number
     dy?: number
     dz?: number
