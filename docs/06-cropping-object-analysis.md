@@ -152,9 +152,9 @@ object.volumeMm3 = object.voxels · voxMm3
 - **`dz, dy, dx`** — voxel spacing in µm.
 - **`/ 1000³`** converts µm³ → mm³ (`UM_PER_MM³ = 1,000,000,000`).
 
-**Worked example.** An object of 500,000 voxels at 4 µm spacing:
-`voxMm3 = (4·4·4)/1e9 = 64/1e9 = 6.4e−8 mm³`; `volumeMm3 = 500,000 · 6.4e−8 =
-0.032 mm³`.
+**Worked example.** An object of 500,000 voxels at the default `(dz,dy,dx) =
+(5.19,20,20)` µm spacing: `voxMm3 = (5.19·20·20)/1e9 = 2076/1e9 = 2.076e−6 mm³`;
+`volumeMm3 = 500,000 · 2.076e−6 = 1.038 mm³`.
 
 ### Coloring objects — golden-angle hues
 

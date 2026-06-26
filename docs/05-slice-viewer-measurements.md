@@ -120,8 +120,9 @@ A toolbar button toggles **measuring** mode per panel; a second button switches
 between **distance** (two points) and **area** (drag a rectangle). The two tools
 share the same voxel-spacing math but produce a length vs. an area.
 
-The physical voxel spacing `[dz, dy, dx]` (µm/voxel, default `[4, 4, 4]`) and
-`UM_PER_MM = 1000` come from `frontend/src/shared/constants.ts`.
+The physical voxel spacing `[dz, dy, dx]` (µm/voxel, default `[5.19, 20, 20]` —
+axial 5.19, lateral 20) and `UM_PER_MM = 1000` come from
+`frontend/src/shared/constants.ts`.
 
 ### Distance — `computeDistanceMm` (`SlicePanel.tsx:181`)
 
@@ -145,10 +146,11 @@ where the two axis displacements depend on the panel:
 - The horizontal and vertical screen axes map to *different* volume axes
   depending on the panel, which is why each row uses a different spacing pair.
 
-**Worked example (Z panel, default 4 µm spacing).** Click at orig `(50, 40)` and
-`(110, 120)`. `Δ₁ = (110−50)·4 = 240 µm`, `Δ₂ = (120−40)·4 = 320 µm`. Distance
-`= √(240² + 320²) / 1000 = √(57600 + 102400)/1000 = √160000/1000 = 400/1000 =
-0.400 mm`. The readout shows `0.400 mm`.
+**Worked example (Z panel, default lateral 20 µm spacing).** Click at orig `(50, 40)`
+and `(110, 120)`. The Z panel's XY plane uses `dx = dy = 20`: `Δ₁ = (110−50)·20 =
+1200 µm`, `Δ₂ = (120−40)·20 = 1600 µm`. Distance `= √(1200² + 1600²) / 1000 =
+√(1,440,000 + 2,560,000)/1000 = √4,000,000/1000 = 2000/1000 = 2.000 mm`. The
+readout shows `2.000 mm`.
 
 ### Area — `computeAreaMm2` (`SlicePanel.tsx:213`)
 
@@ -160,9 +162,9 @@ $$\text{area}_{mm^2} = \frac{w_{\text{µm}} \cdot h_{\text{µm}}}{1000 \times 10
 with `w_µm` and `h_µm` computed like `Δ₁`/`Δ₂` above (using absolute values), per
 panel. Dividing by `1000²` converts µm² to mm².
 
-**Worked example (Z panel).** A rectangle 60 voxels wide and 80 tall at 4 µm/voxel:
-`w_µm = 60·4 = 240`, `h_µm = 80·4 = 320`. Area `= (240·320)/1,000,000 =
-76,800/1,000,000 = 0.0768 mm²`. The readout shows `0.0768 mm²`.
+**Worked example (Z panel).** A rectangle 60 voxels wide and 80 tall at the lateral
+20 µm/voxel: `w_µm = 60·20 = 1200`, `h_µm = 80·20 = 1600`. Area `= (1200·1600)/1,000,000 =
+1,920,000/1,000,000 = 1.920 mm²`. The readout shows `1.920 mm²`.
 
 ### Interaction details
 
@@ -213,8 +215,9 @@ voxel_volume  = dz · dy · dx          (µm³ per voxel)
 volume_um3    = voxel_count · voxel_volume
 ```
 
-**Worked example.** 1,000,000 tissue voxels at `(dz,dy,dx) = (4,4,4)` µm:
-`voxel_volume = 64 µm³`, `volume_um3 = 1,000,000 · 64 = 64,000,000 µm³` (= 0.064 mm³).
+**Worked example.** 1,000,000 tissue voxels at `(dz,dy,dx) = (5.19,20,20)` µm:
+`voxel_volume = 5.19·20·20 = 2076 µm³`, `volume_um3 = 1,000,000 · 2076 =
+2,076,000,000 µm³` (= 2.076 mm³).
 
 ### Surface area — face-count heuristic (`measurements.py:43`)
 
@@ -250,8 +253,21 @@ max_thickness_um  = max( col_counts ) · dz
 Multiplying a voxel count by `dz` converts it to a physical depth. Only columns
 that contain tissue are averaged (empty columns don't drag the mean down).
 
-**Worked example.** If tissue columns average 50 voxels deep and `dz = 4` µm, the
-mean thickness is `50 · 4 = 200 µm`.
+**Worked example.** If tissue columns average 50 voxels deep and `dz = 5.19` µm, the
+mean thickness is `50 · 5.19 = 259.5 µm`.
+
+> **Refractive index caveat (axial depth inside a sample).** The default `dz = 5.19`
+> µm is the *air* pixel spacing ("Pixelabstand in Luft"), valid only while the OCT
+> beam travels through air — i.e. down to the first (top) surface. Below that
+> interface the beam is inside the sample, where the optical path is compressed by
+> the refractive index `n`, so the true physical spacing there is `dz / n`
+> (e.g. skin `n ≈ 1.47`). Any thickness/depth that spans tissue is therefore
+> **overestimated by ~n (≈1.4×)** with the air value. To measure a sub-surface
+> tissue depth correctly, pass the in-tissue spacing `dz = 5.19 / n` µm as the axial
+> voxel size. This does **not** affect the challenge `surface` deliverable: that map
+> is the top air→sample interface, reached purely through air, so the air spacing is
+> exactly right (cf. the OCT A-scan exercise — the first peak is located with
+> `Δ_Luft` directly; only distances *behind* it are divided by `n`).
 
 ### Lateral diameter (`measurements.py:73`)
 
