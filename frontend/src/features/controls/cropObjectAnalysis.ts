@@ -25,7 +25,7 @@ export interface CropObjectResult {
 }
 
 /** Max region voxels labelled on the main thread before refusing (keeps the UI responsive). */
-export const MAX_ANALYSIS_VOXELS = 12_000_000
+const MAX_ANALYSIS_VOXELS = 12_000_000
 /** Components below this size are treated as speckle noise and dropped. */
 export const MIN_OBJECT_VOXELS = 4
 

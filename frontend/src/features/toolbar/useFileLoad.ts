@@ -24,14 +24,18 @@ export function useFileLoad() {
     const processH5Files = async (files: File[]) => {
         setIsLoading(true)
         let loaded = 0
+        let skipped = 0
         for (const f of files) {
             try {
                 const data = await loadH5FileInWorker(f, VOLUME_DIMS)
                 const entry: H5FileEntry = { name: f.name, data, sourceFile: f }
                 // Await so each file is persisted + evicted before the next is read,
-                // bounding peak heap to a few volumes during folder loads.
-                await loadH5([entry])
-                loaded++
+                // bounding peak heap to a few volumes during folder loads. loadH5
+                // returns 0 when the name already exists (collision), so we don't
+                // report a skipped duplicate as "loaded".
+                const added = await loadH5([entry])
+                if (added > 0) loaded++
+                else skipped++
             } catch (err) {
                 console.error(`Failed to load ${f.name}:`, err)
                 setNotification({
@@ -45,6 +49,14 @@ export function useFileLoad() {
             setNotification({
                 message: loaded === 1 ? 'File loaded' : `${loaded} files loaded`,
                 severity: 'success',
+            })
+        } else if (skipped > 0) {
+            setNotification({
+                message:
+                    skipped === 1
+                        ? 'File already loaded (same name)'
+                        : `${skipped} files already loaded (same name)`,
+                severity: 'info',
             })
         }
     }
@@ -114,6 +126,6 @@ export function useFileLoad() {
             handleH5Load,
             handleH5FolderLoad,
         },
-        loaders: { loadH5Files: processH5Files, loadStlFiles, loadDroppedFiles, loadServerVolume },
+        loaders: { loadStlFiles, loadDroppedFiles, loadServerVolume },
     }
 }

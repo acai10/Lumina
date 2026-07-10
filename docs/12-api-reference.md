@@ -48,7 +48,7 @@ for full detail. In brief:
 
 ```text
 Headers: X-Shape = "<nSlices>,<height>,<width>", X-VCount = "<voxel count>"
-Body:    [vIndices: vCount×f32][vIntensities: vCount×f32][normalizedVolume: total×u8]
+Body:    [vIndices: vCount×u32][vIntensities: vCount×f32][normalizedVolume: total×u8]
 ```
 
 The frontend parses it with `parseNormalizedVolume` (`shared/api/client.ts`) into

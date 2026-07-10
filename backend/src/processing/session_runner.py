@@ -1,4 +1,5 @@
 import logging
+import threading
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -11,7 +12,6 @@ from .h5_reader import load_volume
 from .metrics import compute_rmse
 from .multi_volume import (
     compute_global_offsets,
-    compute_mip,
     merge_volumes,
     overlap_crop,
     register_pair,
@@ -31,20 +31,43 @@ class SessionState:
 
 
 class SessionStore:
-    """In-memory store for multi-volume stitching session state."""
+    """In-memory store for multi-volume stitching session state.
+
+    ``lock`` guards mutable SessionState fields (``offsets``/``metrics``) that
+    the background task mutates while poll endpoints serialise them.
+    """
 
     def __init__(self) -> None:
         self._sessions: dict[str, SessionState] = {}
+        self.lock = threading.Lock()
 
     def create(self, session_id: str) -> SessionState:
         """Initialise a new session in PENDING state and return it."""
         state = SessionState()
-        self._sessions[session_id] = state
+        with self.lock:
+            self._sessions[session_id] = state
         return state
 
     def get(self, session_id: str) -> SessionState | None:
         """Return the SessionState for *session_id*, or None if unknown."""
-        return self._sessions.get(session_id)
+        with self.lock:
+            return self._sessions.get(session_id)
+
+    def any_running(self) -> bool:
+        """True if any session is currently PENDING or RUNNING."""
+        with self.lock:
+            return any(
+                s.status in (JobStatus.PENDING, JobStatus.RUNNING) for s in self._sessions.values()
+            )
+
+    def clear_finished(self) -> None:
+        """Drop all sessions that are neither PENDING nor RUNNING (frees memory)."""
+        with self.lock:
+            self._sessions = {
+                k: s
+                for k, s in self._sessions.items()
+                if s.status in (JobStatus.PENDING, JobStatus.RUNNING)
+            }
 
 
 session_store = SessionStore()
@@ -79,9 +102,19 @@ async def run_session(
         volumes: dict[str, np.ndarray] = {}
         grid: dict[str, tuple[int, int]] = {}
 
+        seen_positions: dict[tuple[int, int], str] = {}
         for entry in volume_entries:
             vid = str(entry["volume_id"])
             row, col = int(entry["row"]), int(entry["col"])
+            # A duplicate (row, col) would silently shadow one volume in the
+            # position lookup below; the shadowed tile would never be reached
+            # by BFS and end up merged at offset (0, 0).
+            if (row, col) in seen_positions:
+                raise ValueError(
+                    f"Duplicate grid position ({row}, {col}) for volumes "
+                    f"{seen_positions[(row, col)]!r} and {vid!r}"
+                )
+            seen_positions[(row, col)] = vid
             volumes[vid] = load_volume(settings.uploads_dir / f"{vid}.h5")
             grid[vid] = (row, col)
             logger.debug("Loaded volume %s at grid (%d, %d)", vid, row, col)
@@ -103,7 +136,8 @@ async def run_session(
 
         # ── Compute absolute offsets via BFS ──────────────────────────────────
         global_offsets = compute_global_offsets(volume_ids, grid, pairwise_shifts)
-        state.offsets = {vid: list(off) for vid, off in global_offsets.items()}
+        with session_store.lock:
+            state.offsets = {vid: list(off) for vid, off in global_offsets.items()}
 
         # ── Quality metrics over overlapping adjacent pairs ───────────────────
         # Computed HERE — before the merge — so that the individual volumes
@@ -118,7 +152,8 @@ async def run_session(
                 crop_a, crop_b = crops
                 rmse_vals.append(compute_rmse(crop_a, crop_b))
 
-        state.metrics["rmse"] = float(np.mean(rmse_vals)) if rmse_vals else 0.0
+        with session_store.lock:
+            state.metrics["rmse"] = float(np.mean(rmse_vals)) if rmse_vals else 0.0
 
         # ── Merge and save ────────────────────────────────────────────────────
         # Build vol_list/off_list now that metrics are done; free volumes after merge.
@@ -128,8 +163,6 @@ async def run_session(
         merged_shape = merged.shape
         merged_npy_path = settings.uploads_dir / f"{session_id}_merged.npy"
 
-        mip = compute_mip(merged)
-        np.save(settings.uploads_dir / f"{session_id}_mip.npy", mip)
         np.save(merged_npy_path, merged)
 
         merged_h5_path = settings.uploads_dir / f"{session_id}_merged.h5"
@@ -169,3 +202,8 @@ async def run_session(
         logger.exception("Session %s failed", session_id)
         state.status = JobStatus.ERROR
         state.error = f"{type(exc).__name__}: {exc}"
+        # Remove partial artifacts: a half-written merged volume or packed
+        # binary must never be served by a later request (np.save is not
+        # atomic), and dead files would leak disk until manual /cleanup.
+        for suffix in ("_merged.npy", "_merged.h5", "_frontend.bin", "_frontend.json"):
+            (settings.uploads_dir / f"{session_id}{suffix}").unlink(missing_ok=True)

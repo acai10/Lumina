@@ -1,6 +1,7 @@
 import type {
     FilterStep,
     LocalVolume,
+    MaskResult,
     SessionRequest,
     SessionStatus,
     SubmissionOptions,
@@ -82,10 +83,20 @@ export async function buildSubmission(
     return getJson<SubmissionResult>(res)
 }
 
-export async function uploadVolume(file: File): Promise<UploadResponse> {
+/**
+ * Segment a single volume into a binary muscle/fat mask (standalone preview).
+ * Returns a base64 PNG plus the muscle fraction; writes no files server-side.
+ */
+export async function segmentMask(volumeId: string): Promise<MaskResult> {
+    const res = await fetch(`${BASE_URL}/volumes/${volumeId}/mask`, { method: 'POST' })
+    if (!res.ok) throw new Error(`Segmentation failed: ${await res.text()}`)
+    return getJson<MaskResult>(res)
+}
+
+export async function uploadVolume(file: File, signal?: AbortSignal): Promise<UploadResponse> {
     const form = new FormData()
     form.append('file', file)
-    const res = await fetch(`${BASE_URL}/volumes/upload`, { method: 'POST', body: form })
+    const res = await fetch(`${BASE_URL}/volumes/upload`, { method: 'POST', body: form, signal })
     if (!res.ok) throw new Error(`Upload failed: ${await res.text()}`)
     return getJson<UploadResponse>(res)
 }
@@ -156,7 +167,7 @@ export async function cleanupUploads(): Promise<void> {
 // ── Normalised-binary endpoints ───────────────────────────────────────────────
 //
 // The backend now returns render-ready binary instead of raw float32.
-// Layout: [vIndices float32 × vCount][vIntensities float32 × vCount][normalizedVolume uint8 × total]
+// Layout: [vIndices uint32 × vCount][vIntensities float32 × vCount][normalizedVolume uint8 × total]
 // Headers: X-Shape (nSlices,height,width)  X-VCount (above-threshold voxel count)
 //
 // The frontend creates three typed-array views into the single response ArrayBuffer —
@@ -173,7 +184,14 @@ export async function cleanupUploads(): Promise<void> {
  */
 async function streamBodyInto(res: Response, byteLength: number): Promise<ArrayBuffer> {
     const reader = res.body?.getReader()
-    if (!reader) return res.arrayBuffer()
+    if (!reader) {
+        const buf = await res.arrayBuffer()
+        if (buf.byteLength !== byteLength)
+            throw new Error(
+                `Truncated volume response: expected ${byteLength} bytes, got ${buf.byteLength}`,
+            )
+        return buf
+    }
 
     const out = new Uint8Array(byteLength)
     let offset = 0
@@ -185,11 +203,16 @@ async function streamBodyInto(res: Response, byteLength: number): Promise<ArrayB
         const remaining = byteLength - offset
         if (value.length > remaining) {
             out.set(value.subarray(0, remaining), offset)
+            offset = byteLength
             break
         }
         out.set(value, offset)
         offset += value.length
     }
+    // A short read (aborted/interrupted connection) would otherwise leave the
+    // tail zero-filled and be silently rendered as a valid — but corrupt — volume.
+    if (offset !== byteLength)
+        throw new Error(`Truncated volume response: expected ${byteLength} bytes, got ${offset}`)
     return out.buffer
 }
 
@@ -199,12 +222,15 @@ async function parseNormalizedVolume(res: Response): Promise<H5VolumeData> {
     if (!vCountHeader) throw new Error('Missing X-VCount header')
     const [nSlices, height, width] = parseShapeHeader(res, 3)
     const vCount = parseInt(vCountHeader, 10)
+    if (!Number.isFinite(vCount) || vCount < 0)
+        throw new Error(`Invalid X-VCount header: "${vCountHeader}"`)
     const total = nSlices * height * width
 
     const byteLength = vCount * BYTES_PER_FLOAT32 * 2 + total
     const buf = await streamBodyInto(res, byteLength)
-    // Three views into the same buffer — zero copy.
-    const vIndices = new Float32Array(buf, 0, vCount)
+    // Three views into the same buffer — zero copy. Indices are uint32 (4 bytes,
+    // same stride as the following float32 intensities); see H5VolumeData.
+    const vIndices = new Uint32Array(buf, 0, vCount)
     const vIntensities = new Float32Array(buf, vCount * BYTES_PER_FLOAT32, vCount)
     const normalizedVolume = new Uint8Array(buf, vCount * BYTES_PER_FLOAT32 * 2, total)
     return { nSlices, height, width, vIndices, vIntensities, normalizedVolume }

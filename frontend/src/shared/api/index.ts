@@ -12,6 +12,7 @@ export {
     filterVolume,
     cropVolume,
     buildSubmission,
+    segmentMask,
 } from './client'
 export type {
     FilterType,
@@ -25,4 +26,5 @@ export type {
     SessionFilterRequest,
     SubmissionOptions,
     SubmissionResult,
+    MaskResult,
 } from './types'

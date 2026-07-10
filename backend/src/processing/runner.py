@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -23,20 +24,45 @@ class JobState:
 
 
 class JobStore:
-    """In-memory store for job state, keyed by job_id."""
+    """In-memory store for job state, keyed by job_id.
+
+    ``lock`` guards mutable JobState fields (``results``) that the worker
+    thread mutates while poll endpoints serialise them — without it, Pydantic
+    iterating ``results`` during an insert raises ``RuntimeError: dictionary
+    changed size during iteration``.
+    """
 
     def __init__(self) -> None:
         self._jobs: dict[str, JobState] = {}
+        self.lock = threading.Lock()
 
     def create(self, job_id: str) -> JobState:
         """Initialise a new job in PENDING state and return it."""
         state = JobState()
-        self._jobs[job_id] = state
+        with self.lock:
+            self._jobs[job_id] = state
         return state
 
     def get(self, job_id: str) -> JobState | None:
         """Return the JobState for *job_id*, or None if unknown."""
-        return self._jobs.get(job_id)
+        with self.lock:
+            return self._jobs.get(job_id)
+
+    def any_running(self) -> bool:
+        """True if any job is currently PENDING or RUNNING."""
+        with self.lock:
+            return any(
+                s.status in (JobStatus.PENDING, JobStatus.RUNNING) for s in self._jobs.values()
+            )
+
+    def clear_finished(self) -> None:
+        """Drop all jobs that are neither PENDING nor RUNNING (frees memory)."""
+        with self.lock:
+            self._jobs = {
+                k: s
+                for k, s in self._jobs.items()
+                if s.status in (JobStatus.PENDING, JobStatus.RUNNING)
+            }
 
 
 job_store = JobStore()
@@ -75,28 +101,45 @@ def _execute_pipeline(
     """
     volume = load_volume(settings.uploads_dir / f"{volume_id}.h5")
 
-    # Apply filters one by one so earlier results feed later steps.
-    preprocessed = volume
-    for i, step in enumerate(filter_chain):
-        logger.debug("Job %s: applying filter step %d/%d", job_id, i + 1, len(filter_chain))
-        preprocessed = apply_filter_chain(preprocessed, [step], copy_input=False)
+    # Apply the whole chain in one call; apply_filter_chain iterates the steps
+    # in order internally, so a per-step loop here was redundant.
+    preprocessed = apply_filter_chain(volume, filter_chain, copy_input=False)
 
-    # Run each stitcher sequentially on the preprocessed volume.
+    # Run each stitcher sequentially on the preprocessed volume. The unfiltered
+    # original is passed as registration reference so affine/b-spline stitchers
+    # register the preprocessed volume onto it instead of onto themselves.
     for name in stitchers:
         if name not in STITCHER_REGISTRY:
             logger.warning("Job %s: unknown stitcher %r — skipped", job_id, name)
             continue
         try:
             logger.debug("Job %s: running stitcher %r", job_id, name)
-            result_vol = STITCHER_REGISTRY[name](preprocessed, stitcher_params.get(name, {}))
+            result_vol = STITCHER_REGISTRY[name](
+                preprocessed, stitcher_params.get(name, {}), reference=volume
+            )
             np.save(settings.uploads_dir / f"{job_id}_{name}.npy", result_vol)
-            state.results[name] = compute_all(preprocessed, result_vol)
+            metrics = compute_all(preprocessed, result_vol)
+            with job_store.lock:
+                state.results[name] = metrics
         except Exception as exc:
             logger.exception("Stitcher %s failed for job %s", name, job_id)
-            state.results[name] = {"error": f"{type(exc).__name__}: {exc}"}
+            with job_store.lock:
+                state.results[name] = {"error": f"{type(exc).__name__}: {exc}"}
 
-    state.status = JobStatus.DONE
-    logger.info("Job %s completed successfully", job_id)
+    # A job whose every stitcher failed (or that matched no known stitcher at
+    # all) is an error, not a success — leaving it DONE would silently hide
+    # total failure from pollers.
+    all_failed = stitchers and (
+        not state.results
+        or all(isinstance(r, dict) and "error" in r for r in state.results.values())
+    )
+    if all_failed:
+        state.status = JobStatus.ERROR
+        state.error = "All requested stitchers failed or were unknown"
+        logger.error("Job %s finished with no successful stitcher", job_id)
+    else:
+        state.status = JobStatus.DONE
+        logger.info("Job %s completed", job_id)
 
 
 async def run_job(

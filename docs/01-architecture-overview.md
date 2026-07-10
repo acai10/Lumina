@@ -116,7 +116,7 @@ Headers:
   X-VCount = "<above-threshold voxel count>"  e.g. "8412345"
 
 Body (one contiguous block of bytes):
-  [ vIndices      : vCount × float32 ]   flat voxel indices, brightest first
+  [ vIndices      : vCount × uint32  ]   flat voxel indices, brightest first
   [ vIntensities  : vCount × float32 ]   matching intensities in [0, 1]
   [ normalizedVolume : nSlices·H·W × uint8 ]   full volume, 0–255 per voxel
 ```

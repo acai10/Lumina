@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore, fullVolumeCropBox } from '../../app/store/viewerSlice'
-import { cropVolume, fetchNormalizedVolume, uploadVolume } from '../../shared/api/client'
+import { cropVolume, fetchNormalizedVolume } from '../../shared/api/client'
+import { useResolveVolumeId } from '../../shared/hooks'
 import type { H5FileEntry, H5TabEntry } from '../../shared/types/viewer.types'
 import { DEFAULT_VOXEL_SIZE_UM, UM_PER_MM } from '../../shared/constants'
 
@@ -23,7 +24,6 @@ export function useOpenCrop(activeH5: H5TabEntry) {
     const loadH5 = useViewerStore((s) => s.loadH5)
     const setIsLoading = useViewerStore((s) => s.setIsLoading)
     const setNotification = useViewerStore((s) => s.setNotification)
-    const setBackendVolumeId = useViewerStore((s) => s.setBackendVolumeId)
     const setCropMode = useViewerStore((s) => s.setCropMode)
     const nextCropNumber = useViewerStore((s) => s.nextCropNumber)
 
@@ -31,14 +31,11 @@ export function useOpenCrop(activeH5: H5TabEntry) {
 
     const cropBox = rawCropBox ?? fullVolumeCropBox(activeH5.meta)
 
-    const resolveVolumeId = async (): Promise<string | null> => {
-        const existing = activeH5.registeredVolumeId ?? activeH5.backendVolumeId
-        if (existing) return existing
-        if (!activeH5.sourceFile) return null
-        const { volume_id } = await uploadVolume(activeH5.sourceFile)
-        setBackendVolumeId(fileKey, volume_id)
-        return volume_id
-    }
+    const resolveVolumeId = useResolveVolumeId(fileKey, {
+        registeredVolumeId: activeH5.registeredVolumeId,
+        backendVolumeId: activeH5.backendVolumeId,
+        sourceFile: activeH5.sourceFile,
+    })
 
     const openCrop = async (): Promise<void> => {
         setIsCropping(true)

@@ -13,6 +13,7 @@ through to the loader on every call. The cache holds at most
 """
 
 import logging
+import threading
 from collections import OrderedDict
 from collections.abc import Callable
 from pathlib import Path
@@ -27,6 +28,9 @@ _MAX_ENTRIES = 2
 _MAX_CACHEABLE_BYTES = 256 * 1024 * 1024
 
 _cache: "OrderedDict[tuple[str, float], np.ndarray]" = OrderedDict()
+#: Sync routes run in Starlette's threadpool, so concurrent requests hit this
+#: module-global OrderedDict in parallel — its mutation is not thread-safe.
+_lock = threading.Lock()
 
 
 def load_volume_cached(path: Path, loader: Callable[[Path], np.ndarray]) -> np.ndarray:
@@ -42,21 +46,26 @@ def load_volume_cached(path: Path, loader: Callable[[Path], np.ndarray]) -> np.n
         callers — treat it as read-only.
     """
     key = (str(path), path.stat().st_mtime)
-    cached = _cache.get(key)
-    if cached is not None:
-        _cache.move_to_end(key)
-        return cached
+    with _lock:
+        cached = _cache.get(key)
+        if cached is not None:
+            _cache.move_to_end(key)
+            return cached
 
+    # Decode outside the lock — loading takes seconds and must not serialise
+    # unrelated requests. Two concurrent misses may both decode; last one wins.
     arr = loader(path)
     if arr.nbytes <= _MAX_CACHEABLE_BYTES:
-        _cache[key] = arr
-        _cache.move_to_end(key)
-        while len(_cache) > _MAX_ENTRIES:
-            evicted_key, _ = _cache.popitem(last=False)
-            logger.debug("volume_cache: evicted %s", evicted_key[0])
+        with _lock:
+            _cache[key] = arr
+            _cache.move_to_end(key)
+            while len(_cache) > _MAX_ENTRIES:
+                evicted_key, _ = _cache.popitem(last=False)
+                logger.debug("volume_cache: evicted %s", evicted_key[0])
     return arr
 
 
 def clear() -> None:
     """Drop all cached volumes (used by tests and the cleanup endpoint)."""
-    _cache.clear()
+    with _lock:
+        _cache.clear()

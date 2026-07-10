@@ -1,36 +1,21 @@
 import { loadH5File } from './h5Reader'
-import type { WorkerResponse } from './h5WorkerClient'
-import { normalizeVolume } from './h5Normalizer'
+import type { WorkerRequest, WorkerResponse } from './h5WorkerClient'
 
-type WorkerInput =
-    | { file: File; dims: [number, number, number] }
-    | {
-          raw: Float32Array
-          dims: [number, number, number]
-          threshold: number
-          skipNormalizedVolume?: boolean
-      }
-
-self.onmessage = async (e: MessageEvent<WorkerInput>) => {
+// One long-lived worker serves many files (see h5WorkerClient), so each request
+// carries an id that we echo back on the response for correlation.
+self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
+    const { id, file, dims } = e.data
     try {
-        const result =
-            'file' in e.data
-                ? await loadH5File(e.data.file, e.data.dims)
-                : normalizeVolume(
-                      e.data.raw,
-                      e.data.dims,
-                      e.data.threshold,
-                      e.data.skipNormalizedVolume ?? false,
-                  )
+        const result = await loadH5File(file, dims)
         const transferables = [result.vIndices.buffer, result.vIntensities.buffer] as ArrayBuffer[]
         if (result.normalizedVolume) {
             // normalizedVolume is Uint8Array — transfer its underlying ArrayBuffer.
             transferables.push(result.normalizedVolume.buffer as ArrayBuffer)
         }
-        const response: WorkerResponse = { ok: true, result }
+        const response: WorkerResponse = { id, ok: true, result }
         self.postMessage(response, { transfer: transferables })
     } catch (err) {
-        const response: WorkerResponse = { ok: false, error: String(err) }
+        const response: WorkerResponse = { id, ok: false, error: String(err) }
         self.postMessage(response)
     }
 }

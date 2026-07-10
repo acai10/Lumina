@@ -6,7 +6,7 @@ does the same work on the backend so the frontend receives render-ready binary
 and requires no worker or heavy JS computation for backend-originated volumes.
 
 Binary response layout (packed, returned by ``pack_normalized_response``):
-    [vIndices   : vCount × float32]
+    [vIndices   : vCount × uint32]
     [vIntensities: vCount × float32]
     [normalizedVolume: nSlices × H × W × uint8]
 
@@ -66,7 +66,7 @@ def normalize_for_frontend(
 
     Returns:
         Tuple ``(vIndices, vIntensities, normalizedVolume_u8)`` where:
-        - *vIndices* — float32 array of length *vCount*: flat voxel indices
+        - *vIndices* — uint32 array of length *vCount*: flat voxel indices
           sorted by intensity descending.
         - *vIntensities* — float32 array of length *vCount*: corresponding
           normalised intensities in ``[0, 1]``.
@@ -83,11 +83,17 @@ def normalize_for_frontend(
 
     for s in range(nSlices):
         sl = vol[s]
-        mn = float(sl.min())
-        mx = float(sl.max())
-        scale = 255.0 / (mx - mn) if mx > mn else 0.0
+        # NaN-tolerant range: a corrupted slice must not poison `scale` (a NaN
+        # scale would cast undefined garbage into uint8 without any warning).
+        mn = float(np.nanmin(sl))
+        mx = float(np.nanmax(sl))
+        if not np.isfinite(mn) or not np.isfinite(mx) or mx <= mn:
+            norm_u8[s] = 0
+            continue
+        scale = 255.0 / (mx - mn)
         np.subtract(sl, mn, out=tmp)
         np.multiply(tmp, scale, out=tmp)
+        np.nan_to_num(tmp, copy=False)  # stray NaN voxels → 0 instead of UB on cast
         np.clip(tmp, 0, 255, out=tmp)
         norm_u8[s] = tmp
 
@@ -133,7 +139,10 @@ def normalize_for_frontend(
             vol.shape,
         )
 
-    v_indices = raw_idx[order].astype(np.float32)
+    # uint32 (not float32): a full-volume flat index reaches 32M, past float32's
+    # exact-integer range (2^24 ≈ 16.7M). The frontend reads these as an integer
+    # vertex attribute; 4 bytes each, same stride as the float32 intensities.
+    v_indices = raw_idx[order].astype(np.uint32)
     v_intensities = raw_int[order].astype(np.float32) / 255.0
 
     logger.debug(
@@ -143,6 +152,36 @@ def normalize_for_frontend(
         100.0 * len(v_indices) / (nSlices * H * W),
     )
     return v_indices, v_intensities, norm_u8
+
+
+def pack_arrays(
+    v_indices: np.ndarray,
+    v_intensities: np.ndarray,
+    norm_u8: np.ndarray,
+    shape: tuple[int, int, int],
+) -> tuple[bytes, dict[str, str]]:
+    """Assemble the packed binary layout + headers from pre-normalised arrays.
+
+    Single source of truth for the byte layout and header names shared by
+    :func:`pack_normalized_response`, :func:`save_packed`, and any route that
+    normalises manually (e.g. to free the input volume first).
+
+    Args:
+        v_indices: Uint32 flat voxel index array.
+        v_intensities: Float32 normalised intensity array.
+        norm_u8: Uint8 normalised volume.
+        shape: ``(nSlices, height, width)`` of the original volume.
+
+    Returns:
+        ``(content, headers)`` ready for ``fastapi.responses.Response``.
+    """
+    nSlices, H, W = shape
+    content = v_indices.tobytes() + v_intensities.tobytes() + norm_u8.tobytes()
+    headers = {
+        "X-Shape": f"{nSlices},{H},{W}",
+        "X-VCount": str(len(v_indices)),
+    }
+    return content, headers
 
 
 def pack_normalized_response(
@@ -162,13 +201,7 @@ def pack_normalized_response(
         ``(content, headers)`` ready for ``fastapi.responses.Response``.
     """
     v_indices, v_intensities, norm_u8 = normalize_for_frontend(vol, threshold)
-    nSlices, H, W = vol.shape
-    content = v_indices.tobytes() + v_intensities.tobytes() + norm_u8.tobytes()
-    headers = {
-        "X-Shape": f"{nSlices},{H},{W}",
-        "X-VCount": str(len(v_indices)),
-    }
-    return content, headers
+    return pack_arrays(v_indices, v_intensities, norm_u8, vol.shape)
 
 
 # ── Pre-computation helpers ───────────────────────────────────────────────────
@@ -186,16 +219,14 @@ def save_packed(
     The endpoint can then serve the binary without any recomputation.
 
     Args:
-        v_indices: Float32 flat voxel index array.
+        v_indices: Uint32 flat voxel index array.
         v_intensities: Float32 normalised intensity array.
         norm_u8: Uint8 normalised volume.
         shape: ``(nSlices, height, width)`` of the original volume.
         prefix: Path stem — ``.bin`` / ``.json`` suffixes are appended.
     """
-    nSlices, H, W = shape
-    content = v_indices.tobytes() + v_intensities.tobytes() + norm_u8.tobytes()
+    content, meta = pack_arrays(v_indices, v_intensities, norm_u8, shape)
     Path(prefix).with_suffix(".bin").write_bytes(content)
-    meta = {"X-Shape": f"{nSlices},{H},{W}", "X-VCount": str(len(v_indices))}
     with open(Path(prefix).with_suffix(".json"), "w") as fh:
         json.dump(meta, fh)
     logger.info(

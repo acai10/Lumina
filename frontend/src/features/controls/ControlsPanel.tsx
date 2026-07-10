@@ -40,8 +40,10 @@ import CropSection from './CropSection'
 import { SliderRow, RangeSliderRow } from './SliderRow'
 import type { ColormapType, H5RenderControls } from '../../shared/types/viewer.types'
 import { DEFAULT_COLORMAP } from '../../shared/types/viewer.types'
-import { measureVolume, uploadVolume } from '../../shared/api/client'
+import { measureVolume, segmentMask } from '../../shared/api/client'
 import type { MeasureResult } from '../../shared/api/client'
+import { useResolveVolumeId } from '../../shared/hooks'
+import { MaskDialog } from './MaskDialog'
 import { eyebrowSx, microLabelSx, compactButtonSx } from '../../shared/theme/uiTokens'
 import { DEFAULT_VOXEL_SIZE_UM, UM_PER_MM } from '../../shared/constants'
 
@@ -98,7 +100,6 @@ export default function ControlsPanel() {
     const {
         tabs,
         activeTabIndex,
-        h5PerFileStates,
         updateActiveRenderState,
         stlOpacity,
         setStlOpacity,
@@ -118,13 +119,11 @@ export default function ControlsPanel() {
         setColorByDepth,
         setSliceVoxelSizeUm,
         setMeasurementResult,
-        setBackendVolumeId,
         setNotification,
     } = useViewerStore(
         useShallow((s) => ({
             tabs: s.tabs,
             activeTabIndex: s.activeTabIndex,
-            h5PerFileStates: s.h5PerFileStates,
             updateActiveRenderState: s.updateActiveRenderState,
             stlOpacity: s.stlOpacity,
             setStlOpacity: s.setStlOpacity,
@@ -144,23 +143,28 @@ export default function ControlsPanel() {
             setSliceColormap: s.setSliceColormap,
             setSliceVoxelSizeUm: s.setSliceVoxelSizeUm,
             setMeasurementResult: s.setMeasurementResult,
-            setBackendVolumeId: s.setBackendVolumeId,
             setNotification: s.setNotification,
         })),
     )
 
     const [isMeasuring, setIsMeasuring] = useState(false)
-    const [voxelSize, setVoxelSize] = useState<[number, number, number]>(DEFAULT_VOXEL_SIZE_UM)
+    const [maskPng, setMaskPng] = useState<string | null>(null)
+    const [isSegmenting, setIsSegmenting] = useState(false)
 
     const activeTab = tabs[activeTabIndex]
     const activeH5 = activeTab?.type === 'h5' ? activeTab : null
     const activeStl = activeTab?.type === 'stl' ? activeTab : null
     const activeKey = activeH5?.name
 
+    // Subscribe to only the *active* file's slice, not the whole per-file map, so
+    // background-tab updates and paint strokes elsewhere don't re-render the panel.
+    const activeFileState = useViewerStore((s) =>
+        activeKey ? s.h5PerFileStates[activeKey] : undefined,
+    )
+
     const renderControls: H5RenderControls =
-        (activeKey ? h5PerFileStates[activeKey]?.renderControls : undefined) ??
-        defaultRenderControls
-    const viewMode = (activeKey ? h5PerFileStates[activeKey]?.viewMode : undefined) ?? 'pointcloud'
+        activeFileState?.renderControls ?? defaultRenderControls
+    const viewMode = activeFileState?.viewMode ?? 'pointcloud'
     const limits = getRenderControlLimits(activeH5?.meta)
     const hasSliceView = !!activeH5?.hasSlices
     const hasVolumeSource = !!(
@@ -168,13 +172,13 @@ export default function ControlsPanel() {
         activeH5?.backendVolumeId ||
         activeH5?.sourceFile
     )
+    // Voxel spacing is per-file store state (single source of truth); the panel
+    // reads it directly instead of a shadow copy that drifts on tab switch.
+    const voxelSize = activeFileState?.sliceVoxelSizeUm ?? DEFAULT_VOXEL_SIZE_UM
 
-    const sliceColormap: ColormapType =
-        (activeKey ? h5PerFileStates[activeKey]?.sliceColormap : undefined) ?? DEFAULT_COLORMAP
-    const colormapRange: [number, number] = (activeKey
-        ? h5PerFileStates[activeKey]?.sliceColormapRange
-        : undefined) ?? [0, 1]
-    const colorByDepth = (activeKey ? h5PerFileStates[activeKey]?.colorByDepth : undefined) ?? false
+    const sliceColormap: ColormapType = activeFileState?.sliceColormap ?? DEFAULT_COLORMAP
+    const colormapRange: [number, number] = activeFileState?.sliceColormapRange ?? [0, 1]
+    const colorByDepth = activeFileState?.colorByDepth ?? false
 
     const stlTabs = useMemo(
         () => tabs.flatMap((t, i) => (t.type === 'stl' ? [{ tab: t, index: i }] : [])),
@@ -186,26 +190,22 @@ export default function ControlsPanel() {
         [updateActiveRenderState],
     )
 
-    const resolveVolumeId = useCallback(async (): Promise<string | null> => {
-        if (!activeH5 || !activeKey) return null
-        const existing = activeH5.registeredVolumeId ?? activeH5.backendVolumeId
-        if (existing) return existing
-        if (!activeH5.sourceFile) return null
-        const { volume_id } = await uploadVolume(activeH5.sourceFile)
-        setBackendVolumeId(activeKey, volume_id)
-        return volume_id
-    }, [activeH5, activeKey, setBackendVolumeId])
+    const resolveVolumeId = useResolveVolumeId(activeKey, {
+        registeredVolumeId: activeH5?.registeredVolumeId,
+        backendVolumeId: activeH5?.backendVolumeId,
+        sourceFile: activeH5?.sourceFile,
+    })
 
     const handleReset = useCallback(() => {
         // Reset every view/interaction control (3D + slice) back to defaults, but
         // keep the active filters and colormap so a reset never undoes preprocessing.
         if (activeH5 && activeKey) {
             resetFileControls(activeKey, activeH5.meta)
-            setVoxelSize(DEFAULT_VOXEL_SIZE_UM)
+            setSliceVoxelSizeUm(activeKey, DEFAULT_VOXEL_SIZE_UM)
         } else {
             setStlOpacity(DEFAULT_STL_OPACITY)
         }
-    }, [activeH5, activeKey, resetFileControls, setStlOpacity])
+    }, [activeH5, activeKey, resetFileControls, setStlOpacity, setSliceVoxelSizeUm])
 
     if (tabs.length === 0) return null
 
@@ -342,22 +342,12 @@ export default function ControlsPanel() {
                                             value={voxelSize[i]}
                                             onChange={(e) => {
                                                 const v = parseFloat(e.target.value)
-                                                if (!isNaN(v) && v > 0) {
+                                                if (!isNaN(v) && v > 0 && activeKey) {
                                                     const next: [number, number, number] = [
                                                         ...voxelSize,
                                                     ]
                                                     next[i] = v
-                                                    setVoxelSize((prev) => {
-                                                        const updated = [...prev] as [
-                                                            number,
-                                                            number,
-                                                            number,
-                                                        ]
-                                                        updated[i] = v
-                                                        return updated
-                                                    })
-                                                    if (activeKey)
-                                                        setSliceVoxelSizeUm(activeKey, next)
+                                                    setSliceVoxelSizeUm(activeKey, next)
                                                 }
                                             }}
                                         />
@@ -398,11 +388,42 @@ export default function ControlsPanel() {
                                 </Button>
                                 {isMeasuring && <CircularProgress size={12} thickness={5} />}
                             </Box>
-                            {activeKey && h5PerFileStates[activeKey]?.measurementResult && (
+                            {activeFileState?.measurementResult && (
                                 <MeasurementResultPanel
-                                    result={h5PerFileStates[activeKey].measurementResult!}
+                                    result={activeFileState.measurementResult}
                                 />
                             )}
+                            {/* Standalone muscle/fat segmentation — Otsu split, preview only */}
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    disabled={isSegmenting}
+                                    onClick={async () => {
+                                        setIsSegmenting(true)
+                                        try {
+                                            const volumeId = await resolveVolumeId()
+                                            if (!volumeId) return
+                                            const result = await segmentMask(volumeId)
+                                            setMaskPng(result.mask_png)
+                                        } catch (err) {
+                                            setNotification({
+                                                message:
+                                                    err instanceof Error
+                                                        ? err.message
+                                                        : 'Segmentation failed',
+                                                severity: 'error',
+                                            })
+                                        } finally {
+                                            setIsSegmenting(false)
+                                        }
+                                    }}
+                                    sx={compactButtonSx}
+                                >
+                                    Segment muscle/fat
+                                </Button>
+                                {isSegmenting && <CircularProgress size={12} thickness={5} />}
+                            </Box>
                         </Stack>
                     )}
 
@@ -577,6 +598,7 @@ export default function ControlsPanel() {
                     onChange={setStlOpacity}
                 />
             )}
+            <MaskDialog maskPng={maskPng} onClose={() => setMaskPng(null)} />
         </Stack>
     )
 }

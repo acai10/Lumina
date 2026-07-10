@@ -18,6 +18,11 @@ export function disposeAnnotationIndex(fileKey: string): void {
     indexByFile.delete(fileKey)
 }
 
+/** Drop every cached annotation index (call on a full store reset). */
+export function disposeAllAnnotationIndices(): void {
+    indexByFile.clear()
+}
+
 function ensureIndex(fileKey: string, mask: Uint8Array): Map<number, number> {
     let m = indexByFile.get(fileKey)
     if (!m) {

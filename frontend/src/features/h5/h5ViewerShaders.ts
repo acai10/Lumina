@@ -1,5 +1,8 @@
 export const vertexShader = /* glsl */ `
-in float vIndex;
+// vIndex is an *integer* attribute: a full volume has 512·250·250 = 32M voxels,
+// beyond float32's exact-integer range (2^24 ≈ 16.7M), so decoding it as a float
+// would land deep voxels on the wrong slice. Integer division/modulo are exact.
+in uint vIndex;
 in float vIntensity;
 out float fIntensity;
 out float fS;
@@ -13,20 +16,25 @@ uniform float uVolumeSpacing;
 uniform float uPointSize;
 
 void main() {
-    float sliceSize = uHeight * uWidth;
-    float s = floor(vIndex / sliceSize);
-    float rem = mod(vIndex, sliceSize);
-    float h = floor(rem / uWidth);
-    float w = mod(rem, uWidth);
+    uint width = uint(uWidth);
+    uint sliceSize = uint(uHeight) * width;
+    uint s = vIndex / sliceSize;
+    uint rem = vIndex % sliceSize;
+    uint h = rem / width;
+    uint w = rem % width;
 
-    float x = w - uWidth * 0.5;
-    float y = (s - uNSlices * 0.5) * (uVolumeSpacing / uNSlices);
-    float z = h - uHeight * 0.5;
+    float sf = float(s);
+    float hf = float(h);
+    float wf = float(w);
+
+    float x = wf - uWidth * 0.5;
+    float y = (sf - uNSlices * 0.5) * (uVolumeSpacing / uNSlices);
+    float z = hf - uHeight * 0.5;
 
     fIntensity = vIntensity;
-    fS = s;
-    fW = w;
-    fH = h;
+    fS = sf;
+    fW = wf;
+    fH = hf;
     gl_PointSize = uPointSize;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(x, y, z, 1.0);
 }

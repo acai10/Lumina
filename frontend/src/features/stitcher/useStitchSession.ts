@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createSession, pollSession, fetchSessionMerged, uploadVolume } from '../../shared/api'
 import { JOB_STATUS } from '../../shared/api/types'
 import type { RegistrationMethod, SessionStatus } from '../../shared/api'
@@ -26,6 +26,11 @@ export function useStitchSession() {
     const [error, setError] = useState<string | null>(null)
     const abortRef = useRef<AbortController | null>(null)
 
+    // Abort any in-flight session (polling loop, uploads, download) when the hook
+    // unmounts — e.g. the stitcher panel is closed — so it stops polling and never
+    // sets state on an unmounted component.
+    useEffect(() => () => abortRef.current?.abort(), [])
+
     const run = async (configs: VolumeConfig[], method: RegistrationMethod): Promise<void> => {
         // Cancel any previous in-flight run before starting a new one.
         abortRef.current?.abort()
@@ -38,21 +43,23 @@ export function useStitchSession() {
 
         try {
             setPhase('uploading')
-            const entries = await Promise.all(
-                configs.map(async (cfg) => {
-                    // Server-registered volumes already live on the backend by path —
-                    // skip the upload; only local files are uploaded.
-                    let volume_id: string
-                    if (cfg.volumeId) {
-                        volume_id = cfg.volumeId
-                    } else if (cfg.file) {
-                        volume_id = (await uploadVolume(cfg.file)).volume_id
-                    } else {
-                        throw new Error(`Volume "${cfg.name}" has neither a file nor an id`)
-                    }
-                    return { volume_id, row: cfg.row, col: cfg.col }
-                }),
-            )
+            // Upload tiles sequentially, not via Promise.all: a 25-tile grid at
+            // ~128 MB each would otherwise buffer several GB of FormData at once
+            // (the rest of the app deliberately loads volumes one at a time to
+            // avoid OOM). Server-registered tiles skip the upload entirely.
+            const entries: { volume_id: string; row: number; col: number }[] = []
+            for (const cfg of configs) {
+                if (signal.aborted) return
+                let volume_id: string
+                if (cfg.volumeId) {
+                    volume_id = cfg.volumeId
+                } else if (cfg.file) {
+                    volume_id = (await uploadVolume(cfg.file, signal)).volume_id
+                } else {
+                    throw new Error(`Volume "${cfg.name}" has neither a file nor an id`)
+                }
+                entries.push({ volume_id, row: cfg.row, col: cfg.col })
+            }
             if (signal.aborted) return
 
             setPhase('processing')

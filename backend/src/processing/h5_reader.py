@@ -72,7 +72,11 @@ def validate_volume_file(path: Path) -> None:
         ds = f.get("OCT")
         if ds is None:
             raise ValueError('Dataset "OCT" not found in file')
-        if ds.shape != OCT_DIMS and ds.size != expected:
+        # Accept exactly OCT_DIMS, or a flat (≤2-D) layout with the right element
+        # count that the loaders reshape. A 3-D dataset with any *other* axis
+        # arrangement (e.g. transposed) must be rejected — reshaping it would
+        # silently scramble the axes.
+        if ds.shape != OCT_DIMS and not (len(ds.shape) <= 2 and ds.size == expected):
             raise ValueError(f"Expected {expected} elements {OCT_DIMS}, got shape {ds.shape}")
 
 
@@ -99,7 +103,9 @@ def load_volume(path: Path) -> np.ndarray:
         arr = np.asarray(ds, dtype=np.float32)
     expected = OCT_DIMS[0] * OCT_DIMS[1] * OCT_DIMS[2]
     if arr.shape != OCT_DIMS:
-        if arr.size != expected:
+        # Only flat (≤2-D) layouts may be reshaped; a differently-arranged 3-D
+        # array would have its axes silently scrambled by a blind reshape.
+        if arr.ndim > 2 or arr.size != expected:
             raise ValueError(f"Expected {expected} elements {OCT_DIMS}, got shape {arr.shape}")
         arr = arr.reshape(OCT_DIMS)
     return arr

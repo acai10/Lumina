@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from src.config import settings
-from src.processing.runner import create_job, get_job, run_job
+from src.processing.runner import create_job, get_job, job_store, run_job
 from src.processing.stitchers import STITCHER_REGISTRY
 from src.schemas.jobs import JobCreated, JobRequest, JobStatusResponse
 
@@ -59,4 +59,9 @@ def get_job_status(job_id: str) -> JobStatusResponse:
     state = get_job(job_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Job not found.")
-    return JobStatusResponse(status=state.status, results=state.results, error=state.error)
+    # Copy the results dict under the store lock: the worker thread inserts new
+    # entries while Pydantic would otherwise iterate it during serialisation.
+    with job_store.lock:
+        return JobStatusResponse(
+            status=state.status, results=dict(state.results), error=state.error
+        )

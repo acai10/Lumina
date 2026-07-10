@@ -79,11 +79,37 @@ export interface SubmissionOptions {
     dz?: number
 }
 
+/** Depth/mask statistics returned alongside a built submission. */
+export interface SubmissionStats {
+    shape: [number, number]
+    coverage_pct: number
+    depth_min_mm: number
+    depth_max_mm: number
+    depth_mean_mm: number
+    dx_mm: number
+    dy_mm: number
+    dz_mm: number
+    /** Present only for the tissue dataset (a mask was produced). */
+    muscle_pct?: number
+}
+
 /** Result of building a submission: file name, base64 PNG previews, and stats. */
 export interface SubmissionResult {
     volume_id: string
     h5_filename: string
     surface_png: string
     mask_png: string | null
-    stats: Record<string, number | number[]>
+    stats: SubmissionStats
+}
+
+/** Result of the standalone muscle/fat segmentation (`POST /volumes/{id}/mask`). */
+export interface MaskResult {
+    volume_id: string
+    /** Base64-encoded PNG of the binary mask. */
+    mask_png: string
+    stats: {
+        muscle_pct: number
+        height: number
+        width: number
+    }
 }

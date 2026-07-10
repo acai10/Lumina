@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import {
-    uploadVolume,
     fetchNormalizedVolume,
     filterSessionVolume,
     filterVolume,
@@ -9,6 +8,7 @@ import {
 import { useShallow } from 'zustand/react/shallow'
 import { loadH5FileInWorker } from '../../shared/h5'
 import { useViewerStore } from '../../app/store/viewerSlice'
+import { useResolveVolumeId } from '../../shared/hooks'
 import type { FilterStep } from '../../shared/api/types'
 
 export type FilterPhase = 'idle' | 'uploading' | 'processing' | 'downloading' | 'reverting'
@@ -34,6 +34,15 @@ export function useFilterJob(
             setNotification: s.setNotification,
         })),
     )
+
+    // Reuses (and caches) the tab's server volume id — a local file is uploaded
+    // once, not on every apply. For stitched tabs `backendVolumeId` is a session
+    // id, so those keep the dedicated merged path below (guarded on !sourceFile).
+    const resolveVolumeId = useResolveVolumeId(fileKey, {
+        registeredVolumeId,
+        backendVolumeId,
+        sourceFile,
+    })
 
     const [phase, setPhase] = useState<FilterPhase>('idle')
     const [error, setError] = useState<string | null>(null)
@@ -61,19 +70,15 @@ export function useFilterJob(
                 return
             }
 
-            // ── Normal path: (upload OR reuse registered volume) → lean filter ─
-            // A server-registered volume already lives on the backend by path, so we
-            // skip the upload entirely. The /volumes/{id}/filter endpoint applies the
-            // chain and returns the normalised result in one request — no stitcher,
+            // ── Normal path: (upload once OR reuse registered volume) → filter ─
+            // resolveVolumeId reuses a registered/already-uploaded id and only
+            // uploads a fresh local file when needed, caching the result so a
+            // second apply doesn't re-send ~128 MB. The /volumes/{id}/filter
+            // endpoint returns the normalised result in one request — no stitcher,
             // no metrics, no polling, and the volume is not positionally altered.
-            let volume_id: string
-            if (registeredVolumeId) {
-                volume_id = registeredVolumeId
-            } else {
-                if (!sourceFile) return
-                setPhase('uploading')
-                volume_id = (await uploadVolume(sourceFile)).volume_id
-            }
+            if (!registeredVolumeId && sourceFile) setPhase('uploading')
+            const volume_id = await resolveVolumeId()
+            if (!volume_id) return
 
             setPhase('processing')
             const newData = await filterVolume(volume_id, filterChain)

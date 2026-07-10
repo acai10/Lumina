@@ -40,7 +40,7 @@ Most volume endpoints return a *packed binary* instead of JSON, with two headers
 * `X-VCount` — number of above-threshold voxels
 
 Body layout (one contiguous buffer):
-`[vIndices: vCount×float32][vIntensities: vCount×float32][normalizedVolume: total×uint8]`
+`[vIndices: vCount×uint32][vIntensities: vCount×float32][normalizedVolume: total×uint8]`
 
 ### Long-running work
 Filter **jobs** (`/jobs`) and stitching **sessions** (`/sessions`) run in the
@@ -80,7 +80,7 @@ OPENAPI_TAGS = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    settings.uploads_dir.mkdir(exist_ok=True)
+    settings.uploads_dir.mkdir(parents=True, exist_ok=True)
     yield
 
 

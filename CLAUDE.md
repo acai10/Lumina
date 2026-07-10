@@ -106,13 +106,20 @@ backend/
 │   ├── conftest.py           # TestClient fixture
 │   ├── test_filters.py       # Unit tests for apply_filter_chain()
 │   ├── test_metrics.py       # Unit tests for NCC/MI/MSE/Dice
-│   └── test_job_store.py     # Unit tests for JobStore
+│   ├── test_job_store.py     # Unit tests for JobStore
+│   ├── test_crop.py          # Crop endpoint: dims, bounds, non-destructiveness
+│   ├── test_measurements.py  # compute_measurements(): volume/area/thickness/diameter
+│   ├── test_multi_volume.py  # register_pair, merge_volumes, global offsets, overlap
+│   ├── test_normalizer.py    # normalize_for_frontend + pack/save/load roundtrip
+│   ├── test_submission.py    # surface/mask extraction + .h5 writer format
+│   └── test_mask_endpoint.py # POST /volumes/{id}/mask (standalone segmentation)
 └── src/
     ├── config.py             # Pydantic BaseSettings: uploads_dir, cors_origins, data_dir (env vars)
     ├── schemas/
     │   ├── enums.py          # JobStatus (str Enum): PENDING, RUNNING, DONE, ERROR
     │   ├── jobs.py           # FilterStep, FilterRequest, JobRequest, JobCreated, JobStatusResponse
     │   ├── sessions.py       # VolumeEntry, SessionRequest, SessionStatusResponse
+    │   ├── submission.py     # SubmissionRequest/Response (challenge .h5 build)
     │   └── volumes.py        # UploadResponse, LocalVolume, Register(Batch)Request
     ├── routers/
     │   ├── volumes.py        # upload, register(-batch), normalized, filter
@@ -121,15 +128,18 @@ backend/
     │   ├── sessions.py       # POST+GET /sessions/, /merged, POST /filter
     │   ├── measurements.py   # POST /volumes/{id}/measure
     │   ├── crop.py           # POST /volumes/{id}/crop → new independent sub-volume
+    │   ├── submission.py     # POST /volumes/{id}/submission (challenge) + /mask (segmentation)
     │   └── cleanup.py        # DELETE /cleanup
     └── processing/
         ├── h5_reader.py      # load_volume(), load_volume_flexible(), OCT_DIMS constant
         ├── filters.py        # apply_filter_chain(); _FILTER_REGISTRY
         ├── stitchers.py      # STITCHER_REGISTRY: phase_correlation, simpleitk_affine, elastix_bspline, bigstitcher
         ├── multi_volume.py   # MIP, phase/cross correlation, global offsets, merge
-        ├── normalizer.py     # normalize_for_frontend(); pack/save/load_packed
+        ├── normalizer.py     # normalize_for_frontend(); pack_arrays/save/load_packed
         ├── measurements.py   # compute_measurements(): area, volume, thickness, diameter
         ├── metrics.py        # compute_all() -> dict[str, float]: NCC, MI, MSE, RMSE, Dice
+        ├── submission.py     # extract_surface/segment_muscle_fat/write_submission (challenge)
+        ├── volume_cache.py   # load_volume_cached(): thread-safe LRU of decoded volumes
         ├── runner.py         # JobStore class + job_store singleton; async run_job
         └── session_runner.py # SessionStore + session_store singleton; async run_session
 ```
@@ -156,13 +166,15 @@ backend/
 | POST | `/volumes/{id}/filter` | 200 | Apply filter chain → normalised binary (no stitch/metrics) |
 | POST | `/volumes/{id}/measure` | 200 | Geometric measurements |
 | POST | `/volumes/{id}/crop` | 200 | Extract sub-volume (x/y/z + w/h/d) → new volume id; non-destructive, persisted + cached |
+| POST | `/volumes/{id}/submission` | 200 | Build challenge `.h5` (surface + optional tissue mask) + base64 PNG previews + stats |
+| POST | `/volumes/{id}/mask` | 200 | Standalone muscle/fat segmentation → base64 PNG + muscle % (no file written) |
 | POST | `/jobs/` | **201** | Start job → `{ job_id }` (immediate) |
 | GET | `/jobs/{id}` | 200 | Poll status + metric results |
 | GET | `/jobs/{id}/volume/{stitcher}` | 200 | Normalised binary result volume |
 | POST/GET | `/sessions/` · `/sessions/{id}` | 200/201 | Multi-volume stitch session + poll |
 | GET | `/sessions/{id}/merged` | 200 | Merged volume |
 | POST | `/sessions/{id}/filter` | 200 | Filter the merged volume |
-| DELETE | `/cleanup` | 200 | Delete all files in `uploads/` |
+| DELETE | `/cleanup` | 200 / **409** | Delete all files in `uploads/`; 409 while a job/session is still running |
 
 Full request/response shapes, status codes, and headers: [`docs/12-api-reference.md`](docs/12-api-reference.md). Most volume endpoints return the packed binary (`X-Shape`/`X-VCount` headers) described there.
 

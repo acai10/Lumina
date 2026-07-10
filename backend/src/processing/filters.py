@@ -7,7 +7,7 @@ import scipy.ndimage as ndi
 logger = logging.getLogger(__name__)
 
 
-def apply_gaussian(volume: np.ndarray, params: dict) -> np.ndarray:
+def apply_gaussian(volume: np.ndarray, params: dict[str, Any]) -> np.ndarray:
     """Apply per-slice Gaussian blur.
 
     Args:
@@ -24,7 +24,7 @@ def apply_gaussian(volume: np.ndarray, params: dict) -> np.ndarray:
     return out
 
 
-def apply_median(volume: np.ndarray, params: dict) -> np.ndarray:
+def apply_median(volume: np.ndarray, params: dict[str, Any]) -> np.ndarray:
     """Apply per-slice median filter.
 
     Args:
@@ -41,7 +41,7 @@ def apply_median(volume: np.ndarray, params: dict) -> np.ndarray:
     return out
 
 
-def apply_mean(volume: np.ndarray, params: dict) -> np.ndarray:
+def apply_mean(volume: np.ndarray, params: dict[str, Any]) -> np.ndarray:
     """Apply per-slice uniform (mean) filter.
 
     Args:
@@ -58,7 +58,7 @@ def apply_mean(volume: np.ndarray, params: dict) -> np.ndarray:
     return out
 
 
-def apply_normalize(volume: np.ndarray, params: dict) -> np.ndarray:
+def apply_normalize(volume: np.ndarray, params: dict[str, Any]) -> np.ndarray:
     """Percentile-based intensity normalization to [0, 1].
 
     Args:
@@ -74,11 +74,13 @@ def apply_normalize(volume: np.ndarray, params: dict) -> np.ndarray:
     lo = float(np.percentile(volume, low_pct))
     hi = float(np.percentile(volume, high_pct))
     if hi > lo:
-        return np.clip((volume - lo) / (hi - lo), 0.0, 1.0).astype(np.float32)
+        # float32 input already yields float32 here; asarray casts only if needed
+        # instead of astype's unconditional full copy.
+        return np.asarray(np.clip((volume - lo) / (hi - lo), 0.0, 1.0), dtype=np.float32)
     return np.zeros_like(volume)
 
 
-def apply_edge_highlight(volume: np.ndarray, params: dict) -> np.ndarray:
+def apply_edge_highlight(volume: np.ndarray, params: dict[str, Any]) -> np.ndarray:
     """Per-slice Sobel edge magnitude, normalised to [0, 1].
 
     Each slice is optionally Gaussian-smoothed first (so the derivative is not

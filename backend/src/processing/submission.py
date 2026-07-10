@@ -14,7 +14,6 @@ extraction, segmentation, writer, and preview rendering that the challenge needs
 """
 
 import io
-import json
 import logging
 from pathlib import Path
 
@@ -257,8 +256,3 @@ def describe_submission(path: str | Path) -> str:
                 f"fat/bg(0)={(m < 0.5).mean() * 100:.1f}%"
             )
     return "\n".join(lines)
-
-
-def submission_metadata(stats: dict) -> str:
-    """Compact JSON of the stats dict (for logging / headers)."""
-    return json.dumps(stats)

@@ -1,5 +1,6 @@
 import logging
-from pathlib import Path
+import os
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -43,22 +44,29 @@ async def upload_volume(file: UploadFile) -> UploadResponse:
     if not file.filename or not file.filename.lower().endswith(".h5"):
         raise HTTPException(status_code=400, detail="Only .h5 files are accepted.")
 
-    volume_id = Path(file.filename).stem
+    # A fresh UUID per upload: filename stems collide (two different files with
+    # the same name would silently replace each other and corrupt open tabs).
+    # Registered volumes (see /register) keep stem ids on purpose — there, the
+    # id maps to a unique on-disk path.
+    volume_id = uuid4().hex
     dest = settings.uploads_dir / f"{volume_id}.h5"
+    tmp = settings.uploads_dir / f"{volume_id}.h5.part"
 
-    # Unlink first so we never write *through* a symlink onto a registered source
-    # file (see /register); this always creates a fresh regular file. Then stream
-    # the upload in chunks instead of buffering the whole ~128 MB in RAM.
-    dest.unlink(missing_ok=True)
-    with dest.open("wb") as fh:
-        while chunk := await file.read(UPLOAD_CHUNK_SIZE):
-            fh.write(chunk)
-
+    # Stage into a temp file and promote atomically: an aborted or concurrent
+    # upload can never leave a half-written file at the final path. Stream in
+    # chunks instead of buffering the whole ~128 MB in RAM.
     try:
-        validate_volume_file(dest)  # metadata-only: checks "OCT" dataset + shape
+        with tmp.open("wb") as fh:
+            while chunk := await file.read(UPLOAD_CHUNK_SIZE):
+                fh.write(chunk)
+        validate_volume_file(tmp)  # metadata-only: checks "OCT" dataset + shape
     except ValueError as exc:
-        dest.unlink(missing_ok=True)
+        tmp.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
+    os.replace(tmp, dest)
 
     return _upload_response(volume_id)
 
@@ -200,7 +208,7 @@ def filter_volume(volume_id: str, req: FilterRequest) -> Response:
     description=(
         "Load a stored/registered volume and return the render-ready packed binary "
         "(same layout as job/session results) so the frontend needs neither an upload "
-        "nor a Web Worker. Layout: `[vIndices float32][vIntensities float32]"
+        "nor a Web Worker. Layout: `[vIndices uint32][vIntensities float32]"
         "[normalizedVolume uint8]`; shape in `X-Shape`, voxel count in `X-VCount`."
     ),
     responses={404: {"description": "Volume not found"}},

@@ -23,3 +23,23 @@ export const ANNOTATION_PALETTE: AnnotationColor[] = [
 
 /** Opacity of the annotation tint over the slice / the 3D voxel highlight points. */
 export const ANNOTATION_TINT_ALPHA = 0.45
+
+/** Highest label value in the palette (the palette is static). */
+export const ANNOTATION_MAX_LABEL = Math.max(...ANNOTATION_PALETTE.map((c) => c.label))
+
+/**
+ * Flat `label → [r,g,b]` lookup table indexed by `label*3`, covering labels
+ * `0..ANNOTATION_MAX_LABEL` (label 0 = unannotated, left as zeroes). Shared by the
+ * 2D slice overlay (uint8 0–255) and the 3D voxel overlay (float 0–1).
+ *
+ * @param scale divides each channel — `1` for 0–255 (canvas), `255` for 0–1 (GL).
+ */
+export function buildLabelLut(scale: 1 | 255 = 1): Float32Array {
+    const t = new Float32Array((ANNOTATION_MAX_LABEL + 1) * 3)
+    for (const c of ANNOTATION_PALETTE) {
+        t[c.label * 3] = c.rgb[0] / scale
+        t[c.label * 3 + 1] = c.rgb[1] / scale
+        t[c.label * 3 + 2] = c.rgb[2] / scale
+    }
+    return t
+}

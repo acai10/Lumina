@@ -37,23 +37,22 @@ const sceneSpinner = (
 )
 
 export default function App() {
-    const {
-        tabs,
-        activeTabIndex,
-        h5PerFileStates,
-        stlOverlayIndex,
-        stitchPanelOpen,
-        fileListPanelOpen,
-    } = useViewerStore(
-        useShallow((s) => ({
-            tabs: s.tabs,
-            activeTabIndex: s.activeTabIndex,
-            h5PerFileStates: s.h5PerFileStates,
-            stlOverlayIndex: s.stlOverlayIndex,
-            stitchPanelOpen: s.stitchPanelOpen,
-            fileListPanelOpen: s.fileListPanelOpen,
-        })),
-    )
+    const { tabs, activeTabIndex, stlOverlayIndex, stitchPanelOpen, fileListPanelOpen } =
+        useViewerStore(
+            useShallow((s) => ({
+                tabs: s.tabs,
+                activeTabIndex: s.activeTabIndex,
+                stlOverlayIndex: s.stlOverlayIndex,
+                stitchPanelOpen: s.stitchPanelOpen,
+                fileListPanelOpen: s.fileListPanelOpen,
+            })),
+        )
+    // Subscribe to only the active file's per-file state, not the whole map, so a
+    // background-tab update or a paint stroke doesn't re-render the whole app tree.
+    const activeH5PerState = useViewerStore((s) => {
+        const t = s.tabs[s.activeTabIndex]
+        return t?.type === 'h5' ? s.h5PerFileStates[t.name] : undefined
+    })
     const setNotification = useViewerStore((s) => s.setNotification)
     const ensureHydrated = useViewerStore((s) => s.ensureHydrated)
     const {
@@ -78,13 +77,10 @@ export default function App() {
     const overlayTab = stlOverlayIndex !== null ? tabs[stlOverlayIndex] : undefined
     const stlOverlayTab = overlayTab?.type === 'stl' ? overlayTab : null
 
-    const activeViewMode = activeH5
-        ? (h5PerFileStates[activeH5.name]?.viewMode ?? 'pointcloud')
-        : 'pointcloud'
+    const activeViewMode = activeH5 ? (activeH5PerState?.viewMode ?? 'pointcloud') : 'pointcloud'
 
     // When the user has toggled comparison mode, render the pre-filter snapshot
     // instead of the current (filtered) data so they can see the before/after diff.
-    const activeH5PerState = activeH5 ? h5PerFileStates[activeH5.name] : undefined
     const renderData =
         activeH5PerState?.showingComparison && activeH5PerState.filterSnapshot
             ? activeH5PerState.filterSnapshot

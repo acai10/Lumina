@@ -25,6 +25,10 @@ const TOOLS: ToolDef[] = [
     { tool: 'eraser', icon: <CleaningServicesIcon fontSize="small" />, label: 'Eraser' },
 ]
 
+/** Brush/eraser radius bounds (voxels) for the radius slider. */
+const MIN_BRUSH_RADIUS = 1
+const MAX_BRUSH_RADIUS = 40
+
 interface AnnotationToolbarProps {
     activeH5: H5TabEntry
 }
@@ -188,8 +192,8 @@ export default function AnnotationToolbar({ activeH5 }: AnnotationToolbarProps) 
                             <Slider
                                 size="small"
                                 value={brushRadius}
-                                min={1}
-                                max={40}
+                                min={MIN_BRUSH_RADIUS}
+                                max={MAX_BRUSH_RADIUS}
                                 step={1}
                                 onChange={(_, v) =>
                                     setBrushRadius(typeof v === 'number' ? v : v[0])

@@ -22,7 +22,7 @@ interface CachedVolume {
     nSlices: number
     height: number
     width: number
-    vIndices: Float32Array
+    vIndices: Uint32Array
     vIntensities: Float32Array
     normalizedVolume: Uint8Array | null
 }
@@ -77,7 +77,7 @@ function isCachedVolume(v: unknown): v is CachedVolume {
         v !== null &&
         typeof v === 'object' &&
         typeof (v as CachedVolume).nSlices === 'number' &&
-        (v as CachedVolume).vIndices instanceof Float32Array &&
+        (v as CachedVolume).vIndices instanceof Uint32Array &&
         (v as CachedVolume).vIntensities instanceof Float32Array
     )
 }

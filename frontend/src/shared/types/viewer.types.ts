@@ -65,7 +65,9 @@ export interface H5Meta {
 }
 
 export interface H5VolumeData extends H5Meta {
-    vIndices: Float32Array
+    // Uint32 (not float32): flat voxel indices reach 32M for a full volume, past
+    // float32's exact-integer limit of 2^24 ≈ 16.7M. See the vertex shader.
+    vIndices: Uint32Array
     vIntensities: Float32Array
     // Uint8Array (values 0-255) instead of Float32Array to cut memory 4×.
     // Divide by 255 when a 0-1 float is needed (e.g. SlicePanel canvas rendering).

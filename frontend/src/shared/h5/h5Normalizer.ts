@@ -8,7 +8,6 @@ export function normalizeVolume(
     raw: Float32Array,
     dims: [number, number, number],
     threshold: number,
-    skipNormalizedVolume = false,
 ): H5VolumeData {
     const [nSlices, height, width] = dims
     const sliceSize = height * width
@@ -45,8 +44,10 @@ export function normalizeVolume(
     // Pass 2 — fill exact-sized buffers.
     // normalizedVolume uses Uint8Array (0-255) instead of Float32Array to cut
     // memory 4× — crucial for large merged volumes (64 MB vs 256 MB).
-    const normalizedVolume = skipNormalizedVolume ? null : new Uint8Array(total)
-    const tmpIndices = new Float32Array(count)
+    const normalizedVolume = new Uint8Array(total)
+    // Uint32: a full volume's flat index reaches 32M, past float32's exact-integer
+    // range (2^24), which would misplace deep voxels in the 3D cloud.
+    const tmpIndices = new Uint32Array(count)
     const tmpIntensities = new Float32Array(count)
     let idx = 0
 
@@ -90,7 +91,7 @@ export function normalizeVolume(
     for (let i = count - 1; i >= 0; i--)
         perm[--hist[(sortKeys[tempPerm[i]] >> BITS) & MASK]] = tempPerm[i]
 
-    const vIndices = new Float32Array(count)
+    const vIndices = new Uint32Array(count)
     const vIntensities = new Float32Array(count)
     for (let i = 0; i < count; i++) {
         vIndices[i] = tmpIndices[perm[i]]
