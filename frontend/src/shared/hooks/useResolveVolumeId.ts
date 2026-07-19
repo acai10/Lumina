@@ -19,6 +19,11 @@ export interface VolumeIdentity {
  * same ~128 MB file. Returns `null` when the tab has neither a server volume nor
  * a local source.
  */
+// One in-flight upload per file, shared across ALL hook instances: measure,
+// filter, crop, etc. each create their own resolver, and two of them racing on
+// a not-yet-uploaded local file would otherwise both send the same ~128 MB.
+const inFlightUploads = new Map<string, Promise<string>>()
+
 export function useResolveVolumeId(
     fileKey: string | null | undefined,
     identity: VolumeIdentity,
@@ -29,8 +34,17 @@ export function useResolveVolumeId(
         const existing = registeredVolumeId ?? backendVolumeId
         if (existing) return existing
         if (!sourceFile || !fileKey) return null
-        const { volume_id } = await uploadVolume(sourceFile)
-        setBackendVolumeId(fileKey, volume_id)
-        return volume_id
+        let upload = inFlightUploads.get(fileKey)
+        if (!upload) {
+            upload = uploadVolume(sourceFile).then(({ volume_id }) => {
+                setBackendVolumeId(fileKey, volume_id)
+                return volume_id
+            })
+            inFlightUploads.set(fileKey, upload)
+            // Drop the entry once settled: on success the store id short-circuits
+            // future calls; on failure a retry should attempt a fresh upload.
+            upload.catch(() => {}).finally(() => inFlightUploads.delete(fileKey))
+        }
+        return upload
     }, [fileKey, registeredVolumeId, backendVolumeId, sourceFile, setBackendVolumeId])
 }

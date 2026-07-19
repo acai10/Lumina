@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { createSession, pollSession, fetchSessionMerged, uploadVolume } from '../../shared/api'
-import { JOB_STATUS } from '../../shared/api/types'
+import {
+    createSession,
+    pollSession,
+    fetchSessionMerged,
+    uploadVolume,
+    JOB_STATUS,
+} from '../../shared/api'
 import type { RegistrationMethod, SessionStatus } from '../../shared/api'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5FileEntry } from '../../shared/types/viewer.types'

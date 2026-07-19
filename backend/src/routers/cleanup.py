@@ -24,6 +24,14 @@ router = APIRouter()
     responses={409: {"description": "A job or session is still running"}},
 )
 def cleanup_uploads() -> JSONResponse:
+    """Delete every file under ``uploads/`` and drop finished job/session state.
+
+    Returns:
+        JSON with the number of deleted files and deletion errors.
+
+    Raises:
+        HTTPException 409: A job or session is still PENDING/RUNNING.
+    """
     # Deleting source/intermediate files under a running pipeline would make it
     # fail asynchronously — refuse instead of corrupting in-flight work.
     if job_store.any_running() or session_store.any_running():
@@ -40,8 +48,8 @@ def cleanup_uploads() -> JSONResponse:
             try:
                 p.unlink()
                 deleted += 1
-            except OSError:
-                logger.warning("Could not delete %s", p)
+            except OSError as exc:
+                logger.warning("Could not delete %s: %s", p, exc)
                 errors += 1
     # Drop cached arrays so we never serve data backed by a now-deleted file,
     # and release finished job/session state (the stores otherwise grow

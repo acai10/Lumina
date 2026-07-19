@@ -1,4 +1,4 @@
-import { VOLUME_DIMS, PRE_FILTER_THRESHOLD } from '../../shared/h5/h5Constants'
+import { VOLUME_DIMS, PRE_FILTER_THRESHOLD } from '../../shared/h5'
 
 const [N_SLICES, HEIGHT, WIDTH] = VOLUME_DIMS
 

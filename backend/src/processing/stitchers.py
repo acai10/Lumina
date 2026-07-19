@@ -118,7 +118,8 @@ def stitch_elastix_bspline(
     """
     try:
         import itk
-    except ImportError as exc:
+    except (ImportError, OSError) as exc:
+        # OSError covers a present-but-broken native install (missing shared libs).
         raise RuntimeError(
             "itk-elastix is not installed. Install with: uv sync --extra elastix"
         ) from exc

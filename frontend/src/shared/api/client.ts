@@ -2,6 +2,8 @@ import type {
     FilterStep,
     LocalVolume,
     MaskResult,
+    MeasureRequest,
+    MeasureResult,
     SessionRequest,
     SessionStatus,
     SubmissionOptions,
@@ -160,7 +162,9 @@ export async function pollSession(sessionId: string, signal?: AbortSignal): Prom
 }
 
 export async function cleanupUploads(): Promise<void> {
-    const res = await fetch(`${BASE_URL}/cleanup`, { method: 'DELETE' })
+    // Trailing slash matters: the backend route is /cleanup/ and a slash-less
+    // request would only work via an extra 307 redirect round-trip.
+    const res = await fetch(`${BASE_URL}/cleanup/`, { method: 'DELETE' })
     if (!res.ok) throw new Error(`Cleanup failed: ${await res.text()}`)
 }
 
@@ -199,11 +203,13 @@ async function streamBodyInto(res: Response, byteLength: number): Promise<ArrayB
         const { done, value } = await reader.read()
         if (done) break
         if (!value) continue
-        // Guard against a server sending more bytes than advertised.
+        // Guard against a server sending more bytes than advertised. Cancel the
+        // stream so the connection is released instead of left dangling open.
         const remaining = byteLength - offset
         if (value.length > remaining) {
             out.set(value.subarray(0, remaining), offset)
             offset = byteLength
+            void reader.cancel()
             break
         }
         out.set(value, offset)
@@ -217,7 +223,7 @@ async function streamBodyInto(res: Response, byteLength: number): Promise<ArrayB
 }
 
 async function parseNormalizedVolume(res: Response): Promise<H5VolumeData> {
-    if (!res.ok) throw new Error(await res.text())
+    if (!res.ok) throw new Error(`Loading volume failed (${res.status}): ${await res.text()}`)
     const vCountHeader = res.headers.get(HEADER_X_VCOUNT)
     if (!vCountHeader) throw new Error('Missing X-VCount header')
     const [nSlices, height, width] = parseShapeHeader(res, 3)
@@ -281,20 +287,6 @@ export async function filterVolume(
         body: JSON.stringify({ filter_chain: filterChain }),
     })
     return parseNormalizedVolume(res)
-}
-
-export interface MeasureRequest {
-    threshold?: number
-    voxel_size_um?: [number, number, number]
-}
-
-export interface MeasureResult {
-    voxel_count: number
-    volume_um3: number
-    surface_area_um2: number
-    mean_thickness_um: number
-    max_thickness_um: number
-    lateral_diameter_um: number
 }
 
 /** Request geometric measurements (area, volume, thickness, diameter) for a volume. */

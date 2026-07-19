@@ -1,7 +1,8 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-    readonly VITE_API_URL: string
+    // Optional: unset in plain local dev — client.ts falls back to localhost:8000.
+    readonly VITE_API_URL?: string
 }
 
 interface ImportMeta {

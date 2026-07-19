@@ -50,5 +50,13 @@ python_version = "3.11"
 strict = false
 ignore_missing_imports = true
 
+# tifffile (pulled in via scikit-image) ships PEP-695 `type` statements that
+# mypy rejects under python_version 3.11 and would abort the whole run while
+# following imports into site-packages. Skip analysing it — we only need our
+# own sources checked.
+[[tool.mypy.overrides]]
+module = "tifffile.*"
+follow_imports = "skip"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

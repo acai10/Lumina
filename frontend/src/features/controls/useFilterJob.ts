@@ -4,12 +4,12 @@ import {
     filterSessionVolume,
     filterVolume,
     fetchSessionMerged,
-} from '../../shared/api/client'
+} from '../../shared/api'
 import { useShallow } from 'zustand/react/shallow'
 import { loadH5FileInWorker } from '../../shared/h5'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import { useResolveVolumeId } from '../../shared/hooks'
-import type { FilterStep } from '../../shared/api/types'
+import type { FilterStep } from '../../shared/api'
 
 export type FilterPhase = 'idle' | 'uploading' | 'processing' | 'downloading' | 'reverting'
 

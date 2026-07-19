@@ -123,9 +123,12 @@ runner is the *orchestrator* that calls them in order and persists the outputs:
 
 - **`{session}_merged.npy`** — for fast memory-mapped re-reads.
 - **`{session}_merged.h5`** — so filters can be applied to the merged volume.
-- **`{session}_mip.npy`** — the max-intensity projection for quick visualization.
 - **`{session}_frontend.bin` / `.json`** — the pre-computed packed binary, so the
   download endpoint serves a file instead of recomputing.
+
+Like the job pipeline, the whole session body runs inside a worker thread via
+`asyncio.to_thread` (`run_session` → `_execute_session`), so status polling and
+every other endpoint stay responsive during a multi-minute stitch.
 
 ### Polling and download
 
@@ -167,7 +170,7 @@ This staging keeps peak RAM well under the naïve 2.5 GB.
 | Work | filter chain + stitcher algorithms + metrics | register → BFS → merge → normalize |
 | Result download | `GET /jobs/{id}/volume/{stitcher}` | `GET /sessions/{id}/merged` |
 | State store | `job_store` | `session_store` |
-| Execution | `asyncio.to_thread` worker | async background task |
+| Execution | `asyncio.to_thread` worker | `asyncio.to_thread` worker |
 
 ## Error handling
 

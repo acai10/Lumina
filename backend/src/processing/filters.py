@@ -112,6 +112,11 @@ def apply_edge_highlight(volume: np.ndarray, params: dict[str, Any]) -> np.ndarr
     # Normalise the whole volume together for consistent slice-to-slice contrast,
     # using a high percentile so outlier pixels do not crush the dynamic range.
     ref = float(np.percentile(out, high_pct))
+    if ref <= 0:
+        # Degenerate input (e.g. a tiny bright region in an otherwise empty
+        # volume): the percentile is 0 although edges exist. Fall back to the
+        # absolute maximum so the documented [0, 1] output range always holds.
+        ref = float(out.max())
     if ref > 0:
         np.clip(out / ref, 0.0, 1.0, out=out)
     return out
@@ -139,8 +144,9 @@ def apply_filter_chain(
         chain: Ordered list of ``{"type": str, "params": dict}`` dicts.
         copy_input: When *True* (default) the input is copied before the first
             filter so the original array is never modified.  Pass *False* when
-            the caller owns a temporary array and wants to skip the 1 GB copy —
-            e.g. when *volume* was just loaded from disk for this call only.
+            the caller owns a temporary array and wants to skip the full-volume
+            copy (~128 MB per standard tile, ~1 GB for a large merge) — e.g.
+            when *volume* was just loaded from disk for this call only.
 
     Returns:
         Filtered volume (same shape unless a future filter changes it).

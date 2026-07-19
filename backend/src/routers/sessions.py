@@ -23,6 +23,9 @@ from src.schemas.sessions import (
 
 router = APIRouter()
 
+#: Registration methods understood by ``register_pair`` (multi_volume.py).
+_KNOWN_METHODS = ("phase_correlation", "cross_correlation")
+
 
 @router.post(
     "/",
@@ -33,10 +36,34 @@ router = APIRouter()
         "Upload volume IDs with grid positions and start a background stitching job. "
         "Poll ``GET /sessions/{id}`` for status."
     ),
+    responses={
+        400: {"description": "Fewer than 2 volumes, duplicate grid position, unknown method"},
+        404: {"description": "A referenced volume was not found"},
+    },
 )
 async def create_session(req: SessionRequest, background_tasks: BackgroundTasks) -> SessionCreated:
+    """Validate the request, register the session, and start the background stitch.
+
+    Args:
+        req: Tiles with grid positions plus the registration method.
+        background_tasks: Starlette task queue running ``run_session`` after the response.
+
+    Returns:
+        SessionCreated with the id to poll.
+
+    Raises:
+        HTTPException 400: Fewer than 2 volumes, duplicate grid cell, unknown method.
+        HTTPException 404: A referenced volume file is missing.
+    """
     if len(req.volumes) < 2:
         raise HTTPException(status_code=400, detail="At least 2 volumes are required.")
+    # Fail fast like the jobs router does for stitchers: an unknown method would
+    # otherwise only surface asynchronously as a failed session.
+    if req.method not in _KNOWN_METHODS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown registration method {req.method!r}; expected one of {_KNOWN_METHODS}.",
+        )
 
     # Fail fast on inputs the runner could only report asynchronously: duplicate
     # grid cells (would shadow a tile) and missing volume files.
@@ -77,6 +104,7 @@ async def create_session(req: SessionRequest, background_tasks: BackgroundTasks)
     responses={404: {"description": "Session not found"}},
 )
 def get_session(session_id: str) -> SessionStatusResponse:
+    """Return the current status, offsets, and metrics of a stitching session."""
     state = session_store.get(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found.")
@@ -94,14 +122,16 @@ def get_session(session_id: str) -> SessionStatusResponse:
 
 @router.get(
     "/{session_id}/merged",
-    summary="Get merged OCT volume",
+    summary="Get merged OCT volume (pre-normalised for the frontend)",
     description=(
-        "Returns the full 3-D merged volume as raw float32 bytes; "
-        "shape in ``X-Shape`` header (n_slices,height,width)."
+        "Returns the merged volume as the render-ready packed binary "
+        "(`[vIndices uint32][vIntensities float32][normalizedVolume uint8]`); "
+        "shape in ``X-Shape``, voxel count in ``X-VCount``."
     ),
     responses={404: {"description": "Session or merged volume not found"}},
 )
 def get_session_merged(session_id: str) -> Response:
+    """Serve the merged volume's packed binary (pre-computed when available)."""
     state = session_store.get(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found.")
@@ -132,12 +162,16 @@ def get_session_merged(session_id: str) -> Response:
     "/{session_id}/filter",
     summary="Apply a filter chain to the merged volume",
     description=(
-        "Loads the session's merged HDF5 volume, applies the requested filter chain, "
-        "and returns the result as raw float32 bytes with an ``X-Shape`` header."
+        "Loads the session's merged volume, applies the requested filter chain, "
+        "and returns the render-ready packed binary (same layout as `/merged`)."
     ),
-    responses={404: {"description": "Merged volume not found"}},
+    responses={
+        400: {"description": "Unknown filter type"},
+        404: {"description": "Merged volume not found"},
+    },
 )
 def filter_session_merged(session_id: str, req: SessionFilterRequest) -> Response:
+    """Filter the merged volume and return the normalised packed binary."""
     path = settings.uploads_dir / f"{session_id}_merged.h5"
     if not path.exists():
         raise HTTPException(
@@ -155,13 +189,17 @@ def filter_session_merged(session_id: str, req: SessionFilterRequest) -> Respons
 
     filter_chain_dicts = [step.model_dump() for step in req.filter_chain]
 
-    # copy_input=False skips the 1 GB upfront copy inside apply_filter_chain —
-    # all filter functions allocate their own output array; the copy is redundant
-    # when the caller owns a fresh temporary (as we do here). np.asarray is a
-    # no-op (no copy) when the chain already produced float32.
-    filtered = np.asarray(
-        apply_filter_chain(vol, filter_chain_dicts, copy_input=False), dtype=np.float32
-    )
+    try:
+        # copy_input=False skips the 1 GB upfront copy inside apply_filter_chain —
+        # all filter functions allocate their own output array; the copy is redundant
+        # when the caller owns a fresh temporary (as we do here). np.asarray is a
+        # no-op (no copy) when the chain already produced float32.
+        filtered = np.asarray(
+            apply_filter_chain(vol, filter_chain_dicts, copy_input=False), dtype=np.float32
+        )
+    except ValueError as exc:
+        # Unknown filter type — a client error, not a 500.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     del vol  # release mmap / free input before normalization
 
     v_indices, v_intensities, norm_u8 = normalize_for_frontend(filtered)

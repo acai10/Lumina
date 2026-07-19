@@ -1,4 +1,4 @@
-import type { FilterStep } from '../../shared/api/types'
+import type { FilterStep } from '../../shared/api'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { FilterTypeOrNone, PipelineStep, StepParams } from '../../shared/types/viewer.types'
 

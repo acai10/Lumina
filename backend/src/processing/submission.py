@@ -155,7 +155,7 @@ def _surface_to_png(surface: np.ndarray) -> bytes:
     return _encode_png(rgb)
 
 
-def _mask_to_png(mask: np.ndarray) -> bytes:
+def mask_to_png(mask: np.ndarray) -> bytes:
     """Colour PNG of a binary mask: muscle = red, fat/background = dark blue."""
     binary = np.asarray(mask) >= 0.5
     rgb = np.empty((*binary.shape, 3), dtype=np.uint8)
@@ -212,7 +212,7 @@ def build_submission(
         "surface": surface,
         "mask": mask,
         "surface_png": _surface_to_png(surface),
-        "mask_png": _mask_to_png(mask) if mask is not None else None,
+        "mask_png": mask_to_png(mask) if mask is not None else None,
         "stats": stats,
     }
 

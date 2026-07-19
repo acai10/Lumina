@@ -102,16 +102,22 @@ The backend validates both constraints on upload and raises 400 otherwise.
 ```text
 backend/
 ├── main.py                   # FastAPI app, CORS (from settings), router registration, lifespan
+├── show_submission.py        # CLI: print a built submission .h5 (structure + stats)
 ├── tests/
 │   ├── conftest.py           # TestClient fixture
+│   ├── test_config.py        # Settings: comma-separated + JSON CORS_ORIGINS (env & .env)
 │   ├── test_filters.py       # Unit tests for apply_filter_chain()
+│   ├── test_h5_reader.py     # validate/load/reshape guards at the upload boundary
 │   ├── test_metrics.py       # Unit tests for NCC/MI/MSE/Dice
 │   ├── test_job_store.py     # Unit tests for JobStore
+│   ├── test_jobs_sessions_api.py # jobs/sessions/cleanup routers: fail-fast validation paths
 │   ├── test_crop.py          # Crop endpoint: dims, bounds, non-destructiveness
 │   ├── test_measurements.py  # compute_measurements(): volume/area/thickness/diameter
 │   ├── test_multi_volume.py  # register_pair, merge_volumes, global offsets, overlap
 │   ├── test_normalizer.py    # normalize_for_frontend + pack/save/load roundtrip
 │   ├── test_submission.py    # surface/mask extraction + .h5 writer format
+│   ├── test_volume_cache.py  # LRU cache: hits, mtime invalidation, eviction, size cap
+│   ├── test_volumes_api.py   # upload/register/filter endpoints incl. traversal + id collision
 │   └── test_mask_endpoint.py # POST /volumes/{id}/mask (standalone segmentation)
 └── src/
     ├── config.py             # Pydantic BaseSettings: uploads_dir, cors_origins, data_dir (env vars)
@@ -119,7 +125,7 @@ backend/
     │   ├── enums.py          # JobStatus (str Enum): PENDING, RUNNING, DONE, ERROR
     │   ├── jobs.py           # FilterStep, FilterRequest, JobRequest, JobCreated, JobStatusResponse
     │   ├── sessions.py       # VolumeEntry, SessionRequest, SessionStatusResponse
-    │   ├── submission.py     # SubmissionRequest/Response (challenge .h5 build)
+    │   ├── submission.py     # SubmissionRequest/Response + MaskResponse (challenge .h5 build)
     │   └── volumes.py        # UploadResponse, LocalVolume, Register(Batch)Request
     ├── routers/
     │   ├── volumes.py        # upload, register(-batch), normalized, filter
@@ -222,18 +228,34 @@ frontend/src/
 │   └── store/viewerSlice.ts          # Zustand: unified tabs[], per-file H5 state, camera, LRU hydration, notifications
 ├── shared/
 │   ├── api/
-│   │   ├── index.ts                  # barrel — public API surface
-│   │   ├── client.ts                 # uploadVolume, register*, filterVolume, session helpers
-│   │   └── types.ts                  # FilterStep, JobRequest, JobStatus, UploadResponse
+│   │   ├── index.ts                  # barrel — public API surface (values + types)
+│   │   ├── client.ts                 # uploadVolume, register*, filterVolume, measureVolume, session helpers
+│   │   └── types.ts                  # FilterStep, Session*, Submission*, Measure*, JOB_STATUS
+│   ├── components/
+│   │   ├── index.ts                  # barrel
+│   │   ├── ServerVolumeDialog.tsx    # server .h5 picker (folder-grouped, single/multi select)
+│   │   ├── ZoomModeButton.tsx        # zoom-to-cursor toggle shared by the 3D viewers
+│   │   └── useServerVolumes.ts       # Hook: GET /volumes/local with loading/error state
+│   ├── constants.ts                  # DEFAULT_VOXEL_SIZE_UM, UM_PER_MM, UINT8_MAX, DEFAULT_COLORMAP_RANGE
 │   ├── h5/
 │   │   ├── index.ts                  # barrel
-│   │   ├── h5Reader.ts               # loadH5FileInWorker; exports VOLUME_DIMS, PRE_FILTER_THRESHOLD
+│   │   ├── h5Constants.ts            # VOLUME_DIMS, PRE_FILTER_THRESHOLD
+│   │   ├── h5Reader.ts               # h5wasm decode (runs inside the worker)
+│   │   ├── h5WorkerClient.ts         # loadH5FileInWorker: request/response protocol, worker reuse
 │   │   ├── h5Normalizer.ts           # normalizeVolume(raw, dims, threshold) → H5VolumeData
 │   │   ├── volumeCache.ts            # IndexedDB off-heap store: putVolume/getVolume/deleteVolume/clearVolumes
 │   │   └── h5.worker.ts              # Web Worker entry point
+│   ├── hooks/
+│   │   ├── index.ts                  # barrel
+│   │   └── useResolveVolumeId.ts     # Hook: reuse/lazily upload a tab's server volume id
 │   ├── three/
 │   │   ├── index.ts                  # barrel
 │   │   └── sceneUtils.ts             # createScene(), disposeSceneGeometry()
+│   ├── types/
+│   │   └── viewer.types.ts           # TabEntry/H5TabEntry, H5VolumeData, per-file state types
+│   ├── utils/
+│   │   ├── index.ts                  # barrel
+│   │   └── groupByFolder.ts          # group server volumes by folder for the pickers
 │   └── theme/
 │       ├── index.ts                  # barrel
 │       ├── palette.ts                # all colour tokens
@@ -244,8 +266,10 @@ frontend/src/
     ├── controls/
     │   ├── index.ts                  # barrel
     │   ├── ControlsPanel.tsx         # right sidebar; delegates to hooks + sub-components
+    │   ├── ControlsPanel.styles.ts   # panel/slider/input styles (pseudo-selectors)
     │   ├── PreprocessingSection.tsx  # filter pipeline UI; uses useFilterJob + useFilterParams
     │   ├── CropSection.tsx           # crop shape/range/threshold UI + object count; uses useOpenCrop
+    │   ├── MaskDialog.tsx            # muscle/fat segmentation preview dialog
     │   ├── cropObjectAnalysis.ts     # analyzeRegionObjects(): 3D connected-component labelling
     │   ├── SliderRow.tsx             # SliderRow + RangeSliderRow (named exports)
     │   ├── renderControlLimits.ts    # RENDER_CONTROL_LIMITS; derived from VOLUME_DIMS
@@ -260,8 +284,10 @@ frontend/src/
     │   ├── H5SliceViewer.styles.ts   # slicePanelSliderSx (pseudo-selectors)
     │   ├── SlicePanel.tsx            # single-axis 2D canvas panel with zoom/pan
     │   ├── H5FileTabs.tsx            # tab bar for multiple loaded files
+    │   ├── H5FileTabs.styles.ts      # tab bar styles (drag/STL tint)
     │   ├── h5ViewerShaders.ts        # GLSL3 vertexShader + fragmentShader strings
-    │   └── createAxisLabels.ts       # factory for X/Y/Z axis label sprites
+    │   ├── h5DrawUtils.ts            # draw-range helpers over the intensity-sorted cloud
+    │   └── createAxisLabels.ts       # factory for X/Y/Z axis + tick label sprites
     ├── stl/
     │   ├── index.ts                  # barrel
     │   └── STLViewer.tsx             # Three.js STL mesh viewer
@@ -281,7 +307,9 @@ frontend/src/
     ├── stitcher/
     │   ├── index.ts                  # barrel
     │   ├── StitcherPanel.tsx         # right-docked multi-volume stitch UI
+    │   ├── StitcherPanel.styles.ts   # panel/table styles
     │   ├── StitchResults.tsx         # quality-metric + offset tables
+    │   ├── SubmissionDialog.tsx      # build + preview the challenge submission
     │   └── useStitchSession.ts       # Hook: session create/poll/download
     └── notifications/
         ├── index.ts                  # barrel
@@ -295,9 +323,9 @@ frontend/src/
 - **UI text styles**: shared label/header `sx` objects live in `shared/theme/uiTokens.ts` — use `eyebrowSx` (uppercase section/eyebrow headers), `microLabelSx` (`0.625rem` sub-captions), and `compactButtonSx` (dense buttons) instead of hand-rolling font sizes/weights, so the type scale stays consistent across panels.
 - **Custom hooks**: extract side-effectful logic from components into `use*.ts` files. Hooks own state and async operations; components own only layout and event wiring.
 - **Three.js cleanup**: call `disposeSceneGeometry(scene)` from `shared/three/sceneUtils.ts` before `disposeBase()`. Sprite materials with canvas textures need explicit disposal before that call.
-- **VOLUME_DIMS** from `shared/h5/h5Reader.ts` is the single source of truth for `[512, 250, 250]` — derive all slider maxima from it, never hardcode.
+- **VOLUME_DIMS** from the `shared/h5` barrel (defined in `h5Constants.ts`) is the single source of truth for `[512, 250, 250]` — derive all slider maxima from it, never hardcode.
 - **Volume memory**: never assume `H5TabEntry.data` is present — it is `null` for evicted (inactive) tabs. Read dimensions from `meta` / slice availability from `hasSlices`, and only touch `data` after hydration. Keep `MAX_HYDRATED_FILES` small; do not retain every loaded volume's buffers on the heap.
-- **Bundle**: heavy deps are split into separate chunks via `manualChunks` in `vite.config.ts` (`three`, `h5wasm`, `mui`, `vendor`) — keep that split so app-code edits don't bust their cache.
+- **Bundle**: heavy deps are split into separate chunks via `manualChunks` in `vite.config.ts` (`three`, `mui`, `vendor`) — keep that split so app-code edits don't bust their cache. `h5wasm` is deliberately NOT listed: it is only imported by `h5.worker.ts`, which Vite bundles separately (listing it would ship a duplicate ~4.4 MB copy).
 
 ---
 

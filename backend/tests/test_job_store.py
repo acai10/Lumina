@@ -29,7 +29,7 @@ def test_get_returns_state_after_create(store: JobStore) -> None:
 
 def test_create_multiple_jobs_are_independent(store: JobStore) -> None:
     state_a = store.create("job-a")
-    state_b = store.create("job-b")
+    store.create("job-b")
     state_a.status = JobStatus.DONE
     assert store.get("job-b").status == JobStatus.PENDING  # type: ignore[union-attr]
 

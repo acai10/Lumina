@@ -1,4 +1,5 @@
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -79,7 +80,8 @@ OPENAPI_TAGS = [
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Create the uploads directory before the app starts serving requests."""
     settings.uploads_dir.mkdir(parents=True, exist_ok=True)
     yield
 
@@ -98,11 +100,13 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
-    expose_headers=["X-Shape", "X-Dtype", "X-VCount"],
+    expose_headers=["X-Shape", "X-VCount"],
 )
 
 app.include_router(volumes.router, prefix="/volumes", tags=["volumes"])
 app.include_router(submission.router, prefix="/volumes", tags=["submission"])
+# crop/measurements declare their full "/volumes/{id}/…" paths themselves (their
+# request models live beside the handlers), hence no prefix here.
 app.include_router(crop.router, tags=["crop"])
 app.include_router(measurements.router, tags=["measurements"])
 app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
@@ -112,12 +116,19 @@ app.include_router(cleanup.router, prefix="/cleanup", tags=["cleanup"])
 
 
 @app.get("/", summary="Health check")
-def health() -> dict:
+def health() -> dict[str, str]:
+    """Liveness probe used by Docker/monitoring."""
     return {"status": "ok"}
 
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Log any uncaught exception and return a generic JSON 500.
+
+    Responses produced here bypass CORSMiddleware (Starlette's ServerErrorMiddleware
+    wraps — i.e. runs outside of — the CORS layer), so the Access-Control-Allow-Origin
+    header must be re-added manually or the browser could not read the error at all.
+    """
     logger.exception("Unhandled exception for %s %s", request.method, request.url)
     origin = request.headers.get("origin", "")
     headers: dict[str, str] = {}

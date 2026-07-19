@@ -63,6 +63,17 @@ def test_edge_highlight_robust_to_outlier() -> None:
     assert float(result[1:].max()) > 0.1
 
 
+def test_edge_highlight_stays_in_unit_range_for_sparse_bright_region() -> None:
+    # Degenerate input: <1% bright voxels → the 99th-percentile magnitude is 0.
+    # The filter must fall back to max-normalisation instead of returning raw
+    # (unbounded) gradient magnitudes.
+    vol = np.zeros((2, 64, 64), dtype=np.float32)
+    vol[0, 30:34, 30:34] = 100.0
+    result = apply_filter_chain(vol, [{"type": "edge", "params": {}}])
+    assert float(result.max()) <= 1.0 + 1e-5
+    assert float(result.max()) > 0.0  # edges are still visible, not zeroed
+
+
 def test_edge_highlight_sigma_zero_disables_smoothing(volume: np.ndarray) -> None:
     smoothed = apply_filter_chain(volume, [{"type": "edge", "params": {"sigma": 2.0}}])
     raw = apply_filter_chain(volume, [{"type": "edge", "params": {"sigma": 0}}])

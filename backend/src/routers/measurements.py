@@ -66,4 +66,6 @@ async def measure_volume(volume_id: str, req: MeasureRequest) -> MeasureResponse
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return MeasureResponse(**result)
+    # model_validate instead of **kwargs: the computation returns a plain dict
+    # annotated dict[str, float]; Pydantic coerces/validates voxel_count to int.
+    return MeasureResponse.model_validate(result)

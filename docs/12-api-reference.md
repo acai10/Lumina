@@ -12,7 +12,7 @@ the *why* behind an endpoint, follow the cross-links to the domain documents.
   [Interactive API documentation](#interactive-api-documentation) below.
 - **CORS** — allowed origins come from `CORS_ORIGINS` (default
   `http://localhost:5173`); methods `GET, POST, DELETE, OPTIONS`; exposed headers
-  `X-Shape`, `X-Dtype`, `X-VCount`.
+  `X-Shape`, `X-VCount`.
 - **App** — title "Lumina Backend", version 0.3.0 (`main.py:32`).
 
 ## Endpoint summary
@@ -76,7 +76,11 @@ List `.h5` files discovered under `data_dir`.
 Register local source file(s) by path via symlink (zero-copy).
 
 - **Body:** `{ path }` / `{ paths: [...] }`.
-- **Response:** `UploadResponse` / `list[UploadResponse]`.
+- **Response:** `UploadResponse` / `list[UploadResponse]`. The `volume_id` is the
+  filename stem for root-level files; files in subdirectories get a
+  deterministic `-<hash>` suffix derived from the relative path so same-named
+  tiles in different folders never collide (see
+  [doc 2](02-volume-ingestion-storage.md)).
 - **Errors:** 400 path escapes `data_dir`; 400 non-`.h5`; 404 not found.
 
 ### POST `/volumes/{id}/filter`
@@ -86,6 +90,7 @@ metrics.
 
 - **Body:** `FilterRequest` = `{ filter_chain: [{ type, params }] }`.
 - **Response:** packed binary (`X-Shape`, `X-VCount`).
+- **Errors:** 404 volume not found; 400 unknown filter type.
 
 ### GET `/volumes/{id}/normalized`
 
@@ -169,7 +174,10 @@ Create a multi-volume stitching session ([doc 8](08-stitching-registration.md),
 ```
 
 - **Response:** `{ session_id }`.
-- **Errors:** 400 fewer than 2 volumes.
+- **Errors:** 400 fewer than 2 volumes; 400 duplicate grid position; 400 unknown
+  method; 404 referenced volume not found; 422 volume_id contains path
+  separators. `method_params` is accepted for forward compatibility but
+  currently unused.
 
 ### GET `/sessions/{id}`
 
@@ -192,7 +200,7 @@ Apply a filter chain to the merged volume.
 
 - **Body:** `SessionFilterRequest` = `{ filter_chain }`.
 - **Response:** packed binary.
-- **Errors:** 404 merged HDF5 not found.
+- **Errors:** 404 merged HDF5 not found; 400 unknown filter type.
 
 ## Cleanup (`routers/cleanup.py`, prefix `/cleanup`)
 

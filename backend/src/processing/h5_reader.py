@@ -1,3 +1,11 @@
+"""Reading, validating, and writing OCT volumes in the fixed HDF5 layout.
+
+All files share one layout: a dataset named ``"OCT"`` with 512×250×250 elements
+(``(nSlices, height, width)``). ``load_volume`` enforces that shape (uploads),
+``load_volume_flexible`` additionally accepts other 3-D shapes (crops, merges),
+and ``validate_volume_file`` checks metadata only — no bulk read.
+"""
+
 from pathlib import Path
 
 import h5py
@@ -28,7 +36,9 @@ def load_volume_flexible(path: Path) -> np.ndarray:
         arr = np.asarray(ds, dtype=np.float32)
     if arr.ndim != 3:
         expected = OCT_DIMS[0] * OCT_DIMS[1] * OCT_DIMS[2]
-        if arr.size == expected:
+        # Only flat (≤2-D) layouts may be reshaped — same guard as load_volume:
+        # blindly reshaping e.g. a 4-D array would silently scramble the axes.
+        if arr.ndim <= 2 and arr.size == expected:
             arr = arr.reshape(OCT_DIMS)
         else:
             raise ValueError(
@@ -49,7 +59,8 @@ def save_oct_volume(path: Path, arr: np.ndarray) -> None:
         arr: 3-D volume array; stored as float32.
     """
     with h5py.File(path, "w") as f:
-        f.create_dataset("OCT", data=arr.astype(np.float32))
+        # asarray casts only when needed; astype would always copy the full array.
+        f.create_dataset("OCT", data=np.asarray(arr, dtype=np.float32))
 
 
 def validate_volume_file(path: Path) -> None:

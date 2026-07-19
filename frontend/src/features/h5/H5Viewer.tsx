@@ -1105,10 +1105,7 @@ export default function H5Viewer({
         <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
             <Box ref={containerRef} sx={{ width: '100%', height: '100%' }} />
             <ZoomModeButton active={zoomToCursor} onToggle={toggleZoomToCursor} />
-            <Tooltip
-                title={axesVisible ? 'Achsen ausblenden' : 'Achsen einblenden'}
-                placement="left"
-            >
+            <Tooltip title={axesVisible ? 'Hide axes' : 'Show axes'} placement="left">
                 <IconButton
                     size="small"
                     onClick={toggleAxesVisible}

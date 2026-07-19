@@ -57,7 +57,7 @@ export function normalizeVolume(
         const range = sliceMax[s] > mn ? sliceMax[s] - mn : 1
         for (let i = 0; i < sliceSize; i++) {
             const normalized = (raw[offset + i] - mn) / range
-            if (normalizedVolume) normalizedVolume[offset + i] = Math.round(normalized * UINT8_MAX)
+            normalizedVolume[offset + i] = Math.round(normalized * UINT8_MAX)
             if (normalized >= threshold) {
                 tmpIndices[idx] = offset + i
                 tmpIntensities[idx] = normalized
@@ -66,11 +66,16 @@ export function normalizeVolume(
         }
     }
 
-    // Radix sort by intensity descending — O(n), 2 passes.
+    // Radix sort by intensity descending — O(n), two 12-bit passes (LSD radix
+    // over a 24-bit key: pass 1 sorts by the low 12 bits, pass 2 by the high 12,
+    // and the sort's stability makes the combined order correct).
     const BITS = 12
     const BUCKETS = 1 << BITS
     const MASK = BUCKETS - 1
 
+    // Key = bitwise complement of the quantised intensity: radix sort is
+    // ascending, so sorting the complement yields intensities in DESCENDING
+    // order without a separate reverse pass.
     const sortKeys = new Uint32Array(count)
     for (let i = 0; i < count; i++) {
         sortKeys[i] = ~Math.round(tmpIntensities[i] * INTENSITY_SORT_QUANT) & INTENSITY_SORT_QUANT

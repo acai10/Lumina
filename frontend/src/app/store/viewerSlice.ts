@@ -1,6 +1,5 @@
 import { create } from 'zustand'
-import { putVolume, getVolume, deleteVolume, clearVolumes } from '../../shared/h5'
-import { VOLUME_DIMS } from '../../shared/h5/h5Constants'
+import { putVolume, getVolume, deleteVolume, clearVolumes, VOLUME_DIMS } from '../../shared/h5'
 import {
     paintStroke,
     clearAnnotation,
@@ -181,7 +180,6 @@ interface ViewerState {
     ) => void
     requestCameraReset: (fileKey: string) => void
     updateActiveRenderState: (patch: Partial<H5RenderControls>) => void
-    setNormalizedVolume: (fileKey: string, normalizedVolume: Uint8Array) => void
     /** Cache the server-side volume id obtained from a lazy upload of a local file. */
     setBackendVolumeId: (fileKey: string, volumeId: string) => void
     applyBackendFilter: (fileKey: string, newData: H5VolumeData) => void
@@ -424,7 +422,20 @@ export const useViewerStore = create<ViewerState>((set, get) => {
             inFlight.add(fileKey)
             try {
                 const data = await getVolume(fileKey)
-                if (!data) return
+                // The tab may have been closed while the (multi-hundred-MB) read
+                // was in flight — bumping the LRU then would re-add a ghost key.
+                const stillOpen = get().tabs.some((t) => t.type === 'h5' && t.name === fileKey)
+                if (!stillOpen) return
+                if (!data) {
+                    // The IndexedDB row is gone (browsers evict site data under
+                    // storage pressure). Without a notification the viewer would
+                    // show an infinite spinner with no explanation.
+                    get().setNotification({
+                        message: `Could not restore "${fileKey}" from the browser cache — please load the file again`,
+                        severity: 'error',
+                    })
+                    return
+                }
                 set((state) => ({
                     tabs: state.tabs.map((t) =>
                         t.type === 'h5' && t.name === fileKey ? { ...t, data } : t,
@@ -434,6 +445,10 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 await enforceCap()
             } catch (err) {
                 console.error(`volumeCache: cannot rehydrate "${fileKey}"`, err)
+                get().setNotification({
+                    message: `Could not restore "${fileKey}" from the browser cache — please load the file again`,
+                    severity: 'error',
+                })
             } finally {
                 inFlight.delete(fileKey)
             }
@@ -586,15 +601,6 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 },
             })
         },
-
-        setNormalizedVolume: (fileKey, normalizedVolume) =>
-            set((state) => ({
-                tabs: state.tabs.map((t) =>
-                    t.type === 'h5' && t.name === fileKey && t.data !== null
-                        ? { ...t, data: { ...t.data, normalizedVolume }, hasSlices: true }
-                        : t,
-                ),
-            })),
 
         setBackendVolumeId: (fileKey, volumeId) =>
             set((state) => ({

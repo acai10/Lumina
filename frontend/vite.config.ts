@@ -1,11 +1,13 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// VITE_API_URL needs no `define` here: Vite natively exposes VITE_-prefixed
+// variables from both the process environment (docker-compose) and .env files,
+// and shared/api/client.ts provides the http://localhost:8000 fallback. A
+// `define` would be evaluated before .env files are loaded and silently
+// override them.
 export default defineConfig({
   plugins: [react()],
-  define: {
-    'import.meta.env.VITE_API_URL': JSON.stringify(process.env.VITE_API_URL ?? 'http://localhost:8000'),
-  },
   server: {
     host: true,
     port: 5173,

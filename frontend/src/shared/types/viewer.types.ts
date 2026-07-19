@@ -1,5 +1,4 @@
-import type { MeasureResult } from '../api/client'
-import type { FilterType } from '../api/types'
+import type { FilterType, MeasureResult } from '../api'
 
 export type ColormapType = 'gray' | 'jet' | 'hot'
 
@@ -100,7 +99,13 @@ export interface H5TabEntry {
     data: H5VolumeData | null
     hasSlices: boolean
     sourceFile?: File
+    // Dual meaning: for stitched tabs this is the *session* id (drives the
+    // /sessions/{id}/… endpoints); for local files it is the lazily-uploaded
+    // volume id cached by useResolveVolumeId. Consumers distinguish the cases
+    // via sourceFile/registeredVolumeId — see useFilterJob.
     backendVolumeId?: string
+    // Single volume stored server-side under /volumes/{id} (registered by path
+    // or created by crop) — usable by filter/measure/crop/mask endpoints.
     registeredVolumeId?: string
 }
 

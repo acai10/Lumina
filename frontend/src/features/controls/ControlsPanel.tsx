@@ -40,12 +40,12 @@ import CropSection from './CropSection'
 import { SliderRow, RangeSliderRow } from './SliderRow'
 import type { ColormapType, H5RenderControls } from '../../shared/types/viewer.types'
 import { DEFAULT_COLORMAP } from '../../shared/types/viewer.types'
-import { measureVolume, segmentMask } from '../../shared/api/client'
-import type { MeasureResult } from '../../shared/api/client'
+import { measureVolume, segmentMask } from '../../shared/api'
+import type { MeasureResult } from '../../shared/api'
 import { useResolveVolumeId } from '../../shared/hooks'
 import { MaskDialog } from './MaskDialog'
 import { eyebrowSx, microLabelSx, compactButtonSx } from '../../shared/theme/uiTokens'
-import { DEFAULT_VOXEL_SIZE_UM, UM_PER_MM } from '../../shared/constants'
+import { DEFAULT_VOXEL_SIZE_UM, DEFAULT_COLORMAP_RANGE, UM_PER_MM } from '../../shared/constants'
 
 const NO_OVERLAY_SENTINEL = -1
 const UM2_PER_MM2 = 1e6
@@ -177,7 +177,8 @@ export default function ControlsPanel() {
     const voxelSize = activeFileState?.sliceVoxelSizeUm ?? DEFAULT_VOXEL_SIZE_UM
 
     const sliceColormap: ColormapType = activeFileState?.sliceColormap ?? DEFAULT_COLORMAP
-    const colormapRange: [number, number] = activeFileState?.sliceColormapRange ?? [0, 1]
+    const colormapRange: [number, number] =
+        activeFileState?.sliceColormapRange ?? DEFAULT_COLORMAP_RANGE
     const colorByDepth = activeFileState?.colorByDepth ?? false
 
     const stlTabs = useMemo(

@@ -3,12 +3,14 @@ import type { DragEvent } from 'react'
 import { Box, CircularProgress, Stack } from '@mui/material'
 import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from './app/store/viewerSlice'
+// Deliberately NOT the features/h5 barrel: it statically re-exports the Three.js
+// viewers, so importing it here would pull ~520 KB of Three.js into the main
+// chunk and defeat the lazy() code-split below. H5FileTabs itself is light.
 import H5FileTabs from './features/h5/H5FileTabs'
-import Toolbar from './features/toolbar/Toolbar'
+import { Toolbar, useFileLoad } from './features/toolbar'
 import AnnotationToolbar from './features/annotation/AnnotationToolbar'
-import { useFileLoad } from './features/toolbar/useFileLoad'
-import AppSnackbar from './features/notifications/AppSnackbar'
-import ControlsPanel from './features/controls/ControlsPanel'
+import { AppSnackbar } from './features/notifications'
+import { ControlsPanel } from './features/controls'
 import { FileListPanel } from './features/files/FileListPanel'
 import { EmptyState } from './features/onboarding'
 import { palette } from './shared/theme/palette'
@@ -117,7 +119,17 @@ export default function App() {
                               }
                             : undefined
                     }
-                    onDragLeave={hasFiles ? () => setDragActive(false) : undefined}
+                    onDragLeave={
+                        hasFiles
+                            ? (e) => {
+                                  // dragleave also fires on parent→child transitions;
+                                  // only clear when the pointer truly left the pane,
+                                  // otherwise the outline flickers over child elements.
+                                  if (!e.currentTarget.contains(e.relatedTarget as Node))
+                                      setDragActive(false)
+                              }
+                            : undefined
+                    }
                     onDrop={hasFiles ? handleDrop : undefined}
                     sx={{
                         flex: 1,

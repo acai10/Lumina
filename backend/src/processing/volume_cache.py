@@ -27,7 +27,7 @@ _MAX_ENTRIES = 2
 #: Volumes larger than this are never cached (one OCT tile is ~128 MB).
 _MAX_CACHEABLE_BYTES = 256 * 1024 * 1024
 
-_cache: "OrderedDict[tuple[str, float], np.ndarray]" = OrderedDict()
+_cache: "OrderedDict[tuple[str, int], np.ndarray]" = OrderedDict()
 #: Sync routes run in Starlette's threadpool, so concurrent requests hit this
 #: module-global OrderedDict in parallel — its mutation is not thread-safe.
 _lock = threading.Lock()
@@ -44,8 +44,13 @@ def load_volume_cached(path: Path, loader: Callable[[Path], np.ndarray]) -> np.n
     Returns:
         The decoded volume array. The returned array may be shared with other
         callers — treat it as read-only.
+
+    Raises:
+        OSError: If *path* does not exist or cannot be stat-ed/read.
     """
-    key = (str(path), path.stat().st_mtime)
+    # Nanosecond mtime: the float st_mtime loses precision, so two writes within
+    # the same second would collide on one key and serve the stale first version.
+    key = (str(path), path.stat().st_mtime_ns)
     with _lock:
         cached = _cache.get(key)
         if cached is not None:

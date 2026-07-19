@@ -42,7 +42,11 @@ export default function EmptyState() {
                 e.preventDefault()
                 setDragActive(true)
             }}
-            onDragLeave={() => setDragActive(false)}
+            onDragLeave={(e) => {
+                // dragleave also fires on parent→child transitions; only clear when
+                // the pointer truly left the drop zone (prevents outline flicker).
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragActive(false)
+            }}
             onDrop={onDrop}
             sx={{
                 position: 'absolute',

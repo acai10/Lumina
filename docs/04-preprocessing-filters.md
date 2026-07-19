@@ -144,6 +144,10 @@ M_norm = clip(M / ref, 0, 1)
   everything else out, and using a *global* reference keeps brightness consistent
   from slice to slice (no flicker while scrolling). Parameters: `sigma`
   (default 1.0), `high_percentile` (default 99.0).
+- **Degenerate-input fallback:** if fewer than 1 % of all voxels carry any edge
+  signal (e.g. a tiny bright object in an otherwise empty volume), the 99th
+  percentile is `0`. In that case `ref` falls back to the absolute maximum
+  `M.max()` so the output always stays inside `[0, 1]` as documented.
 
 **Why this design (the recent improvement).** An earlier version used
 `magnitude / magnitude.max()` per slice, which (a) collapsed real edges to near

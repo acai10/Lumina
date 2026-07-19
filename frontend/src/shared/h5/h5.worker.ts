@@ -15,7 +15,10 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
         const response: WorkerResponse = { id, ok: true, result }
         self.postMessage(response, { transfer: transferables })
     } catch (err) {
-        const response: WorkerResponse = { id, ok: false, error: String(err) }
+        // Error.message instead of String(err): the latter would prefix the
+        // user-facing snackbar text with a redundant "Error: ".
+        const message = err instanceof Error ? err.message : String(err)
+        const response: WorkerResponse = { id, ok: false, error: message }
         self.postMessage(response)
     }
 }

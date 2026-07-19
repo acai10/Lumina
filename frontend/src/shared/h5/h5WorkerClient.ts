@@ -42,15 +42,18 @@ function getWorker(): Worker {
         if (e.data.ok) entry.resolve(e.data.result)
         else entry.reject(new Error(e.data.error))
     }
-    w.onerror = (err) => {
+    const failAll = (error: Error) => {
         // A worker-level crash fails every outstanding request and forces a fresh
         // worker on the next call (the old one may be in a bad state).
-        const error = new Error(err.message || 'H5 worker crashed')
         for (const { reject } of pending.values()) reject(error)
         pending.clear()
         w.terminate()
         if (worker === w) worker = null
     }
+    w.onerror = (err) => failAll(new Error(err.message || 'H5 worker crashed'))
+    // Fires when a reply cannot be deserialised — without it the matching
+    // request would never settle and the caller would wait forever.
+    w.onmessageerror = () => failAll(new Error('H5 worker reply could not be deserialised'))
     worker = w
     return w
 }
@@ -62,6 +65,13 @@ export function loadH5FileInWorker(
     return new Promise<H5VolumeData>((resolve, reject) => {
         const id = nextId++
         pending.set(id, { resolve, reject })
-        getWorker().postMessage({ id, file, dims } satisfies WorkerRequest)
+        try {
+            getWorker().postMessage({ id, file, dims } satisfies WorkerRequest)
+        } catch (err) {
+            // Synchronous spawn/post failure — clean up the pending entry so it
+            // cannot leak, and surface the error to the caller.
+            pending.delete(id)
+            reject(err instanceof Error ? err : new Error(String(err)))
+        }
     })
 }

@@ -62,8 +62,23 @@ export interface SessionStatus {
     error?: string
 }
 
-export interface SessionFilterRequest {
-    filter_chain: FilterStep[]
+// ── Measurements ─────────────────────────────────────────────────────────────
+
+/** Body of `POST /volumes/{id}/measure`. */
+export interface MeasureRequest {
+    threshold?: number
+    /** Physical voxel size in µm as **(dz, dy, dx)** — axial spacing first. */
+    voxel_size_um?: [number, number, number]
+}
+
+/** Geometric measurements returned by `POST /volumes/{id}/measure`. */
+export interface MeasureResult {
+    voxel_count: number
+    volume_um3: number
+    surface_area_um2: number
+    mean_thickness_um: number
+    max_thickness_um: number
+    lateral_diameter_um: number
 }
 
 // ── Challenge submission ─────────────────────────────────────────────────────

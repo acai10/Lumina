@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore, fullVolumeCropBox } from '../../app/store/viewerSlice'
-import { cropVolume, fetchNormalizedVolume } from '../../shared/api/client'
+import { cropVolume, fetchNormalizedVolume } from '../../shared/api'
 import { useResolveVolumeId } from '../../shared/hooks'
 import type { H5FileEntry, H5TabEntry } from '../../shared/types/viewer.types'
 import { DEFAULT_VOXEL_SIZE_UM, UM_PER_MM } from '../../shared/constants'
