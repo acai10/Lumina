@@ -4,6 +4,8 @@ from typing import Any
 import numpy as np
 import scipy.ndimage as ndi
 
+from .submission import segment_muscle_fat
+
 logger = logging.getLogger(__name__)
 
 
@@ -122,12 +124,39 @@ def apply_edge_highlight(volume: np.ndarray, params: dict[str, Any]) -> np.ndarr
     return out
 
 
+def apply_segment(volume: np.ndarray, params: dict[str, Any]) -> np.ndarray:
+    """Muscle/fat segmentation applied to the volume (fat/background zeroed).
+
+    Computes the binary muscle/fat mask from the volume's maximum-intensity
+    projection (Otsu split — see :func:`segment_muscle_fat`) and multiplies it
+    into every slice:
+
+        out[z, y, x] = vol[z, y, x] * mask[y, x]
+
+    Muscle columns keep their original intensities, fat/background columns
+    become 0 — so the segmentation is directly visible in both the 3D point
+    cloud and the slice viewer, and behaves like any other pipeline filter
+    (chainable, compare, revert).
+
+    Args:
+        volume: Float32 array of shape (n_slices, height, width).
+        params: No parameters — the Otsu threshold is derived automatically.
+
+    Returns:
+        Masked volume of the same shape and dtype.
+    """
+    del params  # no tunables — Otsu picks the split automatically
+    mask = segment_muscle_fat(volume).astype(np.float32)  # (height, width), {0, 1}
+    return (volume * mask[np.newaxis, :, :]).astype(np.float32)
+
+
 _FILTER_REGISTRY = {
     "gaussian": apply_gaussian,
     "median": apply_median,
     "mean": apply_mean,
     "normalize": apply_normalize,
     "edge": apply_edge_highlight,
+    "segment": apply_segment,
 }
 
 

@@ -117,15 +117,14 @@ backend/
 │   ├── test_normalizer.py    # normalize_for_frontend + pack/save/load roundtrip
 │   ├── test_submission.py    # surface/mask extraction + .h5 writer format
 │   ├── test_volume_cache.py  # LRU cache: hits, mtime invalidation, eviction, size cap
-│   ├── test_volumes_api.py   # upload/register/filter endpoints incl. traversal + id collision
-│   └── test_mask_endpoint.py # POST /volumes/{id}/mask (standalone segmentation)
+│   └── test_volumes_api.py   # upload/register/filter endpoints incl. traversal + id collision
 └── src/
     ├── config.py             # Pydantic BaseSettings: uploads_dir, cors_origins, data_dir (env vars)
     ├── schemas/
     │   ├── enums.py          # JobStatus (str Enum): PENDING, RUNNING, DONE, ERROR
     │   ├── jobs.py           # FilterStep, FilterRequest, JobRequest, JobCreated, JobStatusResponse
     │   ├── sessions.py       # VolumeEntry, SessionRequest, SessionStatusResponse
-    │   ├── submission.py     # SubmissionRequest/Response + MaskResponse (challenge .h5 build)
+    │   ├── submission.py     # SubmissionRequest/Response (challenge .h5 build)
     │   └── volumes.py        # UploadResponse, LocalVolume, Register(Batch)Request
     ├── routers/
     │   ├── volumes.py        # upload, register(-batch), normalized, filter
@@ -134,7 +133,8 @@ backend/
     │   ├── sessions.py       # POST+GET /sessions/, /merged, POST /filter
     │   ├── measurements.py   # POST /volumes/{id}/measure
     │   ├── crop.py           # POST /volumes/{id}/crop → new independent sub-volume
-    │   ├── submission.py     # POST /volumes/{id}/submission (challenge) + /mask (segmentation)
+    │   ├── common.py         # shared load-volume-or-404 helper (crop/measure/submission)
+    │   ├── submission.py     # POST /volumes/{id}/submission (challenge .h5 build)
     │   └── cleanup.py        # DELETE /cleanup
     └── processing/
         ├── h5_reader.py      # load_volume(), load_volume_flexible(), OCT_DIMS constant
@@ -173,7 +173,6 @@ backend/
 | POST | `/volumes/{id}/measure` | 200 | Geometric measurements |
 | POST | `/volumes/{id}/crop` | 200 | Extract sub-volume (x/y/z + w/h/d) → new volume id; non-destructive, persisted + cached |
 | POST | `/volumes/{id}/submission` | 200 | Build challenge `.h5` (surface + optional tissue mask) + base64 PNG previews + stats |
-| POST | `/volumes/{id}/mask` | 200 | Standalone muscle/fat segmentation → base64 PNG + muscle % (no file written) |
 | POST | `/jobs/` | **201** | Start job → `{ job_id }` (immediate) |
 | GET | `/jobs/{id}` | 200 | Poll status + metric results |
 | GET | `/jobs/{id}/volume/{stitcher}` | 200 | Normalised binary result volume |
@@ -198,7 +197,8 @@ Full request/response shapes, status codes, and headers: [`docs/12-api-reference
 }
 ```
 
-Filter types: `"gaussian"`, `"median"`, `"mean"`, `"normalize"`, `"edge"`.
+Filter types: `"gaussian"`, `"median"`, `"mean"`, `"normalize"`, `"edge"`, `"segment"`
+(muscle/fat segmentation applied to the volume — fat/background columns zeroed).
 Stitcher names: `"phase_correlation"`, `"simpleitk_affine"`, `"elastix_bspline"`, `"bigstitcher"`.
 Session registration methods: `"phase_correlation"`, `"cross_correlation"`.
 
@@ -269,7 +269,6 @@ frontend/src/
     │   ├── ControlsPanel.styles.ts   # panel/slider/input styles (pseudo-selectors)
     │   ├── PreprocessingSection.tsx  # filter pipeline UI; uses useFilterJob + useFilterParams
     │   ├── CropSection.tsx           # crop shape/range/threshold UI + object count; uses useOpenCrop
-    │   ├── MaskDialog.tsx            # muscle/fat segmentation preview dialog
     │   ├── cropObjectAnalysis.ts     # analyzeRegionObjects(): 3D connected-component labelling
     │   ├── SliderRow.tsx             # SliderRow + RangeSliderRow (named exports)
     │   ├── renderControlLimits.ts    # RENDER_CONTROL_LIMITS; derived from VOLUME_DIMS

@@ -15,7 +15,9 @@ extraction, segmentation, writer, and preview rendering that the challenge needs
 
 import io
 import logging
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import h5py
 import numpy as np
@@ -171,31 +173,33 @@ def _encode_png(arr_u8: np.ndarray) -> bytes:
     return buf.getvalue()
 
 
-def build_submission(
-    volume: np.ndarray,
-    *,
-    dx: float = DEFAULT_DX_MM,
-    dy: float = DEFAULT_DY_MM,
-    dz: float = DEFAULT_DZ_MM,
-    with_mask: bool = False,
-) -> dict:
-    """Compute everything needed for a submission from a 3D volume.
+@dataclass(frozen=True)
+class SubmissionBuild:
+    """Everything a submission consists of, computed from one 3D volume.
 
-    Args:
-        volume: 3D OCT volume ``(z, y, x)``.
-        dx, dy, dz: Voxel spacing in mm.
-        with_mask: If True (tissue dataset), also compute the muscle/fat mask.
-
-    Returns:
-        Dict with ``surface`` (2D), ``mask`` (2D or ``None``), ``surface_png`` and
-        ``mask_png`` (PNG bytes; mask png ``None`` when no mask) and ``stats``.
+    Attributes:
+        surface: 2D float64 depth map ``(y, x)`` in mm.
+        mask: 2D float64 muscle/fat map in {0.0, 1.0}, or ``None`` (phantom).
+        surface_png: PNG preview of the depth map (JET colormap).
+        mask_png: PNG preview of the mask, or ``None`` when there is no mask.
+        stats: Shape, coverage %, depth min/mean/max (mm), spacings, and —
+            when a mask exists — the muscle percentage.
     """
-    surface = extract_surface(volume, dz)
-    mask = segment_muscle_fat(volume) if with_mask else None
 
+    surface: np.ndarray
+    mask: np.ndarray | None
+    surface_png: bytes
+    mask_png: bytes | None
+    stats: dict[str, Any]
+
+
+def _compute_stats(
+    surface: np.ndarray, mask: np.ndarray | None, dx: float, dy: float, dz: float
+) -> dict[str, Any]:
+    """Summary statistics of a depth map (+ optional mask) for the UI/logs."""
     covered = surface > 0
     depth = surface[covered]
-    stats = {
+    stats: dict[str, Any] = {
         "shape": list(surface.shape),
         "coverage_pct": round(float(covered.mean()) * 100.0, 1),
         "depth_min_mm": round(float(depth.min()), 4) if depth.size else 0.0,
@@ -207,14 +211,36 @@ def build_submission(
     }
     if mask is not None:
         stats["muscle_pct"] = round(float((mask >= 0.5).mean()) * 100.0, 1)
+    return stats
 
-    return {
-        "surface": surface,
-        "mask": mask,
-        "surface_png": _surface_to_png(surface),
-        "mask_png": mask_to_png(mask) if mask is not None else None,
-        "stats": stats,
-    }
+
+def build_submission(
+    volume: np.ndarray,
+    *,
+    dx: float = DEFAULT_DX_MM,
+    dy: float = DEFAULT_DY_MM,
+    dz: float = DEFAULT_DZ_MM,
+    with_mask: bool = False,
+) -> SubmissionBuild:
+    """Compute everything needed for a submission from a 3D volume.
+
+    Args:
+        volume: 3D OCT volume ``(z, y, x)``.
+        dx, dy, dz: Voxel spacing in mm.
+        with_mask: If True (tissue dataset), also compute the muscle/fat mask.
+
+    Returns:
+        SubmissionBuild with the depth map, optional mask, PNG previews, and stats.
+    """
+    surface = extract_surface(volume, dz)
+    mask = segment_muscle_fat(volume) if with_mask else None
+    return SubmissionBuild(
+        surface=surface,
+        mask=mask,
+        surface_png=_surface_to_png(surface),
+        mask_png=mask_to_png(mask) if mask is not None else None,
+        stats=_compute_stats(surface, mask, dx, dy, dz),
+    )
 
 
 def describe_submission(path: str | Path) -> str:

@@ -44,6 +44,9 @@ function buildStep(step: PipelineStep): FilterStep | null {
             }
         case 'edge':
             return { type: 'edge', params: {} }
+        case 'segment':
+            // Muscle/fat segmentation — no tunables, the Otsu threshold is automatic.
+            return { type: 'segment', params: {} }
         default:
             return null
     }

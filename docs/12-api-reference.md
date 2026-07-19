@@ -31,6 +31,7 @@ the *why* behind an endpoint, follow the cross-links to the domain documents.
 | GET | `/volumes/{id}/normalized` | 200 | Render-ready packed binary of a stored volume |
 | POST | `/volumes/{id}/crop` | 200 | Extract a sub-volume → new volume id |
 | POST | `/volumes/{id}/measure` | 200 | Geometric measurements |
+| POST | `/volumes/{id}/submission` | 200 | Build the challenge `.h5` + PNG previews |
 | POST | `/jobs/` | 201 | Start a single-volume filter+stitcher job |
 | GET | `/jobs/{id}` | 200 | Poll job status + metrics |
 | GET | `/jobs/{id}/volume/{stitcher}` | 200 | Download a job's stitcher result (packed) |
@@ -121,6 +122,22 @@ Geometric measurements of the thresholded tissue
 - **Response:** `{ voxel_count, volume_um3, surface_area_um2, mean_thickness_um,
   max_thickness_um, lateral_diameter_um }`.
 - **Errors:** 404 not found; 422 invalid result.
+
+## Submission (`routers/submission.py`, mounted under `/volumes`)
+
+### POST `/volumes/{id}/submission`
+
+Build the challenge deliverable from a stored (usually stitched) volume: extract
+the surface depth map, optionally the muscle/fat mask (tissue dataset), write
+`{id}_submission.h5` (+ PNG previews) into `uploads/`, and return base64
+previews plus statistics.
+
+- **Body:** `SubmissionRequest` = `{ tissue (false), dx, dy, dz }` (spacings in
+  mm; defaults from the PBL acquisition parameters).
+- **Response:** `SubmissionResponse` = `{ volume_id, h5_filename, surface_png,
+  mask_png (null without tissue), stats }`; `stats` holds shape, coverage %,
+  depth min/mean/max (mm), the spacings, and `muscle_pct` when a mask exists.
+- **Errors:** 404 volume not found.
 
 ## Jobs (`routers/jobs.py` + `routers/results.py`, prefix `/jobs`)
 

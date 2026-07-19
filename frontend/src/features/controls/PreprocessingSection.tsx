@@ -35,6 +35,7 @@ const FILTER_LABELS: Record<FilterTypeOrNone, string> = {
     mean: 'Mean',
     normalize: 'Normalize',
     edge: 'Edge highlight',
+    segment: 'Muscle/fat segmentation',
 }
 
 const FILTER_OPTIONS = Object.entries(FILTER_LABELS) as [FilterTypeOrNone, string][]

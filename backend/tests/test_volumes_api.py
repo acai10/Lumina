@@ -137,6 +137,19 @@ def test_filter_unknown_type_returns_400(client: TestClient, small_volume: str) 
     assert "Unknown filter type" in res.json()["detail"]
 
 
+def test_filter_segment_endpoint_roundtrip(client: TestClient, small_volume: str) -> None:
+    # The muscle/fat segmentation runs as a regular pipeline filter through the
+    # lean filter endpoint and returns the normal packed binary.
+    res = client.post(
+        f"/volumes/{small_volume}/filter",
+        json={"filter_chain": [{"type": "segment", "params": {}}]},
+    )
+    assert res.status_code == 200
+    assert res.headers["X-Shape"] == "4,6,5"
+    v_count = int(res.headers["X-VCount"])
+    assert len(res.content) == v_count * 8 + 4 * 6 * 5
+
+
 def test_filter_missing_volume_404(client: TestClient) -> None:
     res = client.post("/volumes/does-not-exist/filter", json={"filter_chain": []})
     assert res.status_code == 404

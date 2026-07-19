@@ -12,7 +12,6 @@ export {
     filterVolume,
     cropVolume,
     buildSubmission,
-    segmentMask,
     measureVolume,
 } from './client'
 export { JOB_STATUS, REGISTRATION_METHOD } from './types'
@@ -28,7 +27,6 @@ export type {
     SessionStatus,
     SubmissionOptions,
     SubmissionResult,
-    MaskResult,
     MeasureRequest,
     MeasureResult,
 } from './types'

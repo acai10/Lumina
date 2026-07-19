@@ -16,14 +16,6 @@ class SubmissionRequest(BaseModel):
     dz: float = Field(default=DEFAULT_DZ_MM, gt=0)
 
 
-class MaskResponse(BaseModel):
-    """Standalone muscle/fat segmentation preview for a single volume."""
-
-    volume_id: str
-    mask_png: str = Field(description="Base64-encoded PNG of the binary mask.")
-    stats: dict[str, float] = Field(default_factory=dict)
-
-
 class SubmissionResponse(BaseModel):
     """Result of building a submission: file name, PNG previews, and stats."""
 

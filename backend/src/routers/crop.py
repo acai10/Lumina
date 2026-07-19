@@ -7,8 +7,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from src.config import settings
-from src.processing.h5_reader import load_volume_flexible, save_oct_volume
-from src.processing.volume_cache import load_volume_cached
+from src.processing.h5_reader import save_oct_volume
+from src.routers.common import load_volume_or_404
 from src.schemas.volumes import UploadResponse
 
 logger = logging.getLogger(__name__)
@@ -80,15 +80,7 @@ def crop_volume(volume_id: str, req: CropRequest) -> UploadResponse:
         HTTPException 404: Source volume not found.
         HTTPException 422: Bounding box falls outside the source volume.
     """
-    path = settings.uploads_dir / f"{volume_id}.h5"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Volume '{volume_id}' not found")
-
-    try:
-        volume = load_volume_cached(path, load_volume_flexible)
-    except Exception as exc:
-        logger.exception("Failed to load volume %s for crop", volume_id)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    volume = load_volume_or_404(volume_id)
 
     n_slices, vol_h, vol_w = volume.shape
     if req.z + req.depth > n_slices or req.y + req.height > vol_h or req.x + req.width > vol_w:

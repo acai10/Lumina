@@ -1,4 +1,4 @@
-export type FilterType = 'gaussian' | 'median' | 'mean' | 'normalize' | 'edge'
+export type FilterType = 'gaussian' | 'median' | 'mean' | 'normalize' | 'edge' | 'segment'
 
 /**
  * A single preprocessing step. Discriminated on `type` so each filter's `params`
@@ -10,6 +10,7 @@ export type FilterStep =
     | { type: 'mean'; params: { size: number } }
     | { type: 'normalize'; params: { low_percentile: number; high_percentile: number } }
     | { type: 'edge'; params: Record<string, never> }
+    | { type: 'segment'; params: Record<string, never> }
 
 export const JOB_STATUS = {
     PENDING: 'pending',
@@ -115,16 +116,4 @@ export interface SubmissionResult {
     surface_png: string
     mask_png: string | null
     stats: SubmissionStats
-}
-
-/** Result of the standalone muscle/fat segmentation (`POST /volumes/{id}/mask`). */
-export interface MaskResult {
-    volume_id: string
-    /** Base64-encoded PNG of the binary mask. */
-    mask_png: string
-    stats: {
-        muscle_pct: number
-        height: number
-        width: number
-    }
 }

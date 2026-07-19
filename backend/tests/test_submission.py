@@ -70,25 +70,25 @@ def test_write_submission_phantom_has_no_mask(tmp_path, volume):
 
 def test_build_submission_phantom(volume):
     res = build_submission(volume, with_mask=False)
-    assert res["mask"] is None and res["mask_png"] is None
-    assert res["surface"].shape == (8, 6)
+    assert res.mask is None and res.mask_png is None
+    assert res.surface.shape == (8, 6)
     # PNG bytes decode to an image of the right size (PIL size is (w, h))
-    assert Image.open(io.BytesIO(res["surface_png"])).size == (6, 8)
-    assert res["stats"]["coverage_pct"] == 100.0
-    assert "muscle_pct" not in res["stats"]
+    assert Image.open(io.BytesIO(res.surface_png)).size == (6, 8)
+    assert res.stats["coverage_pct"] == 100.0
+    assert "muscle_pct" not in res.stats
 
 
 def test_build_submission_tissue_has_mask(volume):
     res = build_submission(volume, with_mask=True)
-    assert res["mask"] is not None
-    assert res["mask_png"] is not None
-    assert "muscle_pct" in res["stats"]
-    assert Image.open(io.BytesIO(res["mask_png"])).size == (6, 8)
+    assert res.mask is not None
+    assert res.mask_png is not None
+    assert "muscle_pct" in res.stats
+    assert Image.open(io.BytesIO(res.mask_png)).size == (6, 8)
 
 
 def test_describe_submission_text(tmp_path, volume):
     res = build_submission(volume, with_mask=True)
-    write_submission(tmp_path / "s.h5", res["surface"], 0.02, 0.02, res["mask"])
+    write_submission(tmp_path / "s.h5", res.surface, 0.02, 0.02, res.mask)
     text = describe_submission(tmp_path / "s.h5")
     assert "surface" in text and "double" in text
     assert "0.020000" in text

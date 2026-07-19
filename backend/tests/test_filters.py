@@ -91,6 +91,37 @@ def test_chained_filters_preserve_shape(volume: np.ndarray) -> None:
     assert result.shape == volume.shape
 
 
+def test_segment_zeroes_fat_and_keeps_muscle() -> None:
+    # Bright right half (muscle) vs dim left half (fat) → clean Otsu split.
+    vol = np.zeros((4, 10, 10), dtype=np.float32)
+    vol[:, :, :5] = 0.1  # fat
+    vol[:, :, 5:] = 0.9  # muscle
+    result = apply_filter_chain(vol, [{"type": "segment", "params": {}}])
+    assert result.shape == vol.shape
+    assert result.dtype == np.float32
+    # Fat columns are zeroed across ALL slices; muscle keeps its intensities.
+    assert float(result[:, :, :5].max()) == 0.0
+    np.testing.assert_array_equal(result[:, :, 5:], vol[:, :, 5:])
+
+
+def test_segment_flat_volume_returns_zeros() -> None:
+    # A constant volume has no Otsu split — the mask is all-zero by definition.
+    vol = np.ones((3, 4, 4), dtype=np.float32)
+    result = apply_filter_chain(vol, [{"type": "segment", "params": {}}])
+    assert float(result.max()) == 0.0
+
+
+def test_segment_is_chainable_and_non_destructive() -> None:
+    rng = np.random.default_rng(2)
+    vol = rng.random((3, 8, 8)).astype(np.float32)
+    original = vol.copy()
+    result = apply_filter_chain(
+        vol, [{"type": "gaussian", "params": {"sigma": 0.5}}, {"type": "segment", "params": {}}]
+    )
+    assert result.shape == vol.shape
+    np.testing.assert_array_equal(vol, original)  # input untouched (copy_input=True)
+
+
 def test_unknown_filter_raises_value_error(volume: np.ndarray) -> None:
     with pytest.raises(ValueError, match="Unknown filter type"):
         apply_filter_chain(volume, [{"type": "nonexistent", "params": {}}])

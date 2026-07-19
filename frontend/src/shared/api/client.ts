@@ -1,7 +1,6 @@
 import type {
     FilterStep,
     LocalVolume,
-    MaskResult,
     MeasureRequest,
     MeasureResult,
     SessionRequest,
@@ -83,16 +82,6 @@ export async function buildSubmission(
     })
     if (!res.ok) throw new Error(`Build submission failed: ${await res.text()}`)
     return getJson<SubmissionResult>(res)
-}
-
-/**
- * Segment a single volume into a binary muscle/fat mask (standalone preview).
- * Returns a base64 PNG plus the muscle fraction; writes no files server-side.
- */
-export async function segmentMask(volumeId: string): Promise<MaskResult> {
-    const res = await fetch(`${BASE_URL}/volumes/${volumeId}/mask`, { method: 'POST' })
-    if (!res.ok) throw new Error(`Segmentation failed: ${await res.text()}`)
-    return getJson<MaskResult>(res)
 }
 
 export async function uploadVolume(file: File, signal?: AbortSignal): Promise<UploadResponse> {

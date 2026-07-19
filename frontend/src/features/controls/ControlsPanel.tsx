@@ -40,10 +40,9 @@ import CropSection from './CropSection'
 import { SliderRow, RangeSliderRow } from './SliderRow'
 import type { ColormapType, H5RenderControls } from '../../shared/types/viewer.types'
 import { DEFAULT_COLORMAP } from '../../shared/types/viewer.types'
-import { measureVolume, segmentMask } from '../../shared/api'
+import { measureVolume } from '../../shared/api'
 import type { MeasureResult } from '../../shared/api'
 import { useResolveVolumeId } from '../../shared/hooks'
-import { MaskDialog } from './MaskDialog'
 import { eyebrowSx, microLabelSx, compactButtonSx } from '../../shared/theme/uiTokens'
 import { DEFAULT_VOXEL_SIZE_UM, DEFAULT_COLORMAP_RANGE, UM_PER_MM } from '../../shared/constants'
 
@@ -148,8 +147,6 @@ export default function ControlsPanel() {
     )
 
     const [isMeasuring, setIsMeasuring] = useState(false)
-    const [maskPng, setMaskPng] = useState<string | null>(null)
-    const [isSegmenting, setIsSegmenting] = useState(false)
 
     const activeTab = tabs[activeTabIndex]
     const activeH5 = activeTab?.type === 'h5' ? activeTab : null
@@ -394,37 +391,6 @@ export default function ControlsPanel() {
                                     result={activeFileState.measurementResult}
                                 />
                             )}
-                            {/* Standalone muscle/fat segmentation — Otsu split, preview only */}
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                <Button
-                                    size="small"
-                                    variant="outlined"
-                                    disabled={isSegmenting}
-                                    onClick={async () => {
-                                        setIsSegmenting(true)
-                                        try {
-                                            const volumeId = await resolveVolumeId()
-                                            if (!volumeId) return
-                                            const result = await segmentMask(volumeId)
-                                            setMaskPng(result.mask_png)
-                                        } catch (err) {
-                                            setNotification({
-                                                message:
-                                                    err instanceof Error
-                                                        ? err.message
-                                                        : 'Segmentation failed',
-                                                severity: 'error',
-                                            })
-                                        } finally {
-                                            setIsSegmenting(false)
-                                        }
-                                    }}
-                                    sx={compactButtonSx}
-                                >
-                                    Segment muscle/fat
-                                </Button>
-                                {isSegmenting && <CircularProgress size={12} thickness={5} />}
-                            </Box>
                         </Stack>
                     )}
 
@@ -599,7 +565,6 @@ export default function ControlsPanel() {
                     onChange={setStlOpacity}
                 />
             )}
-            <MaskDialog maskPng={maskPng} onClose={() => setMaskPng(null)} />
         </Stack>
     )
 }
