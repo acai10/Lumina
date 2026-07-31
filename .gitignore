@@ -33,6 +33,9 @@ backend/uploads/
 # Challenge datasets (large raw .h5 inputs — never commit, ~8 GB)
 challenge/data/
 
+# Written report — kept separate from the project, never pushed
+paper/
+
 # Tool caches
 .pytest_cache/
 .ruff_cache/
