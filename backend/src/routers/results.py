@@ -16,7 +16,7 @@ router = APIRouter()
     description=(
         "Returns the stitched result volume as a packed binary blob that the frontend "
         "can consume directly without any Web Worker normalization step. "
-        "Layout: ``[vIndices float32][vIntensities float32][normalizedVolume uint8]``. "
+        "Layout: ``[vIndices uint32][vIntensities float32][normalizedVolume uint8]``. "
         "Shape in ``X-Shape`` header; above-threshold voxel count in ``X-VCount``."
     ),
     responses={
@@ -25,6 +25,7 @@ router = APIRouter()
     },
 )
 def get_result_volume(job_id: str, stitcher_name: str) -> Response:
+    """Serve one stitcher's result volume as the render-ready packed binary."""
     state = get_job(job_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Job not found.")

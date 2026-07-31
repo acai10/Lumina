@@ -12,17 +12,21 @@ export {
     filterVolume,
     cropVolume,
     buildSubmission,
+    measureVolume,
 } from './client'
+export { JOB_STATUS, REGISTRATION_METHOD } from './types'
 export type {
     FilterType,
     FilterStep,
+    JobStatusValue,
     LocalVolume,
     UploadResponse,
     RegistrationMethod,
     VolumeEntry,
     SessionRequest,
     SessionStatus,
-    SessionFilterRequest,
     SubmissionOptions,
     SubmissionResult,
+    MeasureRequest,
+    MeasureResult,
 } from './types'

@@ -14,7 +14,7 @@ import {
 import { createScene, disposeSceneGeometry } from '../../shared/three/sceneUtils'
 import { palette } from '../../shared/theme/palette'
 import { ZoomModeButton } from '../../shared/components'
-import type { ColormapType, H5Meta, H5TabEntry } from '../../shared/types/viewer.types'
+import type { ColormapType, CropBox, H5Meta, H5TabEntry } from '../../shared/types/viewer.types'
 import { DEFAULT_COLORMAP } from '../../shared/types/viewer.types'
 import { createAxisLabels, createAxisTickLabels } from './createAxisLabels'
 import { DEFAULT_VOXEL_SIZE_UM, DEFAULT_COLORMAP_RANGE, UINT8_MAX } from '../../shared/constants'
@@ -27,7 +27,7 @@ import {
 import { applyDrawRanges, countAboveThreshold } from './h5DrawUtils'
 import { objectColorRgb } from '../controls/cropObjectAnalysis'
 import { annotationArrays } from '../annotation/annotationMask'
-import { ANNOTATION_PALETTE } from '../annotation/annotationPalette'
+import { buildLabelLut } from '../annotation/annotationPalette'
 
 // Firefox caps drawArraysInstanced at 30 M vertices per draw call; leave headroom
 const MAX_VERTS_PER_DRAW = 28_000_000
@@ -37,9 +37,6 @@ const colormapToInt = (c: ColormapType): number => (c === 'jet' ? 1 : c === 'hot
 
 /** Minimum rendered point size (px) for the object/annotation overlays. */
 const MIN_ANNOTATION_POINT_SIZE = 2
-
-/** Highest label value in the annotation palette (palette is static). */
-const ANNOTATION_MAX_LABEL = Math.max(...ANNOTATION_PALETTE.map((c) => c.label))
 
 // Percentiles used to build the auto-fit colour window. Above-threshold OCT
 // intensities are heavily skewed toward the top, so a plain min/max window maps
@@ -87,7 +84,7 @@ const CAMERA_NEAR_FACTOR = 0.001
 const CAMERA_FAR_FACTOR = 100
 
 interface H5ViewerProps {
-    vIndices: Float32Array
+    vIndices: Uint32Array
     vIntensities: Float32Array
     meta: H5Meta
     fileKey: string
@@ -128,6 +125,9 @@ export default function H5Viewer({
     const cropSphereGroupRef = useRef<THREE.Group | null>(null)
     // Translate gizmo (TransformControls) for moving the crop shape in 3D space.
     const transformControlsRef = useRef<TransformControls | null>(null)
+    // Crop box computed live during a gizmo drag; committed to the store once on
+    // release (see the crop gizmo handlers) instead of on every drag frame.
+    const pendingCropBoxRef = useRef<CropBox | null>(null)
     // STL overlay mesh group, its material, and its registration gizmo.
     const stlGroupRef = useRef<THREE.Group | null>(null)
     const stlMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null)
@@ -348,6 +348,14 @@ export default function H5Viewer({
         transformControls.setSize(0.8)
         transformControls.addEventListener('dragging-changed', (e) => {
             controls.enabled = !e.value
+            // On release, commit the final box to the store exactly once. Writing
+            // on every objectChange frame triggered a store update + O(100k)-voxel
+            // resample per frame (see CropSection); the gizmo already moves the box
+            // visually during the drag, so the store only needs the final value.
+            if (!e.value && pendingCropBoxRef.current) {
+                useViewerStore.getState().setCropBox(fileKey, pendingCropBoxRef.current)
+                pendingCropBoxRef.current = null
+            }
         })
         transformControls.addEventListener('change', () => {
             needsRenderRef.current = true
@@ -364,12 +372,13 @@ export default function H5Viewer({
             const nx = obj.position.x + width / 2 - box.w / 2
             const nz = obj.position.y / (spacing / nSlices) + nSlices / 2 - box.d / 2
             const ny = obj.position.z + height / 2 - box.h / 2
-            st.setCropBox(fileKey, {
+            // Stage only — committed to the store on drag release (dragging-changed).
+            pendingCropBoxRef.current = {
                 ...box,
                 x: Math.round(Math.max(0, Math.min(width - box.w, nx))),
                 y: Math.round(Math.max(0, Math.min(height - box.h, ny))),
                 z: Math.round(Math.max(0, Math.min(nSlices - box.d, nz))),
-            })
+            }
         })
         scene.add(transformControls.getHelper())
         transformControlsRef.current = transformControls
@@ -378,10 +387,14 @@ export default function H5Viewer({
         for (let offset = 0; offset < vIndices.length; offset += MAX_VERTS_PER_DRAW) {
             const count = Math.min(MAX_VERTS_PER_DRAW, vIndices.length - offset)
             const geo = new THREE.BufferGeometry()
-            geo.setAttribute(
-                'vIndex',
-                new THREE.BufferAttribute(vIndices.subarray(offset, offset + count), 1),
+            const indexAttr = new THREE.BufferAttribute(
+                vIndices.subarray(offset, offset + count),
+                1,
             )
+            // Deliver as an integer vertex attribute (glVertexAttribIPointer) so the
+            // shader's `in uint vIndex` receives exact voxel indices, not lossy floats.
+            indexAttr.gpuType = THREE.IntType
+            geo.setAttribute('vIndex', indexAttr)
             geo.setAttribute(
                 'vIntensity',
                 new THREE.BufferAttribute(vIntensities.subarray(offset, offset + count), 1),
@@ -616,7 +629,11 @@ export default function H5Viewer({
             stlGizmoRef.current = null
             needsRenderRef.current = true
         }
-    }, [stlOverlayFile, stlOverlayName, fileKey, meta])
+        // vIndices/vIntensities are deps because the main scene effect rebuilds the
+        // whole scene when the render data changes (e.g. the filter compare toggle).
+        // Without them this effect would not re-run, leaving the STL mesh attached to
+        // the old, disposed scene (and its geometry freed out from under it).
+    }, [stlOverlayFile, stlOverlayName, fileKey, meta, vIndices, vIntensities])
 
     // STL overlay opacity follows the slider.
     useEffect(() => {
@@ -972,13 +989,8 @@ export default function H5Viewer({
 
         const { nSlices, height, width } = meta
         const sliceStride = height * width
-        // Per-label RGB (0–1) for vertex colours.
-        const colorByLabel = new Float32Array((ANNOTATION_MAX_LABEL + 1) * 3)
-        for (const c of ANNOTATION_PALETTE) {
-            colorByLabel[c.label * 3] = c.rgb[0] / UINT8_MAX
-            colorByLabel[c.label * 3 + 1] = c.rgb[1] / UINT8_MAX
-            colorByLabel[c.label * 3 + 2] = c.rgb[2] / UINT8_MAX
-        }
+        // Per-label RGB (0–1) for vertex colours, from the shared palette.
+        const colorByLabel = buildLabelLut(UINT8_MAX)
 
         const positions = new Float32Array(indices.length * 3)
         const colors = new Float32Array(indices.length * 3)
@@ -1093,10 +1105,7 @@ export default function H5Viewer({
         <Box sx={{ width: '100%', height: '100%', position: 'relative' }}>
             <Box ref={containerRef} sx={{ width: '100%', height: '100%' }} />
             <ZoomModeButton active={zoomToCursor} onToggle={toggleZoomToCursor} />
-            <Tooltip
-                title={axesVisible ? 'Achsen ausblenden' : 'Achsen einblenden'}
-                placement="left"
-            >
+            <Tooltip title={axesVisible ? 'Hide axes' : 'Show axes'} placement="left">
                 <IconButton
                     size="small"
                     onClick={toggleAxesVisible}

@@ -67,7 +67,6 @@ export const palette = {
 
     // Teal secondary accent (H5-specific controls), darkened to read on white.
     secondary: '#0097a7',
-    secondarySoft: 'rgba(0,151,167,0.12)',
 
     // Destructive / error.
     danger: '#d32f2f',

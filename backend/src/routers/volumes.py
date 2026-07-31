@@ -1,5 +1,8 @@
+import hashlib
 import logging
+import os
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -40,25 +43,46 @@ def _upload_response(volume_id: str) -> UploadResponse:
     description="Accept an `.h5` file, validate its shape and OCT dataset, and store it.",
 )
 async def upload_volume(file: UploadFile) -> UploadResponse:
+    """Stream an uploaded ``.h5`` to disk, validate it, and return its new id.
+
+    Args:
+        file: Multipart upload; must be a valid HDF5 file with an ``"OCT"``
+            dataset of 512×250×250 elements.
+
+    Returns:
+        UploadResponse with the fresh volume id and the fixed OCT dimensions.
+
+    Raises:
+        HTTPException 400: Not an ``.h5`` upload, not valid HDF5, or wrong shape.
+    """
     if not file.filename or not file.filename.lower().endswith(".h5"):
         raise HTTPException(status_code=400, detail="Only .h5 files are accepted.")
 
-    volume_id = Path(file.filename).stem
+    # A fresh UUID per upload: filename stems collide (two different files with
+    # the same name would silently replace each other and corrupt open tabs).
+    # Registered volumes (see /register) instead derive a deterministic id from
+    # the on-disk path so the same file always maps to the same id.
+    volume_id = uuid4().hex
     dest = settings.uploads_dir / f"{volume_id}.h5"
+    tmp = settings.uploads_dir / f"{volume_id}.h5.part"
 
-    # Unlink first so we never write *through* a symlink onto a registered source
-    # file (see /register); this always creates a fresh regular file. Then stream
-    # the upload in chunks instead of buffering the whole ~128 MB in RAM.
-    dest.unlink(missing_ok=True)
-    with dest.open("wb") as fh:
-        while chunk := await file.read(UPLOAD_CHUNK_SIZE):
-            fh.write(chunk)
-
+    # Stage into a temp file and promote atomically: an aborted or concurrent
+    # upload can never leave a half-written file at the final path. Stream in
+    # chunks instead of buffering the whole ~128 MB in RAM.
     try:
-        validate_volume_file(dest)  # metadata-only: checks "OCT" dataset + shape
-    except ValueError as exc:
-        dest.unlink(missing_ok=True)
+        with tmp.open("wb") as fh:
+            while chunk := await file.read(UPLOAD_CHUNK_SIZE):
+                fh.write(chunk)
+        validate_volume_file(tmp)  # metadata-only: checks "OCT" dataset + shape
+    except (ValueError, OSError) as exc:
+        # OSError: h5py raises it for files that are not valid HDF5 at all —
+        # that is a client error (bad upload), not a server fault.
+        tmp.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
+    os.replace(tmp, dest)
 
     return _upload_response(volume_id)
 
@@ -70,6 +94,12 @@ async def upload_volume(file: UploadFile) -> UploadResponse:
     description="List `.h5` files available under the server's configured `data_dir`.",
 )
 def list_local_volumes() -> list[LocalVolume]:
+    """List every ``.h5`` under ``settings.data_dir`` (recursively, sorted).
+
+    Returns:
+        LocalVolume entries with data_dir-relative path and display name;
+        empty list when the directory does not exist.
+    """
     root = settings.data_dir
     if not root.is_dir():
         return []
@@ -94,7 +124,11 @@ def _register_local(rel_path: str) -> UploadResponse:
         HTTPException: 400 for invalid path/volume, 404 if the file is missing.
     """
     root = settings.data_dir.resolve()
-    source = (root / rel_path).resolve()
+    try:
+        source = (root / rel_path).resolve()
+    except ValueError as exc:
+        # e.g. an embedded NUL byte — a malformed client path, not a server error.
+        raise HTTPException(status_code=400, detail="Invalid path.") from exc
 
     # Path-traversal guard: the resolved path must stay within data_dir.
     if not source.is_relative_to(root):
@@ -109,11 +143,27 @@ def _register_local(rel_path: str) -> UploadResponse:
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    volume_id = source.stem
+    # Root-level files keep their plain stem as id (the common, human-friendly
+    # case). Files in subdirectories get a short path-derived hash suffix so two
+    # tiles named e.g. "a/scan.h5" and "b/scan.h5" cannot collide on the id
+    # "scan" — a collision would silently repoint the symlink and serve the
+    # wrong data to every tab still holding the old id. The id is deterministic
+    # (same relative path → same id), so re-registering reuses the same entry.
+    rel = source.relative_to(root)
+    if rel.parent == Path("."):
+        volume_id = source.stem
+    else:
+        path_tag = hashlib.sha1(str(rel).encode("utf-8")).hexdigest()[:8]
+        volume_id = f"{source.stem}-{path_tag}"
     dest = settings.uploads_dir / f"{volume_id}.h5"
-    # Replace any existing entry with a symlink to the source (read-only downstream).
-    dest.unlink(missing_ok=True)
-    dest.symlink_to(source)
+    # Replace any existing entry with a symlink to the source (read-only
+    # downstream). Stage the link under a temp name and promote via os.replace
+    # (atomic rename) so a concurrent registration of the same volume can never
+    # hit the unlink→symlink gap and fail with FileExistsError.
+    tmp_link = settings.uploads_dir / f"{volume_id}.h5.lnk"
+    tmp_link.unlink(missing_ok=True)
+    tmp_link.symlink_to(source)
+    os.replace(tmp_link, dest)
     logger.info("Registered local volume %s -> %s", volume_id, source)
 
     return _upload_response(volume_id)
@@ -134,6 +184,7 @@ def _register_local(rel_path: str) -> UploadResponse:
     },
 )
 def register_volume(req: RegisterRequest) -> UploadResponse:
+    """Register one local ``.h5`` under ``data_dir`` by relative path (zero-copy)."""
     return _register_local(req.path)
 
 
@@ -151,6 +202,7 @@ def register_volume(req: RegisterRequest) -> UploadResponse:
     },
 )
 def register_volumes_batch(req: RegisterBatchRequest) -> list[UploadResponse]:
+    """Register several local ``.h5`` files in one request (see ``/register``)."""
     return [_register_local(p) for p in req.paths]
 
 
@@ -178,6 +230,7 @@ def filter_volume(volume_id: str, req: FilterRequest) -> Response:
 
     Raises:
         HTTPException 404: Volume not found on disk.
+        HTTPException 400: Unknown filter type in the chain.
     """
     path = settings.uploads_dir / f"{volume_id}.h5"
     if not path.exists():
@@ -185,9 +238,13 @@ def filter_volume(volume_id: str, req: FilterRequest) -> Response:
 
     vol = load_volume_flexible(path)
     filter_chain_dicts = [step.model_dump() for step in req.filter_chain]
-    # copy_input=False: every filter allocates its own output, and `vol` is a fresh
-    # per-request array, so the defensive upfront copy is redundant.
-    filtered = apply_filter_chain(vol, filter_chain_dicts, copy_input=False)
+    try:
+        # copy_input=False: every filter allocates its own output, and `vol` is a
+        # fresh per-request array, so the defensive upfront copy is redundant.
+        filtered = apply_filter_chain(vol, filter_chain_dicts, copy_input=False)
+    except ValueError as exc:
+        # Unknown filter type — a client error, not a 500.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     del vol
     content, headers = pack_normalized_response(filtered)
     del filtered
@@ -200,12 +257,23 @@ def filter_volume(volume_id: str, req: FilterRequest) -> Response:
     description=(
         "Load a stored/registered volume and return the render-ready packed binary "
         "(same layout as job/session results) so the frontend needs neither an upload "
-        "nor a Web Worker. Layout: `[vIndices float32][vIntensities float32]"
+        "nor a Web Worker. Layout: `[vIndices uint32][vIntensities float32]"
         "[normalizedVolume uint8]`; shape in `X-Shape`, voxel count in `X-VCount`."
     ),
     responses={404: {"description": "Volume not found"}},
 )
 def get_normalized_volume(volume_id: str) -> Response:
+    """Return the render-ready packed binary for a stored/registered volume.
+
+    Args:
+        volume_id: Stem of a previously uploaded or registered ``.h5`` file.
+
+    Returns:
+        Packed binary Response (``X-Shape`` / ``X-VCount`` headers).
+
+    Raises:
+        HTTPException 404: Volume not found on disk.
+    """
     path = settings.uploads_dir / f"{volume_id}.h5"
     if not path.exists():
         raise HTTPException(status_code=404, detail="Volume not found.")

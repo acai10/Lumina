@@ -11,7 +11,7 @@ interface ZoomModeButtonProps {
 
 export function ZoomModeButton({ active, onToggle }: ZoomModeButtonProps) {
     return (
-        <Tooltip title={active ? 'Zoom: zum Cursor' : 'Zoom: zum Zentrum'} placement="left">
+        <Tooltip title={active ? 'Zoom: to cursor' : 'Zoom: to center'} placement="left">
             <IconButton
                 size="small"
                 onClick={onToggle}

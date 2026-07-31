@@ -12,8 +12,13 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import { palette } from '../../shared/theme/palette'
-import { cleanupUploads, registerLocalVolume, registerLocalVolumesBatch } from '../../shared/api'
-import { JOB_STATUS, REGISTRATION_METHOD } from '../../shared/api/types'
+import {
+    cleanupUploads,
+    registerLocalVolume,
+    registerLocalVolumesBatch,
+    JOB_STATUS,
+    REGISTRATION_METHOD,
+} from '../../shared/api'
 import type { LocalVolume, RegistrationMethod } from '../../shared/api'
 import { ServerVolumeDialog, useServerVolumes } from '../../shared/components'
 import { useViewerStore } from '../../app/store/viewerSlice'

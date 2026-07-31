@@ -6,8 +6,14 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
 from src.config import settings
 from src.processing.filters import apply_filter_chain
 from src.processing.h5_reader import load_volume_flexible
-from src.processing.normalizer import load_packed, normalize_for_frontend, pack_normalized_response
+from src.processing.normalizer import (
+    load_packed,
+    normalize_for_frontend,
+    pack_arrays,
+    pack_normalized_response,
+)
 from src.processing.session_runner import run_session, session_store
+from src.schemas.enums import JobStatus
 from src.schemas.sessions import (
     SessionCreated,
     SessionFilterRequest,
@@ -16,6 +22,9 @@ from src.schemas.sessions import (
 )
 
 router = APIRouter()
+
+#: Registration methods understood by ``register_pair`` (multi_volume.py).
+_KNOWN_METHODS = ("phase_correlation", "cross_correlation")
 
 
 @router.post(
@@ -27,10 +36,50 @@ router = APIRouter()
         "Upload volume IDs with grid positions and start a background stitching job. "
         "Poll ``GET /sessions/{id}`` for status."
     ),
+    responses={
+        400: {"description": "Fewer than 2 volumes, duplicate grid position, unknown method"},
+        404: {"description": "A referenced volume was not found"},
+    },
 )
 async def create_session(req: SessionRequest, background_tasks: BackgroundTasks) -> SessionCreated:
+    """Validate the request, register the session, and start the background stitch.
+
+    Args:
+        req: Tiles with grid positions plus the registration method.
+        background_tasks: Starlette task queue running ``run_session`` after the response.
+
+    Returns:
+        SessionCreated with the id to poll.
+
+    Raises:
+        HTTPException 400: Fewer than 2 volumes, duplicate grid cell, unknown method.
+        HTTPException 404: A referenced volume file is missing.
+    """
     if len(req.volumes) < 2:
         raise HTTPException(status_code=400, detail="At least 2 volumes are required.")
+    # Fail fast like the jobs router does for stitchers: an unknown method would
+    # otherwise only surface asynchronously as a failed session.
+    if req.method not in _KNOWN_METHODS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown registration method {req.method!r}; expected one of {_KNOWN_METHODS}.",
+        )
+
+    # Fail fast on inputs the runner could only report asynchronously: duplicate
+    # grid cells (would shadow a tile) and missing volume files.
+    positions: dict[tuple[int, int], str] = {}
+    for v in req.volumes:
+        if (v.row, v.col) in positions:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Duplicate grid position ({v.row}, {v.col}) for volumes "
+                    f"{positions[(v.row, v.col)]!r} and {v.volume_id!r}."
+                ),
+            )
+        positions[(v.row, v.col)] = v.volume_id
+        if not (settings.uploads_dir / f"{v.volume_id}.h5").exists():
+            raise HTTPException(status_code=404, detail=f"Volume {v.volume_id!r} not found.")
 
     session_id = str(uuid.uuid4())
     session_store.create(session_id)
@@ -55,31 +104,42 @@ async def create_session(req: SessionRequest, background_tasks: BackgroundTasks)
     responses={404: {"description": "Session not found"}},
 )
 def get_session(session_id: str) -> SessionStatusResponse:
+    """Return the current status, offsets, and metrics of a stitching session."""
     state = session_store.get(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found.")
-    return SessionStatusResponse(
-        status=state.status,
-        offsets=state.offsets,
-        metrics=state.metrics,
-        merged_volume_id=state.merged_volume_id,
-        error=state.error,
-    )
+    # Copy the mutable dicts under the store lock: the background task mutates
+    # them while Pydantic would otherwise iterate them during serialisation.
+    with session_store.lock:
+        return SessionStatusResponse(
+            status=state.status,
+            offsets=dict(state.offsets),
+            metrics=dict(state.metrics),
+            merged_volume_id=state.merged_volume_id,
+            error=state.error,
+        )
 
 
 @router.get(
     "/{session_id}/merged",
-    summary="Get merged OCT volume",
+    summary="Get merged OCT volume (pre-normalised for the frontend)",
     description=(
-        "Returns the full 3-D merged volume as raw float32 bytes; "
-        "shape in ``X-Shape`` header (n_slices,height,width)."
+        "Returns the merged volume as the render-ready packed binary "
+        "(`[vIndices uint32][vIntensities float32][normalizedVolume uint8]`); "
+        "shape in ``X-Shape``, voxel count in ``X-VCount``."
     ),
     responses={404: {"description": "Session or merged volume not found"}},
 )
 def get_session_merged(session_id: str) -> Response:
+    """Serve the merged volume's packed binary (pre-computed when available)."""
     state = session_store.get(session_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Session not found.")
+    # Gate on DONE, not just file existence: np.save is not atomic, so between
+    # file creation and write-end (or after an ERROR) a half-written .npy could
+    # otherwise be served.
+    if state.status is not JobStatus.DONE:
+        raise HTTPException(status_code=404, detail="Merged volume not available yet.")
 
     path = settings.uploads_dir / f"{session_id}_merged.npy"
     if not path.exists():
@@ -90,9 +150,10 @@ def get_session_merged(session_id: str) -> Response:
     if content is not None and headers is not None:
         return Response(content=content, media_type="application/octet-stream", headers=headers)
 
-    # Fallback: compute on-demand (slow; reached only for sessions created before
-    # the pre-computation was added, or if the runner crashed mid-way).
-    vol: np.ndarray = np.load(path).astype(np.float32)
+    # Fallback: compute on-demand (slow; reached only for sessions created
+    # before the pre-computation was added). Memory-map instead of loading the
+    # full ~1 GB volume — normalisation reads it slice by slice anyway.
+    vol: np.ndarray = np.load(str(path), mmap_mode="r")
     content, headers = pack_normalized_response(vol)
     return Response(content=content, media_type="application/octet-stream", headers=headers)
 
@@ -101,12 +162,16 @@ def get_session_merged(session_id: str) -> Response:
     "/{session_id}/filter",
     summary="Apply a filter chain to the merged volume",
     description=(
-        "Loads the session's merged HDF5 volume, applies the requested filter chain, "
-        "and returns the result as raw float32 bytes with an ``X-Shape`` header."
+        "Loads the session's merged volume, applies the requested filter chain, "
+        "and returns the render-ready packed binary (same layout as `/merged`)."
     ),
-    responses={404: {"description": "Merged volume not found"}},
+    responses={
+        400: {"description": "Unknown filter type"},
+        404: {"description": "Merged volume not found"},
+    },
 )
 def filter_session_merged(session_id: str, req: SessionFilterRequest) -> Response:
+    """Filter the merged volume and return the normalised packed binary."""
     path = settings.uploads_dir / f"{session_id}_merged.h5"
     if not path.exists():
         raise HTTPException(
@@ -124,16 +189,22 @@ def filter_session_merged(session_id: str, req: SessionFilterRequest) -> Respons
 
     filter_chain_dicts = [step.model_dump() for step in req.filter_chain]
 
-    # copy_input=False skips the 1 GB upfront copy inside apply_filter_chain —
-    # all filter functions allocate their own output array; the copy is redundant
-    # when the caller owns a fresh temporary (as we do here).
-    filtered = apply_filter_chain(vol, filter_chain_dicts, copy_input=False).astype(np.float32)
+    try:
+        # copy_input=False skips the 1 GB upfront copy inside apply_filter_chain —
+        # all filter functions allocate their own output array; the copy is redundant
+        # when the caller owns a fresh temporary (as we do here). np.asarray is a
+        # no-op (no copy) when the chain already produced float32.
+        filtered = np.asarray(
+            apply_filter_chain(vol, filter_chain_dicts, copy_input=False), dtype=np.float32
+        )
+    except ValueError as exc:
+        # Unknown filter type — a client error, not a 500.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     del vol  # release mmap / free input before normalization
 
     v_indices, v_intensities, norm_u8 = normalize_for_frontend(filtered)
+    shape = filtered.shape
     del filtered  # free 1 GB before assembling the response
 
-    content = v_indices.tobytes() + v_intensities.tobytes() + norm_u8.tobytes()
-    nSlices, H, W = norm_u8.shape
-    headers = {"X-Shape": f"{nSlices},{H},{W}", "X-VCount": str(len(v_indices))}
+    content, headers = pack_arrays(v_indices, v_intensities, norm_u8, shape)
     return Response(content=content, media_type="application/octet-stream", headers=headers)

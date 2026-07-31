@@ -4,7 +4,11 @@ import StraightenIcon from '@mui/icons-material/Straighten'
 import TimelineIcon from '@mui/icons-material/Timeline'
 import CropSquareIcon from '@mui/icons-material/CropSquare'
 import CloseIcon from '@mui/icons-material/Close'
-import { useViewerStore, DEFAULT_SLICE_PANEL_CONTROL } from '../../app/store/viewerSlice'
+import {
+    useViewerStore,
+    DEFAULT_SLICE_PANEL_CONTROL,
+    DEFAULT_BRUSH_RADIUS,
+} from '../../app/store/viewerSlice'
 import type {
     AnnotationTool,
     ColormapType,
@@ -13,22 +17,18 @@ import type {
 } from '../../shared/types/viewer.types'
 import { DEFAULT_COLORMAP } from '../../shared/types/viewer.types'
 import { objectColorRgb } from '../controls/cropObjectAnalysis'
-import { ANNOTATION_PALETTE, ANNOTATION_TINT_ALPHA } from '../annotation/annotationPalette'
+import {
+    ANNOTATION_MAX_LABEL,
+    ANNOTATION_TINT_ALPHA,
+    buildLabelLut,
+} from '../annotation/annotationPalette'
 import type { StrokePoint } from '../annotation/annotationMask'
 import { palette } from '../../shared/theme/palette'
 
-// Label → RGB lookup for the annotation overlay (fixed palette, built once).
-const ANNO_LUT = (() => {
-    const max = Math.max(...ANNOTATION_PALETTE.map((c) => c.label))
-    const t = new Uint8Array((max + 1) * 3)
-    for (const c of ANNOTATION_PALETTE) {
-        t[c.label * 3] = c.rgb[0]
-        t[c.label * 3 + 1] = c.rgb[1]
-        t[c.label * 3 + 2] = c.rgb[2]
-    }
-    return t
-})()
-const ANNO_LUT_MAX = ANNO_LUT.length / 3 - 1
+// Label → RGB (0–255) lookup for the 2D annotation overlay, built once from the
+// shared palette. Uint8 view so canvas pixel writes stay integer.
+const ANNO_LUT = new Uint8Array(buildLabelLut(1))
+const ANNO_LUT_MAX = ANNOTATION_MAX_LABEL
 import {
     UM_PER_MM,
     DEFAULT_VOXEL_SIZE_UM,
@@ -38,6 +38,9 @@ import {
 import { slicePanelSliderSx, sliceRowLabelSx, sliceRowValueSx } from './H5SliceViewer.styles'
 import { RENDER_CONTROL_LIMITS } from '../controls/renderControlLimits'
 
+/** How a panel rotates/flips the volume plane before drawing it to canvas. */
+export type SliceOrient = 'ccw90' | 'flipH' | 'flip180'
+
 export interface SlicePanelProps {
     normalizedVolume: Uint8Array
     meta: H5Meta
@@ -45,7 +48,7 @@ export interface SlicePanelProps {
     sliceIndex: number
     fileKey: string
     label: string
-    orient?: 'ccw90' | 'flipH' | 'flip180'
+    orient?: SliceOrient
     onSliceChange: (v: number) => void
     colormap?: ColormapType
     colormapRange?: [number, number]
@@ -148,7 +151,7 @@ function screenToCanvas(
 function origToCanvas(
     ox: number,
     oy: number,
-    orient: string | undefined,
+    orient: SliceOrient | undefined,
     origW: number,
     origH: number,
 ): { cx: number; cy: number } {
@@ -166,7 +169,7 @@ const CROP_FILL = palette.cropAccentSoft
 function canvasToOrig(
     cx: number,
     cy: number,
-    orient: string | undefined,
+    orient: SliceOrient | undefined,
     origW: number,
     origH: number,
 ): { ox: number; oy: number } {
@@ -182,7 +185,7 @@ function computeDistanceMm(
     p1: { cx: number; cy: number },
     p2: { cx: number; cy: number },
     axis: 'z' | 'y' | 'x',
-    orient: string | undefined,
+    orient: SliceOrient | undefined,
     origW: number,
     origH: number,
     voxelSizeUm: [number, number, number],
@@ -214,7 +217,7 @@ function computeAreaMm2(
     p1: { cx: number; cy: number },
     p2: { cx: number; cy: number },
     axis: 'z' | 'y' | 'x',
-    orient: string | undefined,
+    orient: SliceOrient | undefined,
     origW: number,
     origH: number,
     voxelSizeUm: [number, number, number],
@@ -350,7 +353,7 @@ export const SlicePanel = memo(function SlicePanel({
     showObjectColors = false,
     objectThreshold = 0,
     activeTool = null,
-    brushRadius = 6,
+    brushRadius = DEFAULT_BRUSH_RADIUS,
     activeColorLabel = 1,
     annotationMask = null,
     annotationVersion = 0,

@@ -1,14 +1,8 @@
-import logging
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from src.config import settings
-from src.processing.h5_reader import load_volume_flexible
 from src.processing.measurements import compute_measurements
-from src.processing.volume_cache import load_volume_cached
-
-logger = logging.getLogger(__name__)
+from src.routers.common import load_volume_or_404
 
 router = APIRouter()
 
@@ -48,15 +42,7 @@ async def measure_volume(volume_id: str, req: MeasureRequest) -> MeasureResponse
     Raises:
         HTTPException 404: Volume not found on disk.
     """
-    path = settings.uploads_dir / f"{volume_id}.h5"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Volume '{volume_id}' not found")
-
-    try:
-        volume = load_volume_cached(path, load_volume_flexible)
-    except Exception as exc:
-        logger.exception("Failed to load volume %s for measurement", volume_id)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    volume = load_volume_or_404(volume_id)
 
     try:
         result = compute_measurements(
@@ -66,4 +52,6 @@ async def measure_volume(volume_id: str, req: MeasureRequest) -> MeasureResponse
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return MeasureResponse(**result)
+    # model_validate instead of **kwargs: the computation returns a plain dict
+    # annotated dict[str, float]; Pydantic coerces/validates voxel_count to int.
+    return MeasureResponse.model_validate(result)

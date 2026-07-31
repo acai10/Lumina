@@ -4,10 +4,12 @@ from typing import Any
 import numpy as np
 import scipy.ndimage as ndi
 
+from .submission import segment_muscle_fat
+
 logger = logging.getLogger(__name__)
 
 
-def apply_gaussian(volume: np.ndarray, params: dict) -> np.ndarray:
+def apply_gaussian(volume: np.ndarray, params: dict[str, Any]) -> np.ndarray:
     """Apply per-slice Gaussian blur.
 
     Args:
@@ -24,7 +26,7 @@ def apply_gaussian(volume: np.ndarray, params: dict) -> np.ndarray:
     return out
 
 
-def apply_median(volume: np.ndarray, params: dict) -> np.ndarray:
+def apply_median(volume: np.ndarray, params: dict[str, Any]) -> np.ndarray:
     """Apply per-slice median filter.
 
     Args:
@@ -41,7 +43,7 @@ def apply_median(volume: np.ndarray, params: dict) -> np.ndarray:
     return out
 
 
-def apply_mean(volume: np.ndarray, params: dict) -> np.ndarray:
+def apply_mean(volume: np.ndarray, params: dict[str, Any]) -> np.ndarray:
     """Apply per-slice uniform (mean) filter.
 
     Args:
@@ -58,7 +60,7 @@ def apply_mean(volume: np.ndarray, params: dict) -> np.ndarray:
     return out
 
 
-def apply_normalize(volume: np.ndarray, params: dict) -> np.ndarray:
+def apply_normalize(volume: np.ndarray, params: dict[str, Any]) -> np.ndarray:
     """Percentile-based intensity normalization to [0, 1].
 
     Args:
@@ -74,11 +76,13 @@ def apply_normalize(volume: np.ndarray, params: dict) -> np.ndarray:
     lo = float(np.percentile(volume, low_pct))
     hi = float(np.percentile(volume, high_pct))
     if hi > lo:
-        return np.clip((volume - lo) / (hi - lo), 0.0, 1.0).astype(np.float32)
+        # float32 input already yields float32 here; asarray casts only if needed
+        # instead of astype's unconditional full copy.
+        return np.asarray(np.clip((volume - lo) / (hi - lo), 0.0, 1.0), dtype=np.float32)
     return np.zeros_like(volume)
 
 
-def apply_edge_highlight(volume: np.ndarray, params: dict) -> np.ndarray:
+def apply_edge_highlight(volume: np.ndarray, params: dict[str, Any]) -> np.ndarray:
     """Per-slice Sobel edge magnitude, normalised to [0, 1].
 
     Each slice is optionally Gaussian-smoothed first (so the derivative is not
@@ -110,9 +114,40 @@ def apply_edge_highlight(volume: np.ndarray, params: dict) -> np.ndarray:
     # Normalise the whole volume together for consistent slice-to-slice contrast,
     # using a high percentile so outlier pixels do not crush the dynamic range.
     ref = float(np.percentile(out, high_pct))
+    if ref <= 0:
+        # Degenerate input (e.g. a tiny bright region in an otherwise empty
+        # volume): the percentile is 0 although edges exist. Fall back to the
+        # absolute maximum so the documented [0, 1] output range always holds.
+        ref = float(out.max())
     if ref > 0:
         np.clip(out / ref, 0.0, 1.0, out=out)
     return out
+
+
+def apply_segment(volume: np.ndarray, params: dict[str, Any]) -> np.ndarray:
+    """Muscle/fat segmentation applied to the volume (fat/background zeroed).
+
+    Computes the binary muscle/fat mask from the volume's maximum-intensity
+    projection (Otsu split — see :func:`segment_muscle_fat`) and multiplies it
+    into every slice:
+
+        out[z, y, x] = vol[z, y, x] * mask[y, x]
+
+    Muscle columns keep their original intensities, fat/background columns
+    become 0 — so the segmentation is directly visible in both the 3D point
+    cloud and the slice viewer, and behaves like any other pipeline filter
+    (chainable, compare, revert).
+
+    Args:
+        volume: Float32 array of shape (n_slices, height, width).
+        params: No parameters — the Otsu threshold is derived automatically.
+
+    Returns:
+        Masked volume of the same shape and dtype.
+    """
+    del params  # no tunables — Otsu picks the split automatically
+    mask = segment_muscle_fat(volume).astype(np.float32)  # (height, width), {0, 1}
+    return (volume * mask[np.newaxis, :, :]).astype(np.float32)
 
 
 _FILTER_REGISTRY = {
@@ -121,6 +156,7 @@ _FILTER_REGISTRY = {
     "mean": apply_mean,
     "normalize": apply_normalize,
     "edge": apply_edge_highlight,
+    "segment": apply_segment,
 }
 
 
@@ -137,8 +173,9 @@ def apply_filter_chain(
         chain: Ordered list of ``{"type": str, "params": dict}`` dicts.
         copy_input: When *True* (default) the input is copied before the first
             filter so the original array is never modified.  Pass *False* when
-            the caller owns a temporary array and wants to skip the 1 GB copy —
-            e.g. when *volume* was just loaded from disk for this call only.
+            the caller owns a temporary array and wants to skip the full-volume
+            copy (~128 MB per standard tile, ~1 GB for a large merge) — e.g.
+            when *volume* was just loaded from disk for this call only.
 
     Returns:
         Filtered volume (same shape unless a future filter changes it).

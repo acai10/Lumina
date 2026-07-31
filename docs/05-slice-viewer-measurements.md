@@ -228,10 +228,12 @@ voxel is a tiny box with three distinct face types, whose areas are:
 face_xy = dx · dy      face_xz = dx · dz      face_yz = dy · dz
 ```
 
-The mask is eroded by one voxel (`binary_erosion`) and the **shell** =
-`mask − eroded` is the one-voxel-thick boundary. For each axis, `_exposed_faces`
-counts transitions from inside to outside using a finite difference
-(`|diff(shell, axis, prepend=0, append=0)|`). The total is:
+For each axis, `_exposed_faces` counts the 0↔1 transitions of the **mask
+itself** using a finite difference (`|diff(mask, axis, prepend=0, append=0)|`) —
+a face is exposed exactly where the mask flips along that axis, so every outer
+face is counted once. (An earlier version diffed a one-voxel *shell* instead,
+which also counted the shell's inner boundary and roughly doubled the result.)
+The total is:
 
 $$\text{SA} = F_0\cdot\text{face}_{xy} + F_1\cdot\text{face}_{xz} + F_2\cdot\text{face}_{yz}$$
 

@@ -1,6 +1,8 @@
 import type {
     FilterStep,
     LocalVolume,
+    MeasureRequest,
+    MeasureResult,
     SessionRequest,
     SessionStatus,
     SubmissionOptions,
@@ -82,10 +84,10 @@ export async function buildSubmission(
     return getJson<SubmissionResult>(res)
 }
 
-export async function uploadVolume(file: File): Promise<UploadResponse> {
+export async function uploadVolume(file: File, signal?: AbortSignal): Promise<UploadResponse> {
     const form = new FormData()
     form.append('file', file)
-    const res = await fetch(`${BASE_URL}/volumes/upload`, { method: 'POST', body: form })
+    const res = await fetch(`${BASE_URL}/volumes/upload`, { method: 'POST', body: form, signal })
     if (!res.ok) throw new Error(`Upload failed: ${await res.text()}`)
     return getJson<UploadResponse>(res)
 }
@@ -149,14 +151,16 @@ export async function pollSession(sessionId: string, signal?: AbortSignal): Prom
 }
 
 export async function cleanupUploads(): Promise<void> {
-    const res = await fetch(`${BASE_URL}/cleanup`, { method: 'DELETE' })
+    // Trailing slash matters: the backend route is /cleanup/ and a slash-less
+    // request would only work via an extra 307 redirect round-trip.
+    const res = await fetch(`${BASE_URL}/cleanup/`, { method: 'DELETE' })
     if (!res.ok) throw new Error(`Cleanup failed: ${await res.text()}`)
 }
 
 // ── Normalised-binary endpoints ───────────────────────────────────────────────
 //
 // The backend now returns render-ready binary instead of raw float32.
-// Layout: [vIndices float32 × vCount][vIntensities float32 × vCount][normalizedVolume uint8 × total]
+// Layout: [vIndices uint32 × vCount][vIntensities float32 × vCount][normalizedVolume uint8 × total]
 // Headers: X-Shape (nSlices,height,width)  X-VCount (above-threshold voxel count)
 //
 // The frontend creates three typed-array views into the single response ArrayBuffer —
@@ -173,7 +177,14 @@ export async function cleanupUploads(): Promise<void> {
  */
 async function streamBodyInto(res: Response, byteLength: number): Promise<ArrayBuffer> {
     const reader = res.body?.getReader()
-    if (!reader) return res.arrayBuffer()
+    if (!reader) {
+        const buf = await res.arrayBuffer()
+        if (buf.byteLength !== byteLength)
+            throw new Error(
+                `Truncated volume response: expected ${byteLength} bytes, got ${buf.byteLength}`,
+            )
+        return buf
+    }
 
     const out = new Uint8Array(byteLength)
     let offset = 0
@@ -181,30 +192,40 @@ async function streamBodyInto(res: Response, byteLength: number): Promise<ArrayB
         const { done, value } = await reader.read()
         if (done) break
         if (!value) continue
-        // Guard against a server sending more bytes than advertised.
+        // Guard against a server sending more bytes than advertised. Cancel the
+        // stream so the connection is released instead of left dangling open.
         const remaining = byteLength - offset
         if (value.length > remaining) {
             out.set(value.subarray(0, remaining), offset)
+            offset = byteLength
+            void reader.cancel()
             break
         }
         out.set(value, offset)
         offset += value.length
     }
+    // A short read (aborted/interrupted connection) would otherwise leave the
+    // tail zero-filled and be silently rendered as a valid — but corrupt — volume.
+    if (offset !== byteLength)
+        throw new Error(`Truncated volume response: expected ${byteLength} bytes, got ${offset}`)
     return out.buffer
 }
 
 async function parseNormalizedVolume(res: Response): Promise<H5VolumeData> {
-    if (!res.ok) throw new Error(await res.text())
+    if (!res.ok) throw new Error(`Loading volume failed (${res.status}): ${await res.text()}`)
     const vCountHeader = res.headers.get(HEADER_X_VCOUNT)
     if (!vCountHeader) throw new Error('Missing X-VCount header')
     const [nSlices, height, width] = parseShapeHeader(res, 3)
     const vCount = parseInt(vCountHeader, 10)
+    if (!Number.isFinite(vCount) || vCount < 0)
+        throw new Error(`Invalid X-VCount header: "${vCountHeader}"`)
     const total = nSlices * height * width
 
     const byteLength = vCount * BYTES_PER_FLOAT32 * 2 + total
     const buf = await streamBodyInto(res, byteLength)
-    // Three views into the same buffer — zero copy.
-    const vIndices = new Float32Array(buf, 0, vCount)
+    // Three views into the same buffer — zero copy. Indices are uint32 (4 bytes,
+    // same stride as the following float32 intensities); see H5VolumeData.
+    const vIndices = new Uint32Array(buf, 0, vCount)
     const vIntensities = new Float32Array(buf, vCount * BYTES_PER_FLOAT32, vCount)
     const normalizedVolume = new Uint8Array(buf, vCount * BYTES_PER_FLOAT32 * 2, total)
     return { nSlices, height, width, vIndices, vIntensities, normalizedVolume }
@@ -255,20 +276,6 @@ export async function filterVolume(
         body: JSON.stringify({ filter_chain: filterChain }),
     })
     return parseNormalizedVolume(res)
-}
-
-export interface MeasureRequest {
-    threshold?: number
-    voxel_size_um?: [number, number, number]
-}
-
-export interface MeasureResult {
-    voxel_count: number
-    volume_um3: number
-    surface_area_um2: number
-    mean_thickness_um: number
-    max_thickness_um: number
-    lateral_diameter_um: number
 }
 
 /** Request geometric measurements (area, volume, thickness, diameter) for a volume. */

@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from src.config import settings
-from src.processing.runner import create_job, get_job, run_job
+from src.processing.runner import create_job, get_job, job_store, run_job
 from src.processing.stitchers import STITCHER_REGISTRY
 from src.schemas.jobs import JobCreated, JobRequest, JobStatusResponse
 
@@ -25,6 +25,19 @@ async def create_job_endpoint(
     request: JobRequest,
     background_tasks: BackgroundTasks,
 ) -> JobCreated:
+    """Validate the request, register the job, and start the background pipeline.
+
+    Args:
+        request: Volume id, filter chain, and stitchers to run.
+        background_tasks: Starlette task queue running ``run_job`` after the response.
+
+    Returns:
+        JobCreated with the id to poll.
+
+    Raises:
+        HTTPException 404: Volume not found.
+        HTTPException 400: Unknown stitcher name.
+    """
     if not (settings.uploads_dir / f"{request.volume_id}.h5").exists():
         raise HTTPException(status_code=404, detail="Volume not found.")
 
@@ -56,7 +69,13 @@ async def create_job_endpoint(
     responses={404: {"description": "Job not found"}},
 )
 def get_job_status(job_id: str) -> JobStatusResponse:
+    """Return the current status, per-stitcher results, and error of a job."""
     state = get_job(job_id)
     if state is None:
         raise HTTPException(status_code=404, detail="Job not found.")
-    return JobStatusResponse(status=state.status, results=state.results, error=state.error)
+    # Copy the results dict under the store lock: the worker thread inserts new
+    # entries while Pydantic would otherwise iterate it during serialisation.
+    with job_store.lock:
+        return JobStatusResponse(
+            status=state.status, results=dict(state.results), error=state.error
+        )

@@ -126,6 +126,15 @@ export function createScene(
     return { scene, camera, renderer, controls, disposeBase }
 }
 
+/**
+ * Dispose the GPU resources of every Mesh/LineSegments/Points in *scene*.
+ *
+ * Contract: call this BEFORE `disposeBase()` when tearing a viewer down.
+ * It does NOT dispose Sprites (their canvas textures + SpriteMaterials must be
+ * disposed explicitly by whoever created them — see the axis labels in
+ * H5Viewer) and it does not touch textures referenced by materials beyond the
+ * material itself.
+ */
 export function disposeSceneGeometry(scene: THREE.Scene): void {
     scene.traverse((obj) => {
         if (

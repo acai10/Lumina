@@ -3,13 +3,14 @@
 ## Overview
 
 Filters clean up or transform a volume before viewing or measuring it — removing
-noise, smoothing, normalizing brightness, or highlighting edges. Lumina offers
-five filters that can be **chained**: the output of one becomes the input of the
-next, in the order the user arranges them. All filtering happens on the backend;
-the frontend builds the chain in a small UI and gets back a render-ready packed
-binary.
+noise, smoothing, normalizing brightness, highlighting edges, or segmenting
+muscle from fat. Lumina offers six filters that can be **chained**: the output of
+one becomes the input of the next, in the order the user arranges them. All
+filtering happens on the backend; the frontend builds the chain in a small UI and
+gets back a render-ready packed binary.
 
-The five filter types are `gaussian`, `median`, `mean`, `normalize`, and `edge`.
+The six filter types are `gaussian`, `median`, `mean`, `normalize`, `edge`, and
+`segment`.
 
 Code: `backend/src/processing/filters.py`. UI: `PreprocessingSection.tsx`,
 `useFilterParams.ts`, `useFilterJob.ts` (all in `frontend/src/features/controls/`).
@@ -37,7 +38,7 @@ Most filters work **slice by slice** (a loop over `volume.shape[0]`), so only on
 2-D slice is processed at a time — this keeps memory low. The `normalize` filter
 is the exception: it works across the whole volume.
 
-## The five filters
+## The six filters
 
 ### 1. Gaussian blur (`apply_gaussian`, `filters.py:10`)
 
@@ -144,6 +145,10 @@ M_norm = clip(M / ref, 0, 1)
   everything else out, and using a *global* reference keeps brightness consistent
   from slice to slice (no flicker while scrolling). Parameters: `sigma`
   (default 1.0), `high_percentile` (default 99.0).
+- **Degenerate-input fallback:** if fewer than 1 % of all voxels carry any edge
+  signal (e.g. a tiny bright object in an otherwise empty volume), the 99th
+  percentile is `0`. In that case `ref` falls back to the absolute maximum
+  `M.max()` so the output always stays inside `[0, 1]` as documented.
 
 **Why this design (the recent improvement).** An earlier version used
 `magnitude / magnitude.max()` per slice, which (a) collapsed real edges to near
@@ -157,6 +162,32 @@ flat gray `180` on the right half. The Sobel horizontal derivative is ~0
 everywhere except along the boundary column, where it is large (proportional to
 the `80`-unit jump). After magnitude + normalization, the boundary appears as a
 bright line on a black background — the edge is "highlighted".
+
+### 6. Muscle/fat segmentation (`apply_segment`, `filters.py`)
+
+Applies the challenge's muscle/fat segmentation directly to the volume so the
+result is visible in the 3D point cloud and the slice viewer, and behaves like
+any other pipeline filter (chainable, before/after compare, revert).
+
+1. **Mask** — the binary muscle/fat map is computed exactly as for the
+   submission deliverable: Otsu's threshold on the maximum-intensity projection
+   (see `segment_muscle_fat` in [doc 8](08-stitching-registration.md) context /
+   `processing/submission.py`). `mask(y, x) = 1` (muscle) where the surface
+   brightness is above the Otsu split, else `0` (fat/background).
+2. **Application** — the mask is broadcast along the depth axis and multiplied
+   into the volume:
+
+```text
+out[z, y, x] = vol[z, y, x] · mask[y, x]
+```
+
+Muscle columns keep their original intensities; fat/background columns become
+`0` and disappear from the render. No parameters — the Otsu threshold is derived
+automatically from the data.
+
+**Worked example.** A volume whose right half is bright (`0.9`) and left half dim
+(`0.1`) splits at Otsu ≈ `0.5`: the right half is classified muscle and passes
+through unchanged, the left half is zeroed in every slice.
 
 ## Keeping outputs stackable
 
@@ -214,6 +245,7 @@ sequenceDiagram
 | median | `size` (3) | unchanged | even sizes work but odd is conventional |
 | mean | `size` (3) | unchanged | larger size = more blur |
 | normalize | `low_pct` (1.0), `high_pct` (99.0) | `[0, 1]` | flat volume → all zeros |
+| segment | — | muscle voxels unchanged, rest 0 | flat volume → all zeros (no Otsu split) |
 | edge | `sigma` (1.0), `high_pct` (99.0) | `[0, 1]` | `sigma=0` disables smoothing; flat volume → all zeros |
 
 ## Related documents

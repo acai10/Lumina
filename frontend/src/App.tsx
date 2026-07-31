@@ -3,12 +3,14 @@ import type { DragEvent } from 'react'
 import { Box, CircularProgress, Stack } from '@mui/material'
 import { useShallow } from 'zustand/react/shallow'
 import { useViewerStore } from './app/store/viewerSlice'
+// Deliberately NOT the features/h5 barrel: it statically re-exports the Three.js
+// viewers, so importing it here would pull ~520 KB of Three.js into the main
+// chunk and defeat the lazy() code-split below. H5FileTabs itself is light.
 import H5FileTabs from './features/h5/H5FileTabs'
-import Toolbar from './features/toolbar/Toolbar'
+import { Toolbar, useFileLoad } from './features/toolbar'
 import AnnotationToolbar from './features/annotation/AnnotationToolbar'
-import { useFileLoad } from './features/toolbar/useFileLoad'
-import AppSnackbar from './features/notifications/AppSnackbar'
-import ControlsPanel from './features/controls/ControlsPanel'
+import { AppSnackbar } from './features/notifications'
+import { ControlsPanel } from './features/controls'
 import { FileListPanel } from './features/files/FileListPanel'
 import { EmptyState } from './features/onboarding'
 import { palette } from './shared/theme/palette'
@@ -37,23 +39,22 @@ const sceneSpinner = (
 )
 
 export default function App() {
-    const {
-        tabs,
-        activeTabIndex,
-        h5PerFileStates,
-        stlOverlayIndex,
-        stitchPanelOpen,
-        fileListPanelOpen,
-    } = useViewerStore(
-        useShallow((s) => ({
-            tabs: s.tabs,
-            activeTabIndex: s.activeTabIndex,
-            h5PerFileStates: s.h5PerFileStates,
-            stlOverlayIndex: s.stlOverlayIndex,
-            stitchPanelOpen: s.stitchPanelOpen,
-            fileListPanelOpen: s.fileListPanelOpen,
-        })),
-    )
+    const { tabs, activeTabIndex, stlOverlayIndex, stitchPanelOpen, fileListPanelOpen } =
+        useViewerStore(
+            useShallow((s) => ({
+                tabs: s.tabs,
+                activeTabIndex: s.activeTabIndex,
+                stlOverlayIndex: s.stlOverlayIndex,
+                stitchPanelOpen: s.stitchPanelOpen,
+                fileListPanelOpen: s.fileListPanelOpen,
+            })),
+        )
+    // Subscribe to only the active file's per-file state, not the whole map, so a
+    // background-tab update or a paint stroke doesn't re-render the whole app tree.
+    const activeH5PerState = useViewerStore((s) => {
+        const t = s.tabs[s.activeTabIndex]
+        return t?.type === 'h5' ? s.h5PerFileStates[t.name] : undefined
+    })
     const setNotification = useViewerStore((s) => s.setNotification)
     const ensureHydrated = useViewerStore((s) => s.ensureHydrated)
     const {
@@ -78,13 +79,10 @@ export default function App() {
     const overlayTab = stlOverlayIndex !== null ? tabs[stlOverlayIndex] : undefined
     const stlOverlayTab = overlayTab?.type === 'stl' ? overlayTab : null
 
-    const activeViewMode = activeH5
-        ? (h5PerFileStates[activeH5.name]?.viewMode ?? 'pointcloud')
-        : 'pointcloud'
+    const activeViewMode = activeH5 ? (activeH5PerState?.viewMode ?? 'pointcloud') : 'pointcloud'
 
     // When the user has toggled comparison mode, render the pre-filter snapshot
     // instead of the current (filtered) data so they can see the before/after diff.
-    const activeH5PerState = activeH5 ? h5PerFileStates[activeH5.name] : undefined
     const renderData =
         activeH5PerState?.showingComparison && activeH5PerState.filterSnapshot
             ? activeH5PerState.filterSnapshot
@@ -121,7 +119,17 @@ export default function App() {
                               }
                             : undefined
                     }
-                    onDragLeave={hasFiles ? () => setDragActive(false) : undefined}
+                    onDragLeave={
+                        hasFiles
+                            ? (e) => {
+                                  // dragleave also fires on parent→child transitions;
+                                  // only clear when the pointer truly left the pane,
+                                  // otherwise the outline flickers over child elements.
+                                  if (!e.currentTarget.contains(e.relatedTarget as Node))
+                                      setDragActive(false)
+                              }
+                            : undefined
+                    }
                     onDrop={hasFiles ? handleDrop : undefined}
                     sx={{
                         flex: 1,

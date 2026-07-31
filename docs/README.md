@@ -19,7 +19,7 @@ readers can follow along.
 | 1 | [Architecture Overview](01-architecture-overview.md) | The big picture: how the frontend and backend fit together, the tech stack, the shared "packed binary" data format, and the end-to-end data flow. |
 | 2 | [Volume Ingestion & Storage](02-volume-ingestion-storage.md) | How volumes get into Lumina: file upload, zero-copy "register by path", local file discovery, the HDF5 file format, and how volumes are cached in memory (server) and on the JS heap / IndexedDB (browser). |
 | 3 | [Normalization, Point-Cloud Rendering & Shaders](03-normalization-rendering.md) | How raw intensities become a render-ready image: backend normalization, the radix-sort point-cloud builder, GPU shaders, colormaps, and tone mapping. |
-| 4 | [Preprocessing Filters](04-preprocessing-filters.md) | The five image filters — Gaussian, Median, Mean, Normalize, Edge highlight — their math, and how filter chains are applied. |
+| 4 | [Preprocessing Filters](04-preprocessing-filters.md) | The six image filters — Gaussian, Median, Mean, Normalize, Edge highlight, Muscle/fat segmentation — their math, and how filter chains are applied. |
 | 5 | [2-D Slice Viewer & Geometric Measurements](05-slice-viewer-measurements.md) | The 2-D slice panels, coordinate transforms, the distance and area measurement tools, and the backend's volumetric measurements (volume, surface area, thickness, diameter). |
 | 6 | [Cropping & Object Analysis](06-cropping-object-analysis.md) | Extracting sub-volumes (rectangle / cylinder / sphere), and counting distinct 3-D structures with connected-component analysis. |
 | 7 | [Annotation](07-annotation.md) | The non-destructive brush/eraser painting tools and how labels are stored and displayed. |

@@ -1,10 +1,10 @@
 import { create } from 'zustand'
-import { putVolume, getVolume, deleteVolume, clearVolumes } from '../../shared/h5'
-import { VOLUME_DIMS } from '../../shared/h5/h5Constants'
+import { putVolume, getVolume, deleteVolume, clearVolumes, VOLUME_DIMS } from '../../shared/h5'
 import {
     paintStroke,
     clearAnnotation,
     disposeAnnotationIndex,
+    disposeAllAnnotationIndices,
     type StrokePoint,
 } from '../../features/annotation/annotationMask'
 import type {
@@ -61,6 +61,10 @@ const MAX_HYDRATED_FILES = 2
 // `inFlight` dedupes concurrent rehydration requests for the same key.
 const persisted = new Set<string>()
 const inFlight = new Set<string>()
+// Keys whose tab was closed while an async persist may still be running. A late
+// putVolume for one of these would orphan a row that no tab references, so
+// persistVolume re-deletes it after writing (see B-16).
+const closedKeys = new Set<string>()
 // `residentOnly` holds volumes too large to mirror into IndexedDB (e.g. a 25-tile
 // stitched montage). Copying multi-GB buffers through structured-clone into IDB is
 // slow and can blow the storage quota, so these stay on the JS heap and are never
@@ -87,6 +91,12 @@ const persistVolume = async (key: string, data: H5VolumeData): Promise<boolean> 
         return false
     }
     await putVolume(key, data)
+    // The tab was closed while this write was in flight — undo it so no orphan row
+    // survives (closeTab's deleteVolume may have run before putVolume completed).
+    if (closedKeys.has(key)) {
+        void deleteVolume(key)
+        return false
+    }
     return true
 }
 
@@ -154,7 +164,8 @@ interface ViewerState {
     toggleStitchPanel: () => void
     toggleControlsPanel: () => void
     toggleFileListPanel: () => void
-    loadH5: (entries: H5FileEntry[]) => Promise<void>
+    /** Load new H5 tabs, skipping name-collisions; resolves to the number added. */
+    loadH5: (entries: H5FileEntry[]) => Promise<number>
     /** Restore an evicted tab's buffers from IndexedDB; no-op if already resident. */
     ensureHydrated: (fileKey: string) => Promise<void>
     loadStlFiles: (files: File[]) => void
@@ -169,7 +180,6 @@ interface ViewerState {
     ) => void
     requestCameraReset: (fileKey: string) => void
     updateActiveRenderState: (patch: Partial<H5RenderControls>) => void
-    setNormalizedVolume: (fileKey: string, normalizedVolume: Uint8Array) => void
     /** Cache the server-side volume id obtained from a lazy upload of a local file. */
     setBackendVolumeId: (fileKey: string, volumeId: string) => void
     applyBackendFilter: (fileKey: string, newData: H5VolumeData) => void
@@ -315,10 +325,24 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                     continue // never evict what we failed to persist
                 }
             }
+            // Drop both the volume buffers AND the pre-filter comparison snapshot
+            // (another full-size copy). The snapshot is only ever rendered for the
+            // *active* tab, which is never evicted, so a non-active tab never needs
+            // it resident — without this it would leak ~150-210 MB per filtered tab.
             set((state) => ({
                 tabs: state.tabs.map((t) =>
                     t.type === 'h5' && t.name === tab.name ? { ...t, data: null } : t,
                 ),
+                h5PerFileStates: state.h5PerFileStates[tab.name]?.filterSnapshot
+                    ? {
+                          ...state.h5PerFileStates,
+                          [tab.name]: {
+                              ...state.h5PerFileStates[tab.name],
+                              filterSnapshot: undefined,
+                              showingComparison: false,
+                          },
+                      }
+                    : state.h5PerFileStates,
             }))
         }
     }
@@ -336,7 +360,7 @@ export const useViewerStore = create<ViewerState>((set, get) => {
             const { tabs, h5PerFileStates, hydrationOrder } = get()
             const existingNames = new Set(tabs.map((t) => t.name))
             const fresh = entries.filter((e) => !existingNames.has(e.name))
-            if (fresh.length === 0) return
+            if (fresh.length === 0) return 0
 
             const newTabs: H5TabEntry[] = fresh.map((e) => ({
                 type: 'h5' as const,
@@ -372,6 +396,9 @@ export const useViewerStore = create<ViewerState>((set, get) => {
             // Persist freshly loaded buffers so the cap can safely evict older volumes.
             // Oversized volumes are kept resident-only instead (persistVolume returns false).
             for (const e of fresh) {
+                // A prior tab with this name may have been closed — clear the stale
+                // "closed" mark so this fresh volume's persist is not re-deleted.
+                closedKeys.delete(e.name)
                 try {
                     if (await persistVolume(e.name, e.data)) persisted.add(e.name)
                 } catch (err) {
@@ -379,6 +406,7 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 }
             }
             await enforceCap()
+            return fresh.length
         },
 
         ensureHydrated: async (fileKey) => {
@@ -394,7 +422,20 @@ export const useViewerStore = create<ViewerState>((set, get) => {
             inFlight.add(fileKey)
             try {
                 const data = await getVolume(fileKey)
-                if (!data) return
+                // The tab may have been closed while the (multi-hundred-MB) read
+                // was in flight — bumping the LRU then would re-add a ghost key.
+                const stillOpen = get().tabs.some((t) => t.type === 'h5' && t.name === fileKey)
+                if (!stillOpen) return
+                if (!data) {
+                    // The IndexedDB row is gone (browsers evict site data under
+                    // storage pressure). Without a notification the viewer would
+                    // show an infinite spinner with no explanation.
+                    get().setNotification({
+                        message: `Could not restore "${fileKey}" from the browser cache — please load the file again`,
+                        severity: 'error',
+                    })
+                    return
+                }
                 set((state) => ({
                     tabs: state.tabs.map((t) =>
                         t.type === 'h5' && t.name === fileKey ? { ...t, data } : t,
@@ -404,6 +445,10 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 await enforceCap()
             } catch (err) {
                 console.error(`volumeCache: cannot rehydrate "${fileKey}"`, err)
+                get().setNotification({
+                    message: `Could not restore "${fileKey}" from the browser cache — please load the file again`,
+                    severity: 'error',
+                })
             } finally {
                 inFlight.delete(fileKey)
             }
@@ -442,6 +487,9 @@ export const useViewerStore = create<ViewerState>((set, get) => {
             // Drop the closed H5 volume's off-heap buffers and bookkeeping.
             let newHydrationOrder = hydrationOrder
             if (closing.type === 'h5') {
+                // Mark closed *before* deleting so an in-flight persist (fire-and-forget
+                // from applyBackendFilter) re-deletes itself if it lands after us.
+                closedKeys.add(closing.name)
                 void deleteVolume(closing.name)
                 persisted.delete(closing.name)
                 residentOnly.delete(closing.name)
@@ -553,15 +601,6 @@ export const useViewerStore = create<ViewerState>((set, get) => {
                 },
             })
         },
-
-        setNormalizedVolume: (fileKey, normalizedVolume) =>
-            set((state) => ({
-                tabs: state.tabs.map((t) =>
-                    t.type === 'h5' && t.name === fileKey && t.data !== null
-                        ? { ...t, data: { ...t.data, normalizedVolume }, hasSlices: true }
-                        : t,
-                ),
-            })),
 
         setBackendVolumeId: (fileKey, volumeId) =>
             set((state) => ({
@@ -895,6 +934,10 @@ export const useViewerStore = create<ViewerState>((set, get) => {
             persisted.clear()
             inFlight.clear()
             residentOnly.clear()
+            closedKeys.clear()
+            // Free every per-file annotation index (module-global Map) — otherwise
+            // masks for all previously-loaded files leak past a reset.
+            disposeAllAnnotationIndices()
             set(initialState)
         },
     }

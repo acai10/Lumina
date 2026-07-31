@@ -35,6 +35,7 @@ const FILTER_LABELS: Record<FilterTypeOrNone, string> = {
     mean: 'Mean',
     normalize: 'Normalize',
     edge: 'Edge highlight',
+    segment: 'Muscle/fat segmentation',
 }
 
 const FILTER_OPTIONS = Object.entries(FILTER_LABELS) as [FilterTypeOrNone, string][]
@@ -117,11 +118,10 @@ function StepParamSliders({
 }
 
 export function PreprocessingSection() {
-    const { tabs, activeTabIndex, h5PerFileStates, setShowingComparison } = useViewerStore(
+    const { tabs, activeTabIndex, setShowingComparison } = useViewerStore(
         useShallow((s) => ({
             tabs: s.tabs,
             activeTabIndex: s.activeTabIndex,
-            h5PerFileStates: s.h5PerFileStates,
             setShowingComparison: s.setShowingComparison,
         })),
     )
@@ -129,7 +129,11 @@ export function PreprocessingSection() {
     const activeTab = tabs[activeTabIndex]
     const activeEntry = activeTab?.type === 'h5' ? activeTab : null
     const fileKey = activeEntry?.name ?? ''
-    const perFile: H5PerFileState | undefined = fileKey ? h5PerFileStates[fileKey] : undefined
+    // Subscribe to only the active file's slice, not the whole per-file map, so
+    // unrelated per-file updates (paint strokes, other tabs) don't re-render here.
+    const perFile: H5PerFileState | undefined = useViewerStore((s) =>
+        fileKey ? s.h5PerFileStates[fileKey] : undefined,
+    )
     const filterApplied = perFile?.filterApplied ?? false
     const showingComparison = perFile?.showingComparison ?? false
 

@@ -22,7 +22,7 @@ interface CachedVolume {
     nSlices: number
     height: number
     width: number
-    vIndices: Float32Array
+    vIndices: Uint32Array
     vIntensities: Float32Array
     normalizedVolume: Uint8Array | null
 }
@@ -39,18 +39,54 @@ function openDB(): Promise<IDBDatabase> {
                 db.createObjectStore(STORE_NAME)
             }
         }
-        req.onsuccess = () => resolve(req.result)
+        req.onsuccess = () => {
+            const db = req.result
+            // The browser can force-close the connection at any time (storage
+            // pressure, devtools "clear site data", another tab upgrading the
+            // schema). Drop the cached promise so the next call reopens instead
+            // of failing forever on a dead connection.
+            db.onclose = () => {
+                if (dbPromise) dbPromise = null
+            }
+            db.onversionchange = () => {
+                db.close()
+                if (dbPromise) dbPromise = null
+            }
+            resolve(db)
+        }
         req.onerror = () => reject(req.error ?? new Error('IndexedDB open failed'))
     })
-    // If the connection later errors out, allow a fresh open on the next call.
+    // If the open itself fails, allow a fresh attempt on the next call.
     dbPromise.catch(() => {
         dbPromise = null
     })
     return dbPromise
 }
 
-function tx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
-    return db.transaction(STORE_NAME, mode).objectStore(STORE_NAME)
+/**
+ * Run one readwrite/readonly transaction and settle when it COMMITS.
+ *
+ * Resolving on the request's `onsuccess` would be premature: that event only
+ * means the operation was applied inside the still-open transaction — the
+ * commit can abort afterwards (e.g. QuotaExceededError while writing a
+ * ~200 MB volume), silently losing data the caller believed persisted. The
+ * store evicts heap buffers only after this promise resolves, so correctness
+ * depends on waiting for `oncomplete`.
+ */
+function runTx<T>(
+    db: IDBDatabase,
+    mode: IDBTransactionMode,
+    op: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, mode)
+        const req = op(transaction.objectStore(STORE_NAME))
+        transaction.oncomplete = () => resolve(req.result)
+        transaction.onabort = () =>
+            reject(transaction.error ?? new Error('IndexedDB transaction aborted'))
+        transaction.onerror = () =>
+            reject(transaction.error ?? new Error('IndexedDB transaction failed'))
+    })
 }
 
 /** Persist a volume's buffers under `key`, overwriting any existing entry. */
@@ -64,12 +100,7 @@ export async function putVolume(key: string, data: H5VolumeData): Promise<void> 
         vIntensities: data.vIntensities,
         normalizedVolume: data.normalizedVolume,
     }
-    await new Promise<void>((resolve, reject) => {
-        const store = tx(db, 'readwrite')
-        const req = store.put(record, key)
-        req.onsuccess = () => resolve()
-        req.onerror = () => reject(req.error ?? new Error('IndexedDB put failed'))
-    })
+    await runTx(db, 'readwrite', (store) => store.put(record, key))
 }
 
 function isCachedVolume(v: unknown): v is CachedVolume {
@@ -77,7 +108,7 @@ function isCachedVolume(v: unknown): v is CachedVolume {
         v !== null &&
         typeof v === 'object' &&
         typeof (v as CachedVolume).nSlices === 'number' &&
-        (v as CachedVolume).vIndices instanceof Float32Array &&
+        (v as CachedVolume).vIndices instanceof Uint32Array &&
         (v as CachedVolume).vIntensities instanceof Float32Array
     )
 }
@@ -85,15 +116,8 @@ function isCachedVolume(v: unknown): v is CachedVolume {
 /** Restore a volume's buffers, or `null` if no entry exists for `key`. */
 export async function getVolume(key: string): Promise<H5VolumeData | null> {
     const db = await openDB()
-    const record = await new Promise<CachedVolume | undefined>((resolve, reject) => {
-        const store = tx(db, 'readonly')
-        const req = store.get(key)
-        req.onsuccess = () => {
-            const r = req.result
-            resolve(isCachedVolume(r) ? r : undefined)
-        }
-        req.onerror = () => reject(req.error ?? new Error('IndexedDB get failed'))
-    })
+    const raw = await runTx(db, 'readonly', (store) => store.get(key))
+    const record = isCachedVolume(raw) ? raw : undefined
     if (!record) return null
     return {
         nSlices: record.nSlices,
@@ -108,21 +132,11 @@ export async function getVolume(key: string): Promise<H5VolumeData | null> {
 /** Remove a single volume's buffers. */
 export async function deleteVolume(key: string): Promise<void> {
     const db = await openDB()
-    await new Promise<void>((resolve, reject) => {
-        const store = tx(db, 'readwrite')
-        const req = store.delete(key)
-        req.onsuccess = () => resolve()
-        req.onerror = () => reject(req.error ?? new Error('IndexedDB delete failed'))
-    })
+    await runTx(db, 'readwrite', (store) => store.delete(key))
 }
 
 /** Drop every cached volume (used on a full reset). */
 export async function clearVolumes(): Promise<void> {
     const db = await openDB()
-    await new Promise<void>((resolve, reject) => {
-        const store = tx(db, 'readwrite')
-        const req = store.clear()
-        req.onsuccess = () => resolve()
-        req.onerror = () => reject(req.error ?? new Error('IndexedDB clear failed'))
-    })
+    await runTx(db, 'readwrite', (store) => store.clear())
 }

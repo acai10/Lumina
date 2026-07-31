@@ -8,7 +8,9 @@ export interface VolumeGroup {
 export function groupByFolder(volumes: LocalVolume[]): VolumeGroup[] {
     const map = new Map<string | null, LocalVolume[]>()
     for (const v of volumes) {
-        const parts = v.path.split('/')
+        // Split on both separators: a backend running directly on Windows
+        // (no Docker) reports backslash paths.
+        const parts = v.path.split(/[\\/]/)
         const folder = parts.length > 1 ? parts.slice(0, -1).join('/') : null
         const list = map.get(folder) ?? []
         list.push(v)

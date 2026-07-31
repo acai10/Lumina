@@ -1,7 +1,6 @@
 import logging
 
 import numpy as np
-import scipy.ndimage as ndi
 
 logger = logging.getLogger(__name__)
 
@@ -41,22 +40,21 @@ def compute_measurements(
     volume_um3 = voxel_count * voxel_vol_um3
 
     # ── Surface area (face-count heuristic) ────────────────────────────────────
-    # Each exposed face of a boundary voxel contributes one face-area unit.
-    # Erode the mask by 1 voxel; the shell is mask - eroded_mask.
-    eroded = ndi.binary_erosion(mask).astype(np.uint8)
-    shell = mask - eroded
+    # Each exposed face of a boundary voxel contributes one face-area unit. A face
+    # is exposed exactly where the mask flips 0↔1 along an axis, so diff over the
+    # *mask itself* counts each outer face once. (Diffing a hollow 1-voxel shell
+    # would also count the shell's inner boundary and ~double the result.)
     face_xy = float(dx * dy)
     face_xz = float(dx * dz)
     face_yz = float(dy * dz)
 
-    # Count exposed faces along each axis using diff — exposed if neighbour is outside.
     def _exposed_faces(arr: np.ndarray, axis: int) -> int:
-        return int(np.abs(np.diff(arr, axis=axis, prepend=0, append=0)).clip(0).sum())
+        return int(np.abs(np.diff(arr, axis=axis, prepend=0, append=0)).sum())
 
     sa_um2 = (
-        _exposed_faces(shell, 0) * face_xy  # top/bottom faces (XY plane)
-        + _exposed_faces(shell, 1) * face_xz  # front/back faces (XZ plane)
-        + _exposed_faces(shell, 2) * face_yz  # left/right faces (YZ plane)
+        _exposed_faces(mask, 0) * face_xy  # top/bottom faces (XY plane)
+        + _exposed_faces(mask, 1) * face_xz  # front/back faces (XZ plane)
+        + _exposed_faces(mask, 2) * face_yz  # left/right faces (YZ plane)
     )
 
     # ── Thickness per lateral column ───────────────────────────────────────────

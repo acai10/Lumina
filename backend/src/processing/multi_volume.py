@@ -144,6 +144,12 @@ def merge_volumes(
         raise ValueError("volumes list is empty")
 
     n_slices, h, w = volumes[0].shape
+    for i, vol in enumerate(volumes[1:], start=1):
+        if vol.shape != (n_slices, h, w):
+            raise ValueError(
+                f"All volumes must share one shape: volume 0 is {(n_slices, h, w)}, "
+                f"volume {i} is {vol.shape}"
+            )
     int_offsets = [(int(round(dy)), int(round(dx))) for dy, dx in offsets]
 
     min_dy = min(o[0] for o in int_offsets)

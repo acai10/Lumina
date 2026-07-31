@@ -98,6 +98,14 @@ Two safety properties matter here:
 `GET /volumes/local` lists the `.h5` files discovered under `data_dir` (returned
 as relative path + filename), which is what populates the "From server…" browser.
 
+**Volume-id derivation.** A file directly in `data_dir` keeps its filename stem
+as id (`scan.h5` → `scan`). A file inside a subdirectory additionally gets a
+short hash of its relative path (`a/scan.h5` → `scan-6bcf6a1d`-style): two tiles
+named identically in different folders would otherwise collide on the id `scan`,
+and the second registration would silently repoint the symlink under every open
+tab still using the first file. The id is deterministic — registering the same
+path twice returns the same id and reuses the same symlink.
+
 ### Configuration (`config.py`)
 
 The backend's settings come from `backend/src/config.py` (a Pydantic
@@ -130,8 +138,10 @@ docker compose up --build
 For local files the frontend can skip the backend entirely and read the HDF5 in
 the browser:
 
-- `frontend/src/shared/h5/h5Reader.ts` → `loadH5FileInWorker` hands the file to
-  `h5.worker.ts`, a **Web Worker** (a background thread, so the UI never freezes).
+- `frontend/src/shared/h5/h5WorkerClient.ts` → `loadH5FileInWorker` hands the
+  file to `h5.worker.ts`, a **Web Worker** (a background thread, so the UI never
+  freezes); the actual h5wasm decode lives in `h5Reader.ts` and runs inside the
+  worker.
 - The worker uses **h5wasm** (a WebAssembly build of the HDF5 library) to read
   the `"OCT"` dataset, validates the dimensions, and converts whatever dtype it
   finds to `Float32Array`.

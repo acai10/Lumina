@@ -1,4 +1,4 @@
-export type FilterType = 'gaussian' | 'median' | 'mean' | 'normalize' | 'edge'
+export type FilterType = 'gaussian' | 'median' | 'mean' | 'normalize' | 'edge' | 'segment'
 
 /**
  * A single preprocessing step. Discriminated on `type` so each filter's `params`
@@ -10,6 +10,7 @@ export type FilterStep =
     | { type: 'mean'; params: { size: number } }
     | { type: 'normalize'; params: { low_percentile: number; high_percentile: number } }
     | { type: 'edge'; params: Record<string, never> }
+    | { type: 'segment'; params: Record<string, never> }
 
 export const JOB_STATUS = {
     PENDING: 'pending',
@@ -62,8 +63,23 @@ export interface SessionStatus {
     error?: string
 }
 
-export interface SessionFilterRequest {
-    filter_chain: FilterStep[]
+// ── Measurements ─────────────────────────────────────────────────────────────
+
+/** Body of `POST /volumes/{id}/measure`. */
+export interface MeasureRequest {
+    threshold?: number
+    /** Physical voxel size in µm as **(dz, dy, dx)** — axial spacing first. */
+    voxel_size_um?: [number, number, number]
+}
+
+/** Geometric measurements returned by `POST /volumes/{id}/measure`. */
+export interface MeasureResult {
+    voxel_count: number
+    volume_um3: number
+    surface_area_um2: number
+    mean_thickness_um: number
+    max_thickness_um: number
+    lateral_diameter_um: number
 }
 
 // ── Challenge submission ─────────────────────────────────────────────────────
@@ -79,11 +95,25 @@ export interface SubmissionOptions {
     dz?: number
 }
 
+/** Depth/mask statistics returned alongside a built submission. */
+export interface SubmissionStats {
+    shape: [number, number]
+    coverage_pct: number
+    depth_min_mm: number
+    depth_max_mm: number
+    depth_mean_mm: number
+    dx_mm: number
+    dy_mm: number
+    dz_mm: number
+    /** Present only for the tissue dataset (a mask was produced). */
+    muscle_pct?: number
+}
+
 /** Result of building a submission: file name, base64 PNG previews, and stats. */
 export interface SubmissionResult {
     volume_id: string
     h5_filename: string
     surface_png: string
     mask_png: string | null
-    stats: Record<string, number | number[]>
+    stats: SubmissionStats
 }

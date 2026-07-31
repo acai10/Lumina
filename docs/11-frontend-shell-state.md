@@ -95,9 +95,8 @@ Slider limits for all of these are derived from `VOLUME_DIMS` in
 - **Tabs:** `loadH5`, `loadStlFiles`, `selectTab`, `closeTab`, `reorderTab`.
 - **Memory:** `ensureHydrated` (restore buffers from IndexedDB), LRU eviction to
   keep ≤ 2 volumes on the heap.
-- **Render/filter:** `updateActiveRenderState`, `setNormalizedVolume`,
-  `applyBackendFilter`, `saveFilterSnapshot`, `setFilterApplied`,
-  `setShowingComparison`.
+- **Render/filter:** `updateActiveRenderState`, `applyBackendFilter`,
+  `saveFilterSnapshot`, `setFilterApplied`, `setShowingComparison`.
 - **Crop/annotation:** `setCropMode`, `setCropBox`, `setCropShape`,
   `paintAnnotation`, `clearAnnotations`, `setObjectLabeling`,
   `setObjectColorsVisible`.
