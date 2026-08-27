@@ -40,6 +40,12 @@ const FILTER_LABELS: Record<FilterTypeOrNone, string> = {
 
 const FILTER_OPTIONS = Object.entries(FILTER_LABELS) as [FilterTypeOrNone, string][]
 const FILTER_TYPE_KEYS = new Set(Object.keys(FILTER_LABELS))
+/**
+ * UI for building the filter pipeline and applying it to the active volume.
+ *
+ * Steps are chained in the order shown and sent to the backend in one request via
+ * `useFilterJob`; the original volume is kept so the result can be reverted.
+ */
 const isFilterTypeOrNone = (v: string): v is FilterTypeOrNone => FILTER_TYPE_KEYS.has(v)
 
 const PHASE_LABEL: Partial<Record<FilterPhase, string>> = {

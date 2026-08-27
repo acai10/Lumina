@@ -1,3 +1,20 @@
+"""Registration and merging of overlapping OCT tiles into one large scan.
+
+This is the core of the stitching pipeline, in the order the session runner calls it:
+
+1. :func:`compute_mip` flattens each 3-D tile to a 2-D maximum-intensity projection,
+   because registration only has to recover a lateral shift.
+2. :func:`_phase_corr_padded` estimates the shift between two projections by phase
+   correlation. The zero-padding is the important detail; see its docstring.
+3. :func:`compute_global_offsets` turns the pairwise shifts into one absolute
+   position per tile by breadth-first traversal from the origin tile.
+4. :func:`merge_volumes` blends the tiles onto a common canvas by taking the
+   per-voxel maximum, which suits OCT because bright voxels carry signal.
+
+The tiles are assumed to differ by lateral translation only: no rotation or scale is
+estimated. Full derivations and worked examples are in
+``docs/08-stitching-registration.md``.
+"""
 import logging
 
 import numpy as np

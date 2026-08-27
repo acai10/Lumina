@@ -1,3 +1,8 @@
+"""Request and response models for the challenge submission endpoint.
+
+The response carries the built file's path, the summary statistics and the base64
+PNG previews, so the UI can show the surface map and the mask before submitting.
+"""
 from typing import Any
 
 from pydantic import BaseModel, Field

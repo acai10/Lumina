@@ -1,3 +1,9 @@
+"""Request and response models for the volume endpoints.
+
+Also holds :func:`ensure_path_safe_volume_id`, the guard that keeps a volume id from
+escaping the uploads directory via ``..`` or an absolute path. Every route that
+turns an id into a filename goes through it.
+"""
 from pydantic import BaseModel
 
 

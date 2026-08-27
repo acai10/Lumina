@@ -1,3 +1,15 @@
+"""Single-volume stitcher algorithms used for the comparison jobs.
+
+Each entry of :data:`STITCHER_REGISTRY` aligns one volume against a reference and
+returns the transformed volume, so they are interchangeable from the job runner's
+point of view (the :class:`Stitcher` protocol). They differ in what they can model:
+translation only for phase correlation, a global affine transform for SimpleITK,
+and a deformable B-spline for elastix.
+
+``itk-elastix`` is an optional dependency, so the elastix stitcher imports it inside
+the function and reports a clear error when it is not installed rather than breaking
+the module import for everyone.
+"""
 import logging
 from typing import Any, Protocol
 

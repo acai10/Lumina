@@ -1,3 +1,13 @@
+"""Job store and background execution of stitcher-comparison jobs.
+
+A job takes one uploaded volume, applies a filter chain, runs it through every
+requested stitcher, and scores each result against the unfiltered original. Because
+that takes far longer than a request should, :func:`run_job` is handed to Starlette
+as a background task and the client polls ``GET /jobs/{id}`` for progress.
+
+:data:`job_store` is the process-wide singleton. Its lock exists because the worker
+thread mutates ``JobState.results`` while poll requests serialise it.
+"""
 import asyncio
 import logging
 import threading

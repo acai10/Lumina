@@ -1,3 +1,4 @@
+/** Panel and table styles for the stitcher UI. */
 import { palette } from '../../shared/theme/palette'
 import { eyebrowSx } from '../../shared/theme/uiTokens'
 

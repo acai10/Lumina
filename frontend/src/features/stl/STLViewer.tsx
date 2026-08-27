@@ -28,6 +28,12 @@ interface STLViewerProps {
     onError?: (msg: string) => void
 }
 
+/**
+ * Three.js viewer for STL meshes, used for the phantom reference geometry.
+ *
+ * Unlike the point-cloud viewer this renders a lit surface, so it sets up its own
+ * lights; scene creation and disposal are otherwise shared via `sceneUtils`.
+ */
 function addLights(scene: THREE.Scene): void {
     const hemi = new THREE.HemisphereLight(
         palette.hemiSkyHex,

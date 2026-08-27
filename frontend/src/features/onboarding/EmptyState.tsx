@@ -9,6 +9,7 @@ import { useFileLoad } from '../toolbar/useFileLoad'
 import { ServerVolumeDialog, useServerVolumes } from '../../shared/components'
 import { palette } from '../../shared/theme/palette'
 
+/** Drag-and-drop landing screen shown while no file is loaded. */
 /**
  * Onboarding screen shown in the central viewer pane when no file is loaded.
  * Provides clear calls-to-action and a drag-and-drop target, reusing the same

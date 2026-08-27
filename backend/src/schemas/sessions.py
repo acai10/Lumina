@@ -1,3 +1,8 @@
+"""Request and response models for the multi-volume stitching endpoints.
+
+:class:`VolumeEntry` carries a tile's volume id together with its ``(row, col)`` grid
+position, which is what lets the session runner know which tiles are neighbours.
+"""
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator

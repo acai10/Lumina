@@ -1,3 +1,11 @@
+"""Image similarity metrics used to score and compare stitching results.
+
+:func:`compute_all` returns every metric at once for one pair of volumes, which is
+what the job pipeline stores so different stitchers can be ranked side by side in
+the UI. NCC and MI are similarity measures (higher is better), MSE and RMSE are
+error measures (lower is better), and Dice compares the thresholded masks rather
+than the intensities.
+"""
 import numpy as np
 from skimage.metrics import normalized_mutual_information
 

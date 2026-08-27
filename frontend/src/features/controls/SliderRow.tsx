@@ -12,6 +12,12 @@ interface SliderRowProps {
     onChange: (v: number) => void
 }
 
+/**
+ * Labelled slider rows used throughout the controls panel.
+ *
+ * `SliderRow` is a single value, `RangeSliderRow` a two-handle range. Both pair the
+ * slider with a number input so a value can be typed as well as dragged.
+ */
 export function SliderRow({ label, value, min, max, step, disabled, onChange }: SliderRowProps) {
     const { inputVal, setInputVal, commit } = useNumberInput(value, min, max, onChange)
 

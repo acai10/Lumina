@@ -1,3 +1,14 @@
+"""Routes for getting OCT volumes into the backend and for filtering them.
+
+Two ways in: ``POST /volumes/upload`` takes the file over the wire, while
+``/volumes/register`` and ``/volumes/register-batch`` register a file that already
+sits under ``settings.data_dir`` by path, which avoids a ~128 MB upload per volume.
+Both validate the dataset name and shape and yield the same volume id.
+
+``/volumes/{id}/normalized`` and ``/volumes/{id}/filter`` return the render-ready
+packed binary. The filter route is deliberately lean: it applies the chain and
+returns the volume in one request, with no stitcher, no metrics and no polling.
+"""
 import hashlib
 import logging
 import os

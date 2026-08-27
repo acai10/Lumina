@@ -4,6 +4,16 @@ import { palette } from '../theme/palette'
 
 const MAX_DEVICE_PIXEL_RATIO = 1.5
 
+/**
+ * Shared Three.js scene setup and teardown for both 3-D viewers.
+ *
+ * `createScene` builds the renderer, camera, and OrbitControls with the same
+ * defaults everywhere, so the point-cloud viewer and the STL viewer behave alike.
+ *
+ * `disposeSceneGeometry` is not optional housekeeping: WebGL buffers are not
+ * garbage-collected with the JS objects that reference them, so every viewer must
+ * call it before dropping a scene or the GPU memory leaks across tab switches.
+ */
 export interface SceneOptions {
     fov?: number
     near?: number

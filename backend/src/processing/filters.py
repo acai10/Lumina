@@ -1,3 +1,15 @@
+"""Preprocessing filter chain applied to a volume before analysis.
+
+Each ``apply_*`` function takes a volume plus a ``params`` dict and returns a new
+volume of the same shape, so the filters compose: :func:`apply_filter_chain` runs
+them in the order the caller lists them. The registry at the bottom of the module
+maps the names used by the API (``"gaussian"``, ``"median"``, ``"mean"``,
+``"normalize"``, ``"edge"``, ``"segment"``) onto these functions.
+
+Filters are deliberately per-slice where that is the meaningful unit (blur, median,
+mean, edges) and whole-volume where it is not (percentile normalisation), because
+OCT slices differ strongly in overall brightness with depth.
+"""
 import logging
 from typing import Any
 

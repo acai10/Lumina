@@ -3,6 +3,12 @@ import { palette } from './palette'
 
 // Segoe UI leads the stack — the Windows Vista system font, on-theme for the
 // "Aero glass / medical" identity and requiring no bundled web font.
+/**
+ * The MUI theme: typography, palette mapping, and component defaults.
+ *
+ * Colours come from `palette.ts`; this file only maps them onto MUI's slots. MUI is
+ * the sole styling system in the project, so there are no CSS files to check as well.
+ */
 const FONT_STACK = '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
 
 export const medicalTheme = createTheme({

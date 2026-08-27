@@ -32,6 +32,18 @@ import { buildLabelLut } from '../annotation/annotationPalette'
 // Firefox caps drawArraysInstanced at 30 M vertices per draw call; leave headroom
 const MAX_VERTS_PER_DRAW = 28_000_000
 
+/**
+ * The 3-D view: renders a volume as a GPU point cloud with Three.js.
+ *
+ * Voxels are uploaded once as an intensity-sorted buffer, so changing the visibility
+ * threshold is a draw-range change rather than a re-upload — that is what keeps the
+ * threshold slider interactive on a 32-million-voxel volume. Colouring, brightness
+ * and contrast are done in the GLSL3 shaders in `h5ViewerShaders.ts`.
+ *
+ * The viewer also draws the crop box and the optional STL overlay. Every Three.js
+ * resource it creates has to go through `disposeSceneGeometry` on teardown.
+ */
+
 /** Maps a colormap name to its `uColormap` shader-uniform index. */
 const colormapToInt = (c: ColormapType): number => (c === 'jet' ? 1 : c === 'hot' ? 2 : 0)
 

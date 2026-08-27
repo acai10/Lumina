@@ -1,3 +1,10 @@
+/**
+ * GLSL3 vertex and fragment shaders for the point-cloud viewer.
+ *
+ * Kept as strings rather than files so Vite needs no GLSL plugin. The shaders do the
+ * per-voxel work the CPU cannot afford at this scale: decoding the packed voxel
+ * index into coordinates, tone mapping, and the colormap.
+ */
 export const vertexShader = /* glsl */ `
 // vIndex is an *integer* attribute: a full volume has 512·250·250 = 32M voxels,
 // beyond float32's exact-integer range (2^24 ≈ 16.7M), so decoding it as a float

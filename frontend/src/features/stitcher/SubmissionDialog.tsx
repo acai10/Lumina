@@ -28,6 +28,14 @@ const previewImgSx = {
     borderRadius: 1,
 }
 
+/**
+ * Builds the challenge submission from a volume and previews it before saving.
+ *
+ * Shows the surface depth map and, for the tissue dataset, the muscle/fat mask as
+ * PNGs returned by the backend, so the output can be checked rather than submitted
+ * blind.
+ */
+
 /** Build + preview the challenge submission files for one (stitched) volume. */
 export function SubmissionDialog({ open, volumeId, onClose }: SubmissionDialogProps) {
     const setNotification = useViewerStore((s) => s.setNotification)

@@ -1,3 +1,12 @@
+"""FastAPI application entry point for the Lumina backend.
+
+Wires the eight routers together, configures CORS from :mod:`src.config`, and
+installs the lifespan hook and the exception handler. The ``description`` and
+``openapi_tags`` set here are what Swagger UI (``/docs``) and ReDoc (``/redoc``)
+render, so the live API documentation is generated from this file plus the
+per-route ``summary``/``description`` and the Pydantic schemas — it cannot drift
+away from the actual routes.
+"""
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager

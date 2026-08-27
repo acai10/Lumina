@@ -14,6 +14,12 @@ interface H5SliceViewerProps {
 }
 
 // Clamp/round a drag span to whole-voxel [lo, hi) within [0, max], min size 1.
+/**
+ * The 2-D view: three orthogonal slice panels (XY, XZ, YZ) over one volume.
+ *
+ * This component only lays the panels out and keeps their ranges consistent; all
+ * drawing, zooming, panning and measuring happens inside `SlicePanel`.
+ */
 function clampRange(v0: number, v1: number, max: number): [number, number] {
     const lo = Math.max(0, Math.min(Math.round(Math.min(v0, v1)), max))
     let hi = Math.max(0, Math.min(Math.round(Math.max(v0, v1)), max))

@@ -39,6 +39,13 @@ interface ServerVolumeDialogProps {
 }
 
 /**
+ * Picker for the `.h5` files the backend exposes, grouped by folder.
+ *
+ * Supports single and multi-select, so a whole grid of tiles can be handed to the
+ * stitcher in one go.
+ */
+
+/**
  * Presentational list of `.h5` files available on the server (under its `data_dir`).
  * Files are grouped by folder. Clicking a folder row picks all files in it.
  * Fetching/state is owned by `useServerVolumes`.

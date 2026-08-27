@@ -31,6 +31,13 @@ import { eyebrowSx, compactButtonSx } from '../../shared/theme/uiTokens'
 const PANEL_WIDTH = STITCHER_WIDTH
 const MIN_STITCH_VOLUMES = 2
 
+/**
+ * Right-docked panel for running a multi-volume stitch.
+ *
+ * Grid positions are guessed from the `Vol_<row>_<col>.h5` filenames and stay
+ * editable, since the naming is a convention rather than a guarantee. The session
+ * itself is driven by `useStitchSession`.
+ */
 function inferGridPos(filename: string): { row: number; col: number } {
     const m = filename.match(/_(\d+)_(\d+)(?:\.\w+)?$/)
     if (m) return { row: parseInt(m[1]) - 1, col: parseInt(m[2]) - 1 }

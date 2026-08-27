@@ -24,6 +24,14 @@ const TICK_NICE_UM = [25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000]
 /** Aim for roughly this many ticks per axis when picking a "nice" interval. */
 const TARGET_TICK_COUNT = 6
 
+/**
+ * Builds the X/Y/Z axis letters and tick labels for the 3-D viewer as canvas sprites.
+ *
+ * Ticks are placed on a "nice" interval (1/2/5 x 10^n micrometres) picked from the
+ * volume's physical extent, so the labels stay readable at any zoom instead of
+ * landing on arbitrary values. Sprites carry canvas textures, which have to be
+ * disposed explicitly before the scene is torn down.
+ */
 function niceIntervalUm(fullExtentUm: number): number {
     const raw = fullExtentUm / TARGET_TICK_COUNT
     return TICK_NICE_UM.find((v) => v >= raw) ?? TICK_NICE_UM[TICK_NICE_UM.length - 1]

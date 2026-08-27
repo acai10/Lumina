@@ -24,6 +24,15 @@ import {
     type CropObjectResult,
 } from './cropObjectAnalysis'
 
+/**
+ * Crop panel: shape, range, threshold, and the on-demand object count.
+ *
+ * The selection is drawn in 3-D by `H5Viewer` and as a draggable shape in `SlicePanel`;
+ * this panel owns the numbers. The signal readout is measured at the same threshold
+ * that gates the 3-D cloud, so "signal" always means "what you can currently see".
+ * Cropping itself happens server-side and comes back as a new tab.
+ */
+
 /** CSS rgb() string for an object's rank colour (1-based), matching the viewers. */
 const rankColorCss = (rank: number): string => {
     const [r, g, b] = objectColorRgb(rank)

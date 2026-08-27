@@ -1,3 +1,8 @@
+"""Route for downloading the result volume of a finished job.
+
+Returns the volume produced by one named stitcher in the packed binary format the
+frontend renders directly, rather than as raw float32.
+"""
 import numpy as np
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response

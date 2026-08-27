@@ -1,5 +1,11 @@
 import type { LocalVolume } from '../api'
 
+/**
+ * Groups the server's volume list by folder for the file pickers.
+ *
+ * The backend reports paths relative to its data directory, so the folder is just
+ * everything before the last separator, and files at the root get `folder: null`.
+ */
 export interface VolumeGroup {
     folder: string | null // null = root level
     files: LocalVolume[]

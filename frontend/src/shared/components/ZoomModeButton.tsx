@@ -9,6 +9,7 @@ interface ZoomModeButtonProps {
     onToggle: () => void
 }
 
+/** Toggles zoom-to-cursor, shared by the 3-D viewers. */
 export function ZoomModeButton({ active, onToggle }: ZoomModeButtonProps) {
     return (
         <Tooltip title={active ? 'Zoom: to cursor' : 'Zoom: to center'} placement="left">

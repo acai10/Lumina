@@ -1,3 +1,12 @@
+"""Route for extracting a sub-volume from a loaded volume.
+
+The crop is non-destructive: the source volume is untouched and the result is
+persisted under a brand-new volume id, so it can be filtered, measured and cropped
+again exactly like an uploaded file.
+
+Besides the axis-aligned box, the caller can ask for a ``cylinder`` or ``sphere``
+selection; those are cut out of the box by zeroing everything outside the shape.
+"""
 import logging
 import uuid
 from typing import Literal

@@ -17,6 +17,11 @@ import {
     loadingSpinnerSx,
 } from './Toolbar.styles'
 
+/**
+ * Top toolbar: load files from disk or from the server, and switch view mode.
+ *
+ * Layout only — the file handling lives in `useFileLoad`.
+ */
 export default function Toolbar() {
     const {
         isLoading,

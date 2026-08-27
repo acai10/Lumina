@@ -1,3 +1,15 @@
+"""Session store and background execution of multi-volume stitching sessions.
+
+Where :mod:`.runner` compares stitchers on a single volume, a session is the real
+mosaicking job: several tiles at known grid positions are registered pairwise,
+placed in one coordinate frame, merged, and written out as a new volume that the
+frontend can load like any other.
+
+:func:`_execute_session` is the pipeline; :data:`session_store` is the process-wide
+singleton holding the state that ``GET /sessions/{id}`` polls. Its lock exists
+because the background task mutates ``offsets``/``metrics`` while poll requests
+serialise them.
+"""
 import asyncio
 import logging
 import threading

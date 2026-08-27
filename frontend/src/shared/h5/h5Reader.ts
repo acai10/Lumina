@@ -3,6 +3,12 @@ import type { H5VolumeData } from '../types/viewer.types'
 import { normalizeVolume } from './h5Normalizer'
 import { VOLUME_DIMS, PRE_FILTER_THRESHOLD, H5_DATASET_NAME } from './h5Constants'
 
+/**
+ * Decodes an `.h5` file to a render-ready volume with h5wasm.
+ *
+ * Runs inside the Web Worker, never on the main thread: decoding and normalising a
+ * 32-million-voxel volume blocks for seconds and would freeze the UI.
+ */
 // NOTE: This module statically imports `h5wasm` and must therefore only be
 // imported by `h5.worker.ts` (the Web Worker), never from the main-thread
 // graph — otherwise Vite ships h5wasm twice. Main-thread callers use

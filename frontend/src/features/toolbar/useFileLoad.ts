@@ -7,6 +7,13 @@ import { registerLocalVolume, fetchNormalizedVolume } from '../../shared/api'
 import type { LocalVolume } from '../../shared/api'
 import type { H5FileEntry } from '../../shared/types/viewer.types'
 
+/**
+ * File input refs and the H5/STL load handlers behind the toolbar.
+ *
+ * Files are loaded strictly one after another, never with `Promise.all`: each
+ * decoded volume is >100 MB, so loading a whole folder in parallel exhausts the tab's
+ * memory. Server-side files skip the upload entirely and are registered by path.
+ */
 export function useFileLoad() {
     const { loadStlFiles, loadH5, setIsLoading, setNotification } = useViewerStore(
         useShallow((s) => ({

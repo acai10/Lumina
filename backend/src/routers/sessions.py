@@ -1,3 +1,11 @@
+"""Routes for multi-volume stitching sessions.
+
+The multi-tile counterpart to :mod:`.jobs`: ``POST /sessions/`` accepts the tiles and
+their grid positions and starts the registration in the background,
+``GET /sessions/{id}`` polls the recovered offsets and quality metrics,
+``GET /sessions/{id}/merged`` returns the merged scan, and ``POST /sessions/{id}/filter``
+applies a filter chain to that merged scan without rebuilding the mosaic.
+"""
 import uuid
 
 import numpy as np

@@ -1,5 +1,12 @@
 import * as THREE from 'three'
 
+/**
+ * Draw-range helpers over the intensity-sorted point cloud.
+ *
+ * Because the voxels are uploaded sorted by intensity, "show everything above this
+ * threshold" is a prefix of the buffer, so a binary search turns the threshold slider
+ * into a draw-range change instead of a re-upload.
+ */
 // vIntensities is sorted descending; returns count of elements >= threshold
 export function countAboveThreshold(arr: Float32Array, threshold: number): number {
     let lo = 0,

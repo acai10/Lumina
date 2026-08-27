@@ -1,3 +1,4 @@
+/** Slider and label styles shared by the three slice panels. */
 import { palette } from '../../shared/theme/palette'
 
 export const slicePanelSliderSx = {

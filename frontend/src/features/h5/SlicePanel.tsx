@@ -38,6 +38,15 @@ import {
 import { slicePanelSliderSx, sliceRowLabelSx, sliceRowValueSx } from './H5SliceViewer.styles'
 import { RENDER_CONTROL_LIMITS } from '../controls/renderControlLimits'
 
+/**
+ * One 2-D slice panel: canvas rendering, zoom and pan, measurement and crop shapes.
+ *
+ * Draws directly to a 2-D canvas rather than through Three.js, because a slice is a
+ * plain image and this keeps the three panels cheap. Applies the same tone mapping as
+ * the 3-D shaders so both views show the same contrast, and converts pixel distances
+ * to millimetres using the volume's voxel spacing for the measurement tools.
+ */
+
 /** How a panel rotates/flips the volume plane before drawing it to canvas. */
 export type SliceOrient = 'ccw90' | 'flipH' | 'flip180'
 

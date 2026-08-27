@@ -11,6 +11,15 @@ import { useViewerStore } from '../../app/store/viewerSlice'
 import { useResolveVolumeId } from '../../shared/hooks'
 import type { FilterStep } from '../../shared/api'
 
+/**
+ * Applies and reverts a backend filter chain for the active tab.
+ *
+ * One request does the whole job: the volume is uploaded only if it is not already
+ * server-side, then a single POST to `/volumes/{id}/filter` (or `/sessions/{id}/filter`
+ * for a merged volume) returns the render-ready normalised binary. No stitcher, no
+ * metrics, no polling — the older create-and-poll `/jobs/` pipeline is only used for
+ * stitcher comparison runs.
+ */
 export type FilterPhase = 'idle' | 'uploading' | 'processing' | 'downloading' | 'reverting'
 
 export function useFilterJob(

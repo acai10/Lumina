@@ -1,3 +1,11 @@
+"""Route for building the challenge submission file from a volume.
+
+Turns a (usually merged) volume into the deliverable described in
+:mod:`src.processing.submission`: an ``.h5`` holding the surface depth map with its
+pixel spacings and, for the tissue dataset, the binary muscle/fat mask. It also
+returns base64 PNG previews and summary statistics so the result can be checked in
+the UI before it is submitted.
+"""
 import base64
 import logging
 

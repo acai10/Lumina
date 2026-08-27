@@ -2,6 +2,13 @@ import { VOLUME_DIMS, PRE_FILTER_THRESHOLD } from '../../shared/h5'
 
 const [N_SLICES, HEIGHT, WIDTH] = VOLUME_DIMS
 
+/**
+ * Slider bounds for the render controls.
+ *
+ * The volume-dependent limits are derived from `VOLUME_DIMS` rather than hardcoded,
+ * so the sliders stay correct if the volume shape ever changes; `getRenderControlLimits`
+ * narrows them further to the actually loaded volume's dimensions.
+ */
 export const RENDER_CONTROL_LIMITS = {
     stlOpacity: { min: 0, max: 1, step: 0.01 },
     volumeSpacing: { min: 1, max: N_SLICES, step: 1 },

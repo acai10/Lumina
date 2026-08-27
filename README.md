@@ -30,6 +30,11 @@ LUMINA_DATA_DIR=C:\Users\you\oct-data
 
 (Leave it as the default `./data` to just use the repo's local `data/` folder.)
 
+> The OCT datasets are **not** part of this repository — they are several GB, so
+> `challenge/data/` is git-ignored. Point `LUMINA_DATA_DIR` at wherever you keep the
+> `.h5` files; nothing else needs to change. Files are expected as `(512, 250, 250)`
+> under the dataset name `OCT`, which is what the challenge data uses.
+
 **3. Start:**
 
 ```bash

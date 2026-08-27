@@ -1,6 +1,12 @@
 import { loadH5File } from './h5Reader'
 import type { WorkerRequest, WorkerResponse } from './h5WorkerClient'
 
+/**
+ * Web Worker entry point for `.h5` decoding.
+ *
+ * Thin message shim around `h5Reader`; the transfer of the decoded buffers back to
+ * the main thread is zero-copy.
+ */
 // One long-lived worker serves many files (see h5WorkerClient), so each request
 // carries an id that we echo back on the response for correlation.
 self.onmessage = async (e: MessageEvent<WorkerRequest>) => {

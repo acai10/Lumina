@@ -39,6 +39,12 @@ const iconBtnSx = {
     '&:hover': { color: palette.primary, background: palette.primarySoft },
 }
 
+/**
+ * Left sidebar listing the `.h5` files the backend can see, grouped by folder.
+ *
+ * Selecting one registers it by path instead of uploading it, which skips a ~128 MB
+ * transfer per volume.
+ */
 export function FileListPanel() {
     const toggleFileListPanel = useViewerStore((s) => s.toggleFileListPanel)
     const { volumes, loading, error, refresh } = useServerVolumes()

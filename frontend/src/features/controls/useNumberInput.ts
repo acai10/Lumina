@@ -1,5 +1,12 @@
 import { useState } from 'react'
 
+/**
+ * Controlled number input that clamps on commit rather than on every keystroke.
+ *
+ * Typing an intermediate value like "-" or "1." has to be allowed while the field is
+ * focused, so the raw text is kept locally and only parsed and clamped to
+ * [min, max] on blur or Enter.
+ */
 const fmt = (v: number) => (v % 1 === 0 ? String(v) : v.toFixed(2))
 
 export function useNumberInput(

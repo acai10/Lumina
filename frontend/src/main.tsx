@@ -1,3 +1,9 @@
+/**
+ * Application entry point: mounts <App /> inside the MUI theme provider.
+ *
+ * The only routing-free part of the app — Lumina switches views from Zustand
+ * state (active tab type and view mode), not from the URL.
+ */
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import CssBaseline from '@mui/material/CssBaseline'

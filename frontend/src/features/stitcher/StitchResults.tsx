@@ -26,6 +26,13 @@ interface StitchResultsProps {
     status: SessionStatus
 }
 
+/**
+ * Tables of the quality metrics and the recovered per-tile offsets of a session.
+ *
+ * The offsets are what the registration actually solved for, so this is also where a
+ * failed pair shows up: a tile whose offset does not follow its neighbours.
+ */
+
 /** Quality-metrics + detected-offsets tables shown after a stitching session completes. */
 export function StitchResults({ status }: StitchResultsProps) {
     const [submissionOpen, setSubmissionOpen] = useState(false)

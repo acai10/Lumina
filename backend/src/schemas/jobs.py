@@ -1,3 +1,8 @@
+"""Request and response models for the filter and job endpoints.
+
+These types define the public API shape: FastAPI derives the OpenAPI schema and the
+request validation from them, so a change here changes the documented contract.
+"""
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator

@@ -12,6 +12,13 @@ const DEFAULT_STEP_PARAMS: StepParams = {
     normalizeHigh: 98.0,
 }
 
+/**
+ * State and defaults for the preprocessing pipeline the user assembles in the UI.
+ *
+ * Keeps the list of steps with their per-type parameters and turns it into the
+ * `FilterStep[]` the backend expects; steps still set to "none" are dropped rather
+ * than sent.
+ */
 const BLANK_STEP = (): PipelineStep => ({
     type: 'none',
     params: { ...DEFAULT_STEP_PARAMS },

@@ -1,3 +1,10 @@
+"""Routes for creating and polling stitcher-comparison jobs.
+
+``POST /jobs/`` validates the request, registers the job and returns 201 with its id
+immediately; the actual pipeline runs as a background task in
+:mod:`src.processing.runner`. Clients then poll ``GET /jobs/{id}`` for the status and,
+once done, the per-stitcher metrics.
+"""
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException

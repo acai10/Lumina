@@ -1,3 +1,14 @@
+"""Geometric measurements of the thresholded tissue region of a volume.
+
+Everything here works on the binary mask ``volume > threshold`` and converts voxel
+counts to physical units with the caller's ``(dz, dy, dx)`` voxel size, so the
+numbers come out in micrometres rather than pixels.
+
+The surface area uses a face-count estimate rather than a mesh: each exposed voxel
+face contributes its own area. Note the refractive-index caveat for any depth that
+runs through tissue, documented in ``docs/05-slice-viewer-measurements.md`` — the
+default axial spacing is the value in air.
+"""
 import logging
 
 import numpy as np

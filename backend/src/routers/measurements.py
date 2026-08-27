@@ -1,3 +1,9 @@
+"""Route for computing geometric measurements of a volume.
+
+A thin wrapper over :func:`src.processing.measurements.compute_measurements`: it
+resolves the volume id, passes the caller's threshold and voxel size through, and
+returns the measurements in physical units.
+"""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 

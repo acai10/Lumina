@@ -1,3 +1,11 @@
+/**
+ * Every colour token in the application.
+ *
+ * Single source of truth: components take colours from here, never as literals, so
+ * the scene and the UI chrome can be retuned in one place. Some tokens exist twice,
+ * as a CSS string and as a Three.js hex number, because the two renderers need
+ * different forms of the same colour.
+ */
 export const palette = {
     // ===================================================================
     // SCENE — the viewer canvases (3D point-cloud, 2D slices, STL).

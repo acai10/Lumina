@@ -34,6 +34,13 @@ interface AnnotationToolbarProps {
 }
 
 /**
+ * Foldable brush/eraser toolbar for painting annotations over the 2-D slice view.
+ *
+ * Painting is non-destructive: strokes go into the per-tab voxel mask in the store,
+ * never into the underlying HDF5 data, and are mirrored into the 3-D voxel overlay.
+ */
+
+/**
  * Foldable annotation toolbar shown over the 2D slice view. Holds the painting tools
  * (brush / eraser) plus the colour palette (always shown while the brush is active)
  * and a clear button. Crop tools live in the control sidebar. Tool state is in Zustand;

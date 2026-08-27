@@ -1,3 +1,4 @@
+/** Tab-bar styles: the styled Tabs container plus the drag and STL-tint variants. */
 import { styled } from '@mui/material/styles'
 import Tabs from '@mui/material/Tabs'
 import { palette } from '../../shared/theme/palette'

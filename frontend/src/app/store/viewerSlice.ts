@@ -25,6 +25,21 @@ import type {
     TabEntry,
 } from '../../shared/types/viewer.types'
 
+/**
+ * The single Zustand store behind the whole viewer.
+ *
+ * Loaded files — H5 and STL mixed freely — live in one `tabs` array with an
+ * `activeTabIndex`; there is no router, so which view renders follows from the
+ * active tab's `type` and, for H5, its per-file `viewMode`.
+ *
+ * The memory rule matters more than anything else here: a decoded volume is
+ * 150–210 MB, so at most `MAX_HYDRATED_FILES` of them may sit on the JS heap at
+ * once. Inactive tabs are evicted to IndexedDB (`shared/h5/volumeCache`) and carry
+ * `data: null` until `ensureHydrated` brings them back. Anything reading a tab must
+ * therefore take dimensions from `meta` and slice availability from `hasSlices`,
+ * and touch `data` only after hydration.
+ */
+
 /** Default brush/eraser radius in voxels. */
 export const DEFAULT_BRUSH_RADIUS = 6
 

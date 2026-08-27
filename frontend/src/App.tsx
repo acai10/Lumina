@@ -1,3 +1,10 @@
+/**
+ * Application shell: sidebars, tab bar, and whichever viewer the active tab needs.
+ *
+ * The heavy Three.js viewers are code-split behind `lazy()`, so a session that only
+ * uses the 2-D slice view never downloads them. Also owns the window-level
+ * drag-and-drop handling for loading files.
+ */
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import type { DragEvent } from 'react'
 import { Box, CircularProgress, Stack } from '@mui/material'

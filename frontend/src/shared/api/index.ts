@@ -1,3 +1,4 @@
+/** Public surface of the API layer: client functions and their types. */
 export {
     uploadVolume,
     listLocalVolumes,

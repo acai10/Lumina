@@ -1,3 +1,9 @@
+/**
+ * Styles for the controls panel that need pseudo-selectors or nested rules.
+ *
+ * Per project convention only complex styles are pulled out into a `.styles.ts`;
+ * one-off overrides of a property or two stay inline as `sx`.
+ */
 import { styled } from '@mui/material/styles'
 import { palette } from '../../shared/theme/palette'
 import { CONTROLS_WIDTH, RAIL_WIDTH, PANEL_PADDING } from '../../shared/theme/layout'

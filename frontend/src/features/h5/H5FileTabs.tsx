@@ -34,6 +34,12 @@ const TabLabel = memo(function TabLabel({ name, index, onClose }: TabLabelProps)
     )
 })
 
+/**
+ * Tab bar for the loaded files, H5 and STL alike.
+ *
+ * Tabs are reorderable by drag; STL tabs are tinted to tell them apart at a glance.
+ * Closing a tab also releases that volume's buffers from the heap and IndexedDB.
+ */
 export default function H5FileTabs() {
     const { tabs, activeTabIndex, selectTab, closeTab, reorderTab } = useViewerStore(
         useShallow((s) => ({

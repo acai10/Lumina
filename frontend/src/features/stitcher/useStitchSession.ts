@@ -10,6 +10,14 @@ import type { RegistrationMethod, SessionStatus } from '../../shared/api'
 import { useViewerStore } from '../../app/store/viewerSlice'
 import type { H5FileEntry } from '../../shared/types/viewer.types'
 
+/**
+ * Drives one multi-volume stitching session end to end.
+ *
+ * Uploads or registers the selected tiles, creates the session, polls it until the
+ * backend reports DONE or ERROR, then downloads the merged volume and opens it as a
+ * new tab. The polling interval and the cleanup of the timer on unmount live here so
+ * the panel component stays pure layout.
+ */
 export type StitchPhase = 'idle' | 'uploading' | 'processing' | 'downloading' | 'done' | 'error'
 
 export interface VolumeConfig {

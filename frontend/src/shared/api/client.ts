@@ -19,6 +19,15 @@ const HEADER_X_VCOUNT = 'X-VCount'
 const BYTES_PER_FLOAT32 = 4
 
 /**
+ * Typed wrappers around every backend endpoint the UI calls.
+ *
+ * All of them resolve against `VITE_API_URL` (Docker env or local `.env`), so the
+ * host is configured in exactly one place. Endpoints that return volume data answer
+ * with the packed binary described in `docs/12-api-reference.md` rather than JSON;
+ * `parseShapeHeader` reads the `X-Shape`/`X-VCount` headers that describe it.
+ */
+
+/**
  * Parse a JSON response body as `T`. This is the single place where unvalidated
  * network JSON is asserted into a typed shape; callers must `res.ok`-check first.
  */

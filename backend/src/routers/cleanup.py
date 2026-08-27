@@ -1,3 +1,9 @@
+"""Route for clearing the uploads directory.
+
+Deletes everything under ``settings.uploads_dir``. It refuses with 409 while a job or
+session is still running, since those hold volume ids that would stop resolving
+mid-run.
+"""
 import logging
 
 from fastapi import APIRouter, HTTPException

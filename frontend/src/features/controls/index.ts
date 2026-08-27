@@ -1,3 +1,4 @@
+/** Public surface of the controls feature. */
 export { default as ControlsPanel } from './ControlsPanel'
 export { PreprocessingSection } from './PreprocessingSection'
 export { SliderRow, RangeSliderRow } from './SliderRow'

@@ -51,6 +51,13 @@ const UM2_PER_MM2 = 1e6
 const UM3_PER_MM3 = 1e9
 
 const COLORMAP_VALUES: ColormapType[] = ['gray', 'jet', 'hot']
+/**
+ * The right-hand sidebar: render controls, measurements, preprocessing and crop.
+ *
+ * Deliberately a layout shell. Each section's behaviour lives in its own component
+ * or hook (`PreprocessingSection`, `CropSection`, `useFilterJob`, `useOpenCrop`), so
+ * this file only arranges them and wires events.
+ */
 const isColormapType = (v: string): v is ColormapType => (COLORMAP_VALUES as string[]).includes(v)
 
 function MeasurementResultPanel({ result }: { result: MeasureResult }) {
