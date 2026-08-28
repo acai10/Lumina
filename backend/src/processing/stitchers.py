@@ -153,10 +153,18 @@ def stitch_bigstitcher(
     params: dict[str, Any],
     reference: np.ndarray | None = None,
 ) -> np.ndarray:
-    """BigStitcher-style global optimisation: pairwise phase-correlation + least-squares fusion.
+    """Sequential slice alignment: pairwise phase-correlation, cumulative sum, re-centre.
 
-    Computes pairwise shifts between consecutive slices, accumulates them via
-    cumulative sum, and centres the result so the middle slice has zero offset.
+    Registers every consecutive slice pair by phase correlation, accumulates those
+    shifts with a running sum, and centres the result so the middle slice has zero
+    offset and the volume does not drift off-canvas.
+
+    The registry name is historical and refers to the tool this was modelled on. Do
+    not read it as an implementation of that method: the shifts here are simply
+    chained, so an error in one pair carries over to every slice behind it. The
+    published BigStitcher (and the tiled-microscopy work it builds on) exists
+    precisely to avoid that, by fitting all positions at once by least squares.
+    Nothing of the sort happens below.
 
     Args:
         vol: Float32 array of shape (n_slices, height, width).
