@@ -146,7 +146,9 @@ plain language with worked examples.
 
 ```text
 Lumina/
+├── LICENSE
 ├── docker-compose.yml
+├── .github/workflows/ci.yml   # lint · typecheck · test on push and PR
 ├── docs/            # detailed documentation (see above)
 ├── backend/         # Python 3.11 · FastAPI · uv
 │   ├── main.py      # app, CORS, routers
@@ -154,3 +156,9 @@ Lumina/
 └── frontend/        # React · TypeScript · Vite
     └── src/         # App.tsx, app/store/, features/, shared/
 ```
+
+## License
+
+Released under the [MIT License](LICENSE) — free to use, modify and distribute,
+including commercially, as long as the copyright notice is kept. Third-party
+dependencies remain under their own (all permissive) licenses.
